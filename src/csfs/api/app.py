@@ -40,8 +40,9 @@ def create_app(db_path: Path | str = "csfs.duckdb") -> FastAPI:
         max_lon: float | None = None,
         max_lat: float | None = None,
     ):
+        assert _store is not None
         bbox = None
-        if all(v is not None for v in [min_lon, min_lat, max_lon, max_lat]):
+        if min_lon is not None and min_lat is not None and max_lon is not None and max_lat is not None:
             bbox = (min_lon, min_lat, max_lon, max_lat)
         stations = await _store.get_stations(
             provider=provider, country_code=country, bbox=bbox,
@@ -54,6 +55,7 @@ def create_app(db_path: Path | str = "csfs.duckdb") -> FastAPI:
         start: datetime | None = None,
         end: datetime | None = None,
     ):
+        assert _store is not None
         obs = await _store.get_observations(station_id, start=start, end=end)
         return {"station_id": station_id, "count": len(obs), "observations": obs}
 

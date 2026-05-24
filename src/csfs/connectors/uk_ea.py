@@ -23,7 +23,7 @@ class UKEnvironmentAgencyConnector(BaseConnector):
 
     async def fetch_stations(self) -> list[Station]:
         stations = []
-        url = "/id/stations"
+        url: str | None = "/id/stations"
         params: dict | None = {"observedProperty": "waterFlow", "_limit": 500}
 
         while url:
@@ -52,10 +52,10 @@ class UKEnvironmentAgencyConnector(BaseConnector):
                     river=river,
                     catchment_area_km2=float(area) if area else None,
                 ))
-            next_link = None
+            next_link: str | None = None
             for link in data.get("links", []):
                 if link.get("rel") == "next":
-                    next_link = link.get("href")
+                    next_link = str(link["href"])
                     break
             url = next_link
             params = None
@@ -70,7 +70,7 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         try:
             resp = await self._get(f"/id/stations/{native_id}/measures")
             data = resp.json()
-            measures = [
+            measures: list[str] = [
                 item.get("notation", "")
                 for item in data.get("items", [])
                 if "flow" in item.get("parameterName", "").lower()

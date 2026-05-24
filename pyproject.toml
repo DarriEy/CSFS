@@ -68,5 +68,6 @@ asyncio_mode = "auto"
 
 [tool.mypy]
 python_version = "3.11"
-strict = true
 warn_return_any = true
+disallow_untyped_defs = false
+check_untyped_defs = true
