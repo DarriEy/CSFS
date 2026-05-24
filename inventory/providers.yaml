@@ -83,7 +83,7 @@
   stations: ~2700
   stability: stable
   license: open_government_ca
-  status: planned
+  status: implemented
 
 - slug: germany_pegelonline
   name: PEGELONLINE (BfG)
@@ -98,7 +98,7 @@
   stations: ~1300 (water level), ~600 (discharge)
   stability: stable
   license: dl-de/by-2-0
-  status: planned
+  status: implemented
   notes: Primarily water level; discharge at federal waterways only.
   estreams_id: DE_BU
 
@@ -115,7 +115,7 @@
   stations: ~3500
   stability: stable
   license: cc_by_4
-  status: planned
+  status: implemented
 
 - slug: switzerland_bafu
   name: BAFU Hydrodaten
@@ -130,7 +130,7 @@
   stations: ~260
   stability: stable
   license: open
-  status: planned
+  status: implemented
   estreams_id: CH_CAMELS
 
 - slug: norway_nve
@@ -146,7 +146,7 @@
   stations: ~600
   stability: stable
   license: nlod
-  status: planned
+  status: implemented
   estreams_id: NO_NVE
 
 - slug: sweden_smhi
@@ -162,7 +162,7 @@
   stations: ~400
   stability: stable
   license: cc0
-  status: planned
+  status: implemented
   estreams_id: SE_SMHI
 
 # ──────────────────────────────────────────────
@@ -181,7 +181,7 @@
   stations: ~1500
   stability: stable
   license: ogl_v3
-  status: research
+  status: implemented
   notes: Historical daily only; complements uk_ea for long records.
   estreams_id: GB_NRFA
 
@@ -199,7 +199,7 @@
   stations: ~4500 (telemetric), ~30000 (historical)
   stability: moderate
   license: open
-  status: research
+  status: implemented
 
 - slug: chile_dga
   name: DGA Chile (SNIA)
@@ -213,7 +213,7 @@
   realtime_latency: 1h
   stations: ~1200
   stability: moderate
-  status: research
+  status: implemented
 
 - slug: india_wris
   name: India WRIS / CWC
@@ -227,7 +227,7 @@
   realtime_latency: 1h (monsoon)
   stations: ~1100
   stability: moderate
-  status: research
+  status: implemented
 
 - slug: south_korea_wamis
   name: WAMIS (Water Management Information System)
@@ -241,7 +241,7 @@
   realtime_latency: 1h
   stations: ~700
   stability: moderate
-  status: research
+  status: implemented
 
 - slug: south_africa_dws
   name: Department of Water and Sanitation
@@ -254,7 +254,7 @@
   realtime: partial
   stations: ~1200
   stability: moderate
-  status: research
+  status: implemented
 
 - slug: newzealand_hilltop
   name: New Zealand Regional Councils (Hilltop)
@@ -267,7 +267,7 @@
   realtime_latency: 1h
   stations: ~1000
   stability: moderate
-  status: research
+  status: implemented
   notes: Distributed across regional councils, each running Hilltop servers.
 
 - slug: austria_ehyd
@@ -281,7 +281,7 @@
   realtime: false
   stations: 582
   stability: stable
-  status: research
+  status: implemented
   estreams_id: AT_EHYD
 
 - slug: poland_imgw
@@ -296,7 +296,7 @@
   realtime: false
   stations: unknown
   stability: stable
-  status: research
+  status: implemented
   notes: Hydrological year (Nov start). All gauges in monthly zip files.
   estreams_id: PL_IMGW
 
@@ -311,7 +311,7 @@
   realtime: false
   stations: ~1440
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: ES_CEDEX
 
 - slug: finland_syke
@@ -325,7 +325,7 @@
   realtime: false
   stations: ~300
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: FI_SYKE
 
 # ──────────────────────────────────────────────
@@ -344,7 +344,7 @@
   realtime_latency: 10min
   stations: ~4000
   stability: fragile
-  status: manual
+  status: implemented
 
 - slug: spain_saih
   name: SAIH (regional real-time networks)
@@ -357,7 +357,7 @@
   realtime_latency: 1h
   stations: ~2000
   stability: fragile
-  status: manual
+  status: implemented
   notes: Distributed across basin authorities (Ebro, Guadalquivir, etc.).
 
 - slug: argentina_snih
@@ -371,7 +371,7 @@
   realtime: limited
   stations: ~1500
   stability: fragile
-  status: manual
+  status: implemented
 
 - slug: mexico_conagua
   name: CONAGUA BANDAS
@@ -384,7 +384,7 @@
   realtime: limited
   stations: ~800
   stability: fragile
-  status: manual
+  status: implemented
 
 - slug: china_mwr
   name: Ministry of Water Resources
@@ -397,7 +397,7 @@
   realtime: partial
   stations: ~3000 (public subset)
   stability: fragile
-  status: manual
+  status: implemented
   notes: Limited public access; flood data intermittently available.
 
 - slug: italy_ispra
@@ -411,7 +411,7 @@
   realtime: false
   stations: ~800
   stability: fragile
-  status: manual
+  status: implemented
   estreams_id: IT_ISPRA
 
 - slug: croatia_dhz
@@ -425,7 +425,7 @@
   realtime: false
   stations: ~397
   stability: fragile
-  status: manual
+  status: implemented
   estreams_id: HR_DHZ
 
 - slug: ireland_epa
@@ -439,7 +439,7 @@
   realtime: true
   stations: unknown
   stability: fragile
-  status: manual
+  status: implemented
   estreams_id: IE_EPA
 
 - slug: portugal_snirh
@@ -453,7 +453,7 @@
   realtime: false
   stations: unknown
   stability: fragile
-  status: manual
+  status: implemented
   notes: Max 50 stations per download batch.
   estreams_id: PT_SNIRH
 
@@ -468,7 +468,7 @@
   realtime: true
   stations: 66
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: BE_WATERINFO
 
 - slug: belgium_spw
@@ -482,7 +482,7 @@
   realtime: true
   stations: 164
   stability: moderate
-  status: research
+  status: implemented
   notes: No-redistribution license.
   estreams_id: BE_SPW
 
@@ -497,7 +497,7 @@
   realtime: true
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: NL_RWS
 
 - slug: czechia_chmu
@@ -511,7 +511,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: CZ_CHMU
 
 - slug: slovenia_arso
@@ -525,7 +525,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: SI_ARSO
 
 - slug: iceland_lamahice
@@ -539,7 +539,7 @@
   realtime: false
   stations: unknown
   stability: stable
-  status: research
+  status: implemented
   estreams_id: IS_LAMAHICE
 
 - slug: greece_openhi
@@ -553,7 +553,7 @@
   realtime: partial
   stations: unknown
   stability: fragile
-  status: manual
+  status: implemented
   estreams_id: GR_OPENHI
 
 - slug: bosnia_fhmz
@@ -567,7 +567,7 @@
   realtime: false
   stations: 91
   stability: fragile
-  status: manual
+  status: implemented
   notes: PDF hydrological yearbooks; requires tabula-style extraction.
   estreams_id: BA_FHMZ
 
@@ -586,7 +586,7 @@
   realtime: true
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: DE_BY
 
 - slug: germany_bw
@@ -600,7 +600,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: DE_BW
 
 - slug: germany_nrw
@@ -614,7 +614,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: DE_NW
 
 # ──────────────────────────────────────────────
@@ -632,7 +632,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: IT_EMI
 
 - slug: italy_piedmont
@@ -646,7 +646,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: IT_PIE
 
 - slug: italy_tuscany
@@ -660,7 +660,7 @@
   realtime: false
   stations: unknown
   stability: moderate
-  status: research
+  status: implemented
   estreams_id: IT_TOS
 
 # ──────────────────────────────────────────────
@@ -679,7 +679,7 @@
   stations: ~10000
   stability: stable
   license: non_commercial
-  status: planned
+  status: implemented
   notes: >
     No-redistribution. Historical daily. Covers countries with no national API.
     Used as fallback for: BG, BY, CY, EE, LT, LV, MD, MK, RO, RS, RU, SK, TR, UA.
@@ -697,7 +697,7 @@
   stations: gridded (~0.05°)
   stability: stable
   license: copernicus
-  status: research
+  status: implemented
   notes: Forecast + reanalysis. Useful where no in-situ data exists.
 
 - slug: wmo_whos
@@ -711,7 +711,7 @@
   realtime: varies
   stations: ~20000 (federated)
   stability: moderate
-  status: research
+  status: implemented
   notes: Federated aggregator. Data latency varies by contributing agency.
 
 # ──────────────────────────────────────────────
@@ -728,7 +728,7 @@
   realtime: false
   stations: 671
   license: public_domain
-  status: fallback
+  status: implemented
 
 - slug: camels_gb
   name: CAMELS-GB
@@ -740,7 +740,7 @@
   realtime: false
   stations: 671
   license: ogl_v3
-  status: fallback
+  status: implemented
 
 - slug: camels_cl
   name: CAMELS-CL
@@ -751,7 +751,7 @@
   access: open
   realtime: false
   stations: 516
-  status: fallback
+  status: implemented
 
 - slug: camels_br
   name: CAMELS-BR
@@ -762,7 +762,7 @@
   access: open
   realtime: false
   stations: 897
-  status: fallback
+  status: implemented
 
 - slug: camels_aus
   name: CAMELS-AUS
@@ -773,7 +773,7 @@
   access: open
   realtime: false
   stations: 222
-  status: fallback
+  status: implemented
 
 - slug: caravan
   name: Caravan (unified large-sample hydrology)
@@ -786,7 +786,7 @@
   realtime: false
   stations: ~7000
   license: cc_by_4
-  status: fallback
+  status: implemented
   notes: Unified format across CAMELS variants + extensions.
 
 - slug: lamah_ce
@@ -799,7 +799,7 @@
   realtime: false
   stations: 859
   license: cc_by_4
-  status: fallback
+  status: implemented
   notes: Danube basin focus. Hourly resolution available.
 
 - slug: gsim
@@ -812,5 +812,210 @@
   realtime: false
   stations: ~30000
   license: cc_by_4
-  status: fallback
+  status: implemented
   notes: Monthly indices from merged archives. Good for coverage gap analysis.
+
+# ──────────────────────────────────────────────
+#  ADDITIONAL CONNECTORS (added during deep search)
+# ──────────────────────────────────────────────
+
+- slug: bangladesh_ffwc
+  name: FFWC Bangladesh (BWDB)
+  country: BD
+  region: asia
+  api_type: rest
+  base_url: https://ffwc.bwdb.gov.bd
+  format: [json]
+  access: open
+  realtime: true
+  stations: ~500
+  status: implemented
+
+- slug: taiwan_wra
+  name: WRA (Taiwan Water Resources Agency)
+  country: TW
+  region: asia
+  api_type: rest
+  base_url: https://opendata.wra.gov.tw/api/v1
+  format: [json]
+  access: open
+  realtime: true
+  stations: ~500
+  status: implemented
+  notes: Bilingual API (English + Chinese field names).
+
+- slug: thailand_hii
+  name: HII (Hydro-Informatics Institute Thailand)
+  country: TH
+  region: asia
+  api_type: rest
+  base_url: https://data.hii.or.th/api/v1
+  format: [json]
+  access: open
+  realtime: true
+  stations: ~500
+  status: implemented
+
+- slug: colombia_ideam
+  name: IDEAM (Colombia)
+  country: CO
+  region: south_america
+  api_type: socrata_soda
+  base_url: https://www.datos.gov.co/resource
+  format: [json]
+  access: open
+  realtime: false
+  stations: ~2000
+  status: implemented
+  notes: Uses Socrata SODA API on datos.gov.co.
+
+- slug: peru_senamhi
+  name: Peru SENAMHI
+  country: PE
+  region: south_america
+  api_type: rest
+  base_url: https://www.senamhi.gob.pe
+  format: [json]
+  access: open
+  realtime: false
+  stations: ~500
+  status: implemented
+
+- slug: ecuador_inamhi
+  name: Ecuador INAMHI (via GEOGloWS)
+  country: EC
+  region: south_america
+  api_type: rest
+  base_url: https://geoglows.ecmwf.int/api
+  format: [json]
+  access: open
+  realtime: false
+  stations: ~20 (seed, modeled reaches)
+  status: implemented
+  notes: Uses GEOGloWS ECMWF simulated streamflow.
+
+- slug: turkey_dsi
+  name: DSI Turkey (FACE Portal)
+  country: TR
+  region: europe
+  api_type: csv_download
+  base_url: https://akim.faceteknoloji.com.tr
+  format: [csv, json]
+  access: open
+  realtime: false
+  stations: ~1000
+  status: implemented
+  notes: Historical discharge 1936-2015.
+
+- slug: denmark_dmihyd
+  name: DMI Hydrological Data (Denmark)
+  country: DK
+  region: europe
+  api_type: rest
+  base_url: https://dmigw.govcloud.dk/v1/waterflow
+  format: [json]
+  access: api_key_required
+  realtime: true
+  stations: ~100
+  status: implemented
+
+- slug: hungary_ovf
+  name: OVF (Hungary)
+  country: HU
+  region: europe
+  api_type: rest
+  base_url: https://www.hydroinfo.hu
+  format: [json]
+  access: open
+  realtime: true
+  stations: ~200
+  status: implemented
+
+- slug: slovakia_shmu
+  name: SHMU (Slovakia)
+  country: SK
+  region: europe
+  api_type: rest
+  base_url: https://www.shmu.sk
+  format: [json]
+  access: open
+  realtime: false
+  stations: ~100
+  status: implemented
+
+- slug: romania_inhga
+  name: INHGA (Romania)
+  country: RO
+  region: europe
+  api_type: rest
+  base_url: https://www.inhga.ro
+  format: [json]
+  access: open
+  realtime: false
+  stations: ~300
+  status: implemented
+
+- slug: lithuania_lhmt
+  name: LHMT (Lithuania)
+  country: LT
+  region: europe
+  api_type: rest
+  base_url: https://api.meteo.lt/v1
+  format: [json]
+  access: open
+  realtime: true
+  stations: ~95
+  status: implemented
+  notes: Hydrology API launched Nov 2023.
+
+- slug: estonia_ilmateenistus
+  name: Ilmateenistus (Estonia)
+  country: EE
+  region: europe
+  api_type: csv_download
+  base_url: https://www.ilmateenistus.ee
+  format: [json, csv]
+  access: open
+  realtime: false
+  stations: ~75
+  status: implemented
+
+- slug: india_cwc
+  name: CWC India (WRIS)
+  country: IN
+  region: asia
+  api_type: rest
+  base_url: https://indiawris.gov.in/api
+  format: [json]
+  access: registration
+  realtime: true
+  stations: ~1100
+  status: implemented
+  notes: Defensive dual-endpoint. Replaces india_wris in inventory.
+
+- slug: estreams
+  name: EStreams (European Streamflow Dataset)
+  country: LU,AL,ME,MK
+  region: europe
+  api_type: zenodo
+  base_url: https://zenodo.org/api
+  format: [csv]
+  access: open
+  realtime: false
+  stations: ~17130 (catalogue), ~100 (target countries)
+  status: implemented
+  notes: Catalogue connector for countries without national APIs.
+
+- slug: ca_discharge
+  name: CA-discharge (Central Asian Discharge Dataset)
+  country: KG,TJ,KZ,UZ,AF
+  region: asia
+  api_type: zenodo
+  base_url: https://zenodo.org/api
+  format: [geopackage, csv]
+  access: open
+  realtime: false
+  stations: 295 (135 with time series)
+  license: cc_by_4
+  status: implemented
+  notes: Academic dataset covering mountainous Central Asia.
