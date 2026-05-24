@@ -78,8 +78,7 @@ def fetch(
                     )
                 else:
                     click.echo(f"  {slug}: ERROR — {info.get('error', '?')}")
-            click.echo(f"
-Total: {total_stations} stations, {total_obs} observations")
+            click.echo(f"\nTotal: {total_stations} stations, {total_obs} observations")
 
     asyncio.run(_run())
 
@@ -124,8 +123,7 @@ def providers(ctx: click.Context) -> None:
     for slug in all_slugs:
         tier = tier_lookup.get(slug, "?")
         click.echo(f"  {slug:<30s}  {tier:<10s}")
-    click.echo(f"
-  {len(all_slugs)} providers registered")
+    click.echo(f"\n  {len(all_slugs)} providers registered")
 
 
 @cli.command()
@@ -165,8 +163,7 @@ def status(ctx: click.Context) -> None:
     total_stations = r[0] if r else 0
     r = conn.execute("SELECT COUNT(*) FROM observations").fetchone()
     total_obs = r[0] if r else 0
-    click.echo(f"
-  Database: {db}")
+    click.echo(f"\n  Database: {db}")
     click.echo(f"  Stations: {total_stations:,}")
     click.echo(f"  Observations: {total_obs:,}")
 
@@ -174,8 +171,7 @@ def status(ctx: click.Context) -> None:
     if time_range and time_range[0]:
         click.echo(f"  Time range: {time_range[0]} → {time_range[1]}")
 
-    click.echo(f"
-  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}")
+    click.echo(f"\n  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}")
     click.echo(f"  {'─' * 25}  {'─' * 8}  {'─' * 10}")
     for row in conn.execute("""
         SELECT s.provider, COUNT(DISTINCT s.id), COUNT(o.station_id)
@@ -186,8 +182,7 @@ def status(ctx: click.Context) -> None:
 
     r = conn.execute("SELECT COUNT(DISTINCT country_code) FROM stations").fetchone()
     countries = r[0] if r else 0
-    click.echo(f"
-  {countries} countries represented")
+    click.echo(f"\n  {countries} countries represented")
     conn.close()
 
 
