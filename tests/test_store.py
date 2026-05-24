@@ -26,7 +26,9 @@ async def test_upsert_and_query_stations(store: DuckDBStore, sample_station: Sta
 
 
 @pytest.mark.asyncio
-async def test_append_and_query_observations(store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk):
+async def test_append_and_query_observations(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
     await store.upsert_stations([sample_station])
     n = await store.append_observations(sample_chunk)
     assert n == 2

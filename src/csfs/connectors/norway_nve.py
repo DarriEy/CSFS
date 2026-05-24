@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.exceptions import ConnectorError, DataFormatError
+from csfs.core.exceptions import DataFormatError
 from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 from csfs.core.registry import register
 
@@ -157,16 +157,12 @@ class NorwayNVEConnector(BaseConnector):
                     raise DataFormatError(
                         self.slug,
                         f"Invalid timestamp in observation: {exc}",
-                    )
+                    ) from exc
 
                 value = obs.get("value")
                 discharge = float(value) if value is not None else None
                 correction = obs.get("correction")
-
-                if discharge is None:
-                    quality = QualityFlag.MISSING
-                else:
-                    quality = _correction_to_quality(correction)
+                quality = QualityFlag.MISSING if discharge is None else _correction_to_quality(correction)
 
                 observations.append(Observation(
                     station_id=station_id,

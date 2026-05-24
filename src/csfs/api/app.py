@@ -59,7 +59,8 @@ def create_app(db_path: Path | str = "csfs.duckdb") -> FastAPI:
 
     @app.get("/api/v1/providers")
     async def list_providers():
-        from csfs.core.registry import discover, list_providers as _lp
+        from csfs.core.registry import discover
+        from csfs.core.registry import list_providers as _lp
         discover()
         return {"providers": _lp()}
 

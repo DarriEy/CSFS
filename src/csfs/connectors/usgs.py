@@ -131,7 +131,7 @@ class USGSConnector(BaseConnector):
                 )
             values = ts_list[0]["values"][0]["value"]
         except (KeyError, IndexError) as e:
-            raise DataFormatError(self.slug, f"Unexpected JSON structure: {e}")
+            raise DataFormatError(self.slug, f"Unexpected JSON structure: {e}") from e
 
         for v in values:
             q_flag = USGS_QUALITY_MAP.get(

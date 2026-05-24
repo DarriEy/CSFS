@@ -124,7 +124,7 @@ class GermanyPegelonlineConnector(BaseConnector):
                 raise DataFormatError(
                     self.slug,
                     f"Invalid timestamp in measurement: {exc}",
-                )
+                ) from exc
 
             value = entry.get("value")
             discharge = float(value) if value is not None else None

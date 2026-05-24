@@ -139,7 +139,7 @@ class SwedenSMHIConnector(BaseConnector):
                 raise DataFormatError(
                     self.slug,
                     f"Invalid epoch timestamp in observation: {exc}",
-                )
+                ) from exc
 
             # Client-side date range filter
             if ts < start or ts > end:
@@ -147,12 +147,8 @@ class SwedenSMHIConnector(BaseConnector):
 
             raw_value = entry.get("value")
             discharge = float(raw_value) if raw_value is not None else None
-
             quality_code = entry.get("quality", "")
-            if discharge is None:
-                quality = QualityFlag.MISSING
-            else:
-                quality = _quality_from_smhi(quality_code)
+            quality = QualityFlag.MISSING if discharge is None else _quality_from_smhi(quality_code)
 
             observations.append(Observation(
                 station_id=station_id,
