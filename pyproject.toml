@@ -30,6 +30,7 @@ dependencies = [
     "croniter>=2.0",
     "structlog>=24.0",
     "tenacity>=8.0",
+    "pytz>=2024.1",
 ]
 
 [project.optional-dependencies]
