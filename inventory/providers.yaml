@@ -1,0 +1,816 @@
+# CSFS Global Streamflow Provider Inventory
+#
+# Sources: EStreams notebook D catalogue + independent survey.
+# Each entry documents a known streamflow data source, its API capabilities,
+# access model, and readiness for live acquisition.
+#
+# status values:
+#   implemented  — connector exists in csfs/connectors/
+#   planned      — stable API, high priority for implementation
+#   research     — API exists but needs investigation
+#   manual       — no API; requires scraping or manual download
+#   fallback     — community/research dataset for gap-filling
+
+# ──────────────────────────────────────────────
+#  TIER 1 — Stable APIs, high-priority targets
+# ──────────────────────────────────────────────
+
+- slug: usgs
+  name: USGS National Water Information System (NWIS)
+  country: US
+  region: north_america
+  api_type: rest
+  base_url: https://waterservices.usgs.gov/nwis
+  endpoints:
+    instantaneous: /iv/
+    daily: /dv/
+    sites: /site/
+  format: [json, waterml2, rdb]
+  access: open
+  realtime: true
+  realtime_latency: 15min
+  stations: ~10000
+  stability: stable
+  license: public_domain
+  status: implemented
+  notes: Gold standard. Discharge param 00060 (cfs), convert to m3/s.
+
+- slug: uk_ea
+  name: UK Environment Agency Hydrology API
+  country: GB
+  region: europe
+  api_type: rest
+  base_url: https://environment.data.gov.uk/hydrology
+  format: [json-ld, csv]
+  access: open
+  realtime: true
+  realtime_latency: 15min
+  stations: ~1500
+  stability: stable
+  license: ogl_v3
+  status: implemented
+  notes: Open Government Licence. Covers England only.
+  estreams_id: GB_NRFA
+
+- slug: france_hubeau
+  name: "Hub'Eau Hydrométrie"
+  country: FR
+  region: europe
+  api_type: rest
+  base_url: https://hubeau.eaufrance.fr/api/v1/hydrometrie
+  format: [json]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~3000
+  stability: stable
+  license: licence_ouverte_v2
+  status: implemented
+  notes: Returns discharge in L/s — divide by 1000 for m3/s.
+  estreams_id: FR_EAUFRANCE
+
+- slug: environment_canada
+  name: Environment Canada Hydrometric Data
+  country: CA
+  region: north_america
+  api_type: ogc_features
+  base_url: https://api.weather.gc.ca
+  bulk_url: https://dd.weather.gc.ca/hydrometric/
+  format: [geojson, csv]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~2700
+  stability: stable
+  license: open_government_ca
+  status: planned
+
+- slug: germany_pegelonline
+  name: PEGELONLINE (BfG)
+  country: DE
+  region: europe
+  api_type: rest
+  base_url: https://www.pegelonline.wsv.de/webservices/rest-api/v2
+  format: [json]
+  access: open
+  realtime: true
+  realtime_latency: 15min
+  stations: ~1300 (water level), ~600 (discharge)
+  stability: stable
+  license: dl-de/by-2-0
+  status: planned
+  notes: Primarily water level; discharge at federal waterways only.
+  estreams_id: DE_BU
+
+- slug: australia_bom
+  name: Bureau of Meteorology Water Data Online
+  country: AU
+  region: oceania
+  api_type: kiwis_rest
+  base_url: http://www.bom.gov.au/waterdata/
+  format: [json, csv]
+  access: open
+  realtime: true
+  realtime_latency: 15min
+  stations: ~3500
+  stability: stable
+  license: cc_by_4
+  status: planned
+
+- slug: switzerland_bafu
+  name: BAFU Hydrodaten
+  country: CH
+  region: europe
+  api_type: rest
+  base_url: https://www.hydrodaten.admin.ch
+  format: [json, csv]
+  access: open
+  realtime: true
+  realtime_latency: 10min
+  stations: ~260
+  stability: stable
+  license: open
+  status: planned
+  estreams_id: CH_CAMELS
+
+- slug: norway_nve
+  name: Norwegian Water Resources (NVE)
+  country: "NO"
+  region: europe
+  api_type: rest
+  base_url: https://hydapi.nve.no/api/v1
+  format: [json]
+  access: api_key_required
+  realtime: true
+  realtime_latency: 1h
+  stations: ~600
+  stability: stable
+  license: nlod
+  status: planned
+  estreams_id: NO_NVE
+
+- slug: sweden_smhi
+  name: SMHI Open Data — Hydrology
+  country: SE
+  region: europe
+  api_type: rest
+  base_url: https://opendata.smhi.se/apidocs/hydroobs/
+  format: [json]
+  access: open
+  realtime: true
+  realtime_latency: daily
+  stations: ~400
+  stability: stable
+  license: cc0
+  status: planned
+  estreams_id: SE_SMHI
+
+# ──────────────────────────────────────────────
+#  TIER 2 — Usable APIs, moderate effort
+# ──────────────────────────────────────────────
+
+- slug: uk_nrfa
+  name: UK National River Flow Archive
+  country: GB
+  region: europe
+  api_type: rest
+  base_url: https://nrfaapps.ceh.ac.uk/nrfa/ws
+  format: [json, csv]
+  access: open
+  realtime: false
+  stations: ~1500
+  stability: stable
+  license: ogl_v3
+  status: research
+  notes: Historical daily only; complements uk_ea for long records.
+  estreams_id: GB_NRFA
+
+- slug: brazil_ana
+  name: ANA HidroWeb / Telemetria
+  country: BR
+  region: south_america
+  api_type: soap
+  base_url: https://telemetriaws1.ana.gov.br/ServiceANA.asmx
+  web_url: https://www.snirh.gov.br/hidroweb/
+  format: [xml]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~4500 (telemetric), ~30000 (historical)
+  stability: moderate
+  license: open
+  status: research
+
+- slug: chile_dga
+  name: DGA Chile (SNIA)
+  country: CL
+  region: south_america
+  api_type: rest
+  base_url: https://snia.mop.gob.cl/BNAConsultas/
+  format: [csv, json]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~1200
+  stability: moderate
+  status: research
+
+- slug: india_wris
+  name: India WRIS / CWC
+  country: IN
+  region: asia
+  api_type: rest
+  base_url: https://indiawris.gov.in/
+  format: [json, csv]
+  access: registration
+  realtime: true
+  realtime_latency: 1h (monsoon)
+  stations: ~1100
+  stability: moderate
+  status: research
+
+- slug: south_korea_wamis
+  name: WAMIS (Water Management Information System)
+  country: KR
+  region: asia
+  api_type: rest
+  base_url: http://www.wamis.go.kr/
+  format: [json, xml]
+  access: api_key_required
+  realtime: true
+  realtime_latency: 1h
+  stations: ~700
+  stability: moderate
+  status: research
+
+- slug: south_africa_dws
+  name: Department of Water and Sanitation
+  country: ZA
+  region: africa
+  api_type: web_portal
+  base_url: https://www.dws.gov.za/Hydrology/
+  format: [csv, txt]
+  access: open
+  realtime: partial
+  stations: ~1200
+  stability: moderate
+  status: research
+
+- slug: newzealand_hilltop
+  name: New Zealand Regional Councils (Hilltop)
+  country: NZ
+  region: oceania
+  api_type: hilltop_rest
+  format: [xml, csv]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~1000
+  stability: moderate
+  status: research
+  notes: Distributed across regional councils, each running Hilltop servers.
+
+- slug: austria_ehyd
+  name: eHYD Austria
+  country: AT
+  region: europe
+  api_type: bulk_download
+  base_url: https://ehyd.gv.at/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 582
+  stability: stable
+  status: research
+  estreams_id: AT_EHYD
+
+- slug: poland_imgw
+  name: IMGW Public Data
+  country: PL
+  region: europe
+  api_type: structured_url
+  base_url: https://danepubliczne.imgw.pl
+  url_pattern: /data/dane_pomiarowo_obserwacyjne/dane_hydrologiczne/dobowe/{YEAR}/codz_{YEAR}_{MONTH}.zip
+  format: [csv_in_zip]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: stable
+  status: research
+  notes: Hydrological year (Nov start). All gauges in monthly zip files.
+  estreams_id: PL_IMGW
+
+- slug: spain_cedex
+  name: CEDEX Anuario de Aforos
+  country: ES
+  region: europe
+  api_type: bulk_download
+  base_url: https://ceh.cedex.es/anuarioaforos/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: ~1440
+  stability: moderate
+  status: research
+  estreams_id: ES_CEDEX
+
+- slug: finland_syke
+  name: SYKE (Finnish Environment Institute)
+  country: FI
+  region: europe
+  api_type: bulk_download
+  base_url: https://www.syke.fi/en-US/Open_information/
+  format: [csv]
+  access: registration
+  realtime: false
+  stations: ~300
+  stability: moderate
+  status: research
+  estreams_id: FI_SYKE
+
+# ──────────────────────────────────────────────
+#  TIER 3 — Scraping / manual / fragile
+# ──────────────────────────────────────────────
+
+- slug: japan_mlit
+  name: MLIT Water Information System
+  country: JP
+  region: asia
+  api_type: web_scraping
+  base_url: http://www1.river.go.jp/
+  format: [html, csv]
+  access: open
+  realtime: true
+  realtime_latency: 10min
+  stations: ~4000
+  stability: fragile
+  status: manual
+
+- slug: spain_saih
+  name: SAIH (regional real-time networks)
+  country: ES
+  region: europe
+  api_type: web_scraping
+  format: [html, json]
+  access: open
+  realtime: true
+  realtime_latency: 1h
+  stations: ~2000
+  stability: fragile
+  status: manual
+  notes: Distributed across basin authorities (Ebro, Guadalquivir, etc.).
+
+- slug: argentina_snih
+  name: SNIH Argentina
+  country: AR
+  region: south_america
+  api_type: web_scraping
+  base_url: https://snih.hidricosargentina.gob.ar/
+  format: [html]
+  access: open
+  realtime: limited
+  stations: ~1500
+  stability: fragile
+  status: manual
+
+- slug: mexico_conagua
+  name: CONAGUA BANDAS
+  country: MX
+  region: north_america
+  api_type: web_portal
+  base_url: https://www.gob.mx/conagua
+  format: [csv, pdf]
+  access: open
+  realtime: limited
+  stations: ~800
+  stability: fragile
+  status: manual
+
+- slug: china_mwr
+  name: Ministry of Water Resources
+  country: CN
+  region: asia
+  api_type: web_portal
+  base_url: http://xxfb.mwr.cn/
+  format: [html]
+  access: restricted
+  realtime: partial
+  stations: ~3000 (public subset)
+  stability: fragile
+  status: manual
+  notes: Limited public access; flood data intermittently available.
+
+- slug: italy_ispra
+  name: ISPRA SINTAI
+  country: IT
+  region: europe
+  api_type: web_scraping
+  base_url: http://www.hiscentral.isprambiente.gov.it/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: ~800
+  stability: fragile
+  status: manual
+  estreams_id: IT_ISPRA
+
+- slug: croatia_dhz
+  name: Croatian Met/Hydro Service (DHZ)
+  country: HR
+  region: europe
+  api_type: web_scraping
+  base_url: https://hidro.dhz.hr/
+  format: [html]
+  access: open
+  realtime: false
+  stations: ~397
+  stability: fragile
+  status: manual
+  estreams_id: HR_DHZ
+
+- slug: ireland_epa
+  name: EPA Ireland HydroNet
+  country: IE
+  region: europe
+  api_type: web_scraping
+  base_url: https://epawebapp.epa.ie/hydronet/
+  format: [csv]
+  access: open
+  realtime: true
+  stations: unknown
+  stability: fragile
+  status: manual
+  estreams_id: IE_EPA
+
+- slug: portugal_snirh
+  name: SNIRH Portugal
+  country: PT
+  region: europe
+  api_type: web_portal
+  base_url: https://snirh.apambiente.pt
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: fragile
+  status: manual
+  notes: Max 50 stations per download batch.
+  estreams_id: PT_SNIRH
+
+- slug: belgium_waterinfo
+  name: Waterinfo Flanders
+  country: BE
+  region: europe
+  api_type: web_portal
+  base_url: https://www.waterinfo.be
+  format: [csv]
+  access: open
+  realtime: true
+  stations: 66
+  stability: moderate
+  status: research
+  estreams_id: BE_WATERINFO
+
+- slug: belgium_spw
+  name: SPW Wallonia
+  country: BE
+  region: europe
+  api_type: bulk_download
+  base_url: https://hydrometrie.wallonie.be
+  format: [csv]
+  access: open
+  realtime: true
+  stations: 164
+  stability: moderate
+  status: research
+  notes: No-redistribution license.
+  estreams_id: BE_SPW
+
+- slug: netherlands_rws
+  name: Rijkswaterstaat
+  country: NL
+  region: europe
+  api_type: web_portal
+  base_url: https://waterinfo.rws.nl
+  format: [csv]
+  access: open
+  realtime: true
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: NL_RWS
+
+- slug: czechia_chmu
+  name: Czech Hydrometeorological Institute
+  country: CZ
+  region: europe
+  api_type: web_portal
+  base_url: https://isvs.chmi.cz
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: CZ_CHMU
+
+- slug: slovenia_arso
+  name: ARSO Slovenia
+  country: SI
+  region: europe
+  api_type: web_portal
+  base_url: https://vode.arso.gov.si/hidarhiv/
+  format: [xls]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: SI_ARSO
+
+- slug: iceland_lamahice
+  name: LamaH-Ice
+  country: IS
+  region: europe
+  api_type: bulk_download
+  base_url: http://www.hydroshare.org/resource/86117a5f36cc4b7c90a5d54e18161c91
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: stable
+  status: research
+  estreams_id: IS_LAMAHICE
+
+- slug: greece_openhi
+  name: OpenHI Greece
+  country: GR
+  region: europe
+  api_type: web_portal
+  base_url: https://openhi.net/en/
+  format: [csv]
+  access: open
+  realtime: partial
+  stations: unknown
+  stability: fragile
+  status: manual
+  estreams_id: GR_OPENHI
+
+- slug: bosnia_fhmz
+  name: FHMZ Bosnia
+  country: BA
+  region: europe
+  api_type: pdf_yearbooks
+  base_url: https://www.fhmzbih.gov.ba/latinica/HIDRO/godisnjaci.php
+  format: [pdf]
+  access: open
+  realtime: false
+  stations: 91
+  stability: fragile
+  status: manual
+  notes: PDF hydrological yearbooks; requires tabula-style extraction.
+  estreams_id: BA_FHMZ
+
+# ──────────────────────────────────────────────
+#  TIER 4 — German state agencies (from EStreams)
+# ──────────────────────────────────────────────
+
+- slug: germany_bavaria
+  name: GKD Bayern
+  country: DE
+  region: europe
+  api_type: web_portal
+  base_url: https://www.gkd.bayern.de/en/rivers/discharge/tables
+  format: [csv]
+  access: open
+  realtime: true
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: DE_BY
+
+- slug: germany_bw
+  name: LUBW Baden-Württemberg
+  country: DE
+  region: europe
+  api_type: web_portal
+  base_url: https://udo.lubw.baden-wuerttemberg.de/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: DE_BW
+
+- slug: germany_nrw
+  name: ELWAS NRW
+  country: DE
+  region: europe
+  api_type: web_portal
+  base_url: https://www.elwasweb.nrw.de/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: DE_NW
+
+# ──────────────────────────────────────────────
+#  TIER 5 — Italian regional agencies (from EStreams)
+# ──────────────────────────────────────────────
+
+- slug: italy_emilia
+  name: ARPAE Emilia-Romagna
+  country: IT
+  region: europe
+  api_type: web_portal
+  base_url: https://simc.arpae.it/dext3r/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: IT_EMI
+
+- slug: italy_piedmont
+  name: ARPA Piemonte
+  country: IT
+  region: europe
+  api_type: web_portal
+  base_url: https://www.arpa.piemonte.it/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: IT_PIE
+
+- slug: italy_tuscany
+  name: SIR Toscana
+  country: IT
+  region: europe
+  api_type: web_portal
+  base_url: http://www.sir.toscana.it/
+  format: [csv]
+  access: open
+  realtime: false
+  stations: unknown
+  stability: moderate
+  status: research
+  estreams_id: IT_TOS
+
+# ──────────────────────────────────────────────
+#  GLOBAL / SATELLITE / FORECAST
+# ──────────────────────────────────────────────
+
+- slug: grdc
+  name: Global Runoff Data Centre
+  country: global
+  region: global
+  api_type: bulk_download
+  base_url: https://portal.grdc.bafg.de/
+  format: [csv, waterml]
+  access: registration
+  realtime: false
+  stations: ~10000
+  stability: stable
+  license: non_commercial
+  status: planned
+  notes: >
+    No-redistribution. Historical daily. Covers countries with no national API.
+    Used as fallback for: BG, BY, CY, EE, LT, LV, MD, MK, RO, RS, RU, SK, TR, UA.
+
+- slug: glofas
+  name: GloFAS (ECMWF/Copernicus)
+  country: global
+  region: global
+  api_type: cds_api
+  base_url: https://cds.climate.copernicus.eu/api/v2
+  format: [grib, netcdf]
+  access: registration
+  realtime: true
+  realtime_latency: daily
+  stations: gridded (~0.05°)
+  stability: stable
+  license: copernicus
+  status: research
+  notes: Forecast + reanalysis. Useful where no in-situ data exists.
+
+- slug: wmo_whos
+  name: WMO WHOS (Hydrological Observing System)
+  country: global
+  region: global
+  api_type: waterml2
+  base_url: https://whos.geodab.eu/gs-service/
+  format: [waterml, json]
+  access: open
+  realtime: varies
+  stations: ~20000 (federated)
+  stability: moderate
+  status: research
+  notes: Federated aggregator. Data latency varies by contributing agency.
+
+# ──────────────────────────────────────────────
+#  COMMUNITY / RESEARCH DATASETS (fallback)
+# ──────────────────────────────────────────────
+
+- slug: camels_us
+  name: CAMELS (Catchment Attributes and Meteorology for Large-sample Studies)
+  country: US
+  region: north_america
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 671
+  license: public_domain
+  status: fallback
+
+- slug: camels_gb
+  name: CAMELS-GB
+  country: GB
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 671
+  license: ogl_v3
+  status: fallback
+
+- slug: camels_cl
+  name: CAMELS-CL
+  country: CL
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 516
+  status: fallback
+
+- slug: camels_br
+  name: CAMELS-BR
+  country: BR
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 897
+  status: fallback
+
+- slug: camels_aus
+  name: CAMELS-AUS
+  country: AU
+  region: oceania
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 222
+  status: fallback
+
+- slug: caravan
+  name: Caravan (unified large-sample hydrology)
+  country: global
+  region: global
+  api_type: bulk_download
+  base_url: https://zenodo.org/doi/10.5281/zenodo.7540792
+  format: [csv, netcdf]
+  access: open
+  realtime: false
+  stations: ~7000
+  license: cc_by_4
+  status: fallback
+  notes: Unified format across CAMELS variants + extensions.
+
+- slug: lamah_ce
+  name: LamaH-CE (Central Europe)
+  country: AT,DE,CZ
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 859
+  license: cc_by_4
+  status: fallback
+  notes: Danube basin focus. Hourly resolution available.
+
+- slug: gsim
+  name: GSIM (Global Streamflow Indices and Metadata)
+  country: global
+  region: global
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: ~30000
+  license: cc_by_4
+  status: fallback
+  notes: Monthly indices from merged archives. Good for coverage gap analysis.
