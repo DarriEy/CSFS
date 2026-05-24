@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
 """FastAPI application for serving CSFS data."""
 
 from __future__ import annotations

@@ -43,4 +43,4 @@ See `inventory/providers.yaml` for the full catalogue of 50+ global streamflow d
 
 ## License
 
-MIT
+GPL-3.0-or-later. See [LICENSE](LICENSE) for details.

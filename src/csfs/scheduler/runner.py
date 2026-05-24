@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
 """Acquisition runner — orchestrates fetching across providers."""
 
 from __future__ import annotations

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
 """DuckDB-backed observation store — portable, zero-config, fast for analytics."""
 
 from __future__ import annotations
