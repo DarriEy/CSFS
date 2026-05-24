@@ -42,6 +42,7 @@ class BaseConnector(ABC):
             base_url=self.base_url,
             timeout=httpx.Timeout(60.0, connect=10.0),
             headers={"User-Agent": "CSFS/0.1 (https://github.com/csfs)"},
+            follow_redirects=True,
         )
         return self
 
@@ -95,7 +96,7 @@ class BaseConnector(ABC):
                 logger.warning("fetch_failed", provider=self.slug, station=sid)
 
     @retry(
-        retry=retry_if_exception_type((RateLimitError, httpx.RemoteProtocolError, httpx.ConnectError)),
+        retry=retry_if_exception_type((RateLimitError, httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout)),
         wait=wait_exponential(multiplier=1, min=2, max=60),
         stop=stop_after_attempt(5),
     )
