@@ -157,14 +157,16 @@ def status(ctx: click.Context) -> None:
         click.echo(f"No database found at {db}")
         return
 
-    total_stations = conn.execute("SELECT COUNT(*) FROM stations").fetchone()[0]
-    total_obs = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+    r = conn.execute("SELECT COUNT(*) FROM stations").fetchone()
+    total_stations = r[0] if r else 0
+    r = conn.execute("SELECT COUNT(*) FROM observations").fetchone()
+    total_obs = r[0] if r else 0
     click.echo(f"\n  Database: {db}")
     click.echo(f"  Stations: {total_stations:,}")
     click.echo(f"  Observations: {total_obs:,}")
 
     time_range = conn.execute("SELECT MIN(timestamp), MAX(timestamp) FROM observations").fetchone()
-    if time_range[0]:
+    if time_range and time_range[0]:
         click.echo(f"  Time range: {time_range[0]} → {time_range[1]}")
 
     click.echo(f"\n  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}")
@@ -176,7 +178,8 @@ def status(ctx: click.Context) -> None:
     """).fetchall():
         click.echo(f"  {row[0]:<25s}  {row[1]:>8,}  {row[2]:>10,}")
 
-    countries = conn.execute("SELECT COUNT(DISTINCT country_code) FROM stations").fetchone()[0]
+    r = conn.execute("SELECT COUNT(DISTINCT country_code) FROM stations").fetchone()
+    countries = r[0] if r else 0
     click.echo(f"\n  {countries} countries represented")
     conn.close()
 
