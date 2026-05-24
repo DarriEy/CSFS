@@ -95,8 +95,10 @@ class BaseConnector(ABC):
             except ConnectorError:
                 logger.warning("fetch_failed", provider=self.slug, station=sid)
 
+    _RETRYABLE = (RateLimitError, httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout)
+
     @retry(
-        retry=retry_if_exception_type((RateLimitError, httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout)),
+        retry=retry_if_exception_type(_RETRYABLE),
         wait=wait_exponential(multiplier=1, min=2, max=60),
         stop=stop_after_attempt(5),
     )
