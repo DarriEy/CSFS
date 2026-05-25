@@ -1,20 +1,19 @@
 """Greece OpenHI connector — Open Hydrosystem Information Network.
 
-OpenHI (https://openhi.net) provides open hydrological data for Greece,
+OpenHI (https://system.openhi.net) provides open hydrological data for Greece,
 including discharge time series from gauging stations.
 
 Endpoints used
 --------------
-* Station listing:
-  GET /api/stations?variable=discharge&format=json
-  Returns a JSON array of gauging stations.
+* Station listing (paginated):
+  GET https://system.openhi.net/api/stations/
+  Returns paginated JSON: ``{"count", "next", "previous", "results": [...]}``.
+  Each station has ``id``, ``name``, ``point`` (GeoJSON), etc.
 
 * Observations:
-  GET /api/timeseries/{id}?start={ISO}&end={ISO}&format=json
-  Returns ``[{timestamp, value, flag}, ...]``.
-
-Both endpoints may evolve; the connector is written defensively with
-fallback parsing and clear error messages.
+  GET https://system.openhi.net/api/stations/{id}/data/
+  Returns time-series records for a station.  Falls back to
+  ``/api/ts_records/?station_id={id}`` if the first endpoint fails.
 """
 
 from __future__ import annotations
@@ -57,7 +56,7 @@ class GreeceOpenhiConnector(BaseConnector):
 
     slug = "greece_openhi"
     display_name = "OpenHI (Greece)"
-    base_url = "https://openhi.net"
+    base_url = "https://system.openhi.net"
     country_codes = ["GR"]
 
     # -----------------------------------------------------------------
@@ -65,20 +64,39 @@ class GreeceOpenhiConnector(BaseConnector):
     # -----------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all discharge gauging stations from OpenHI."""
-        try:
-            resp = await self._get(
-                "/api/stations",
-                params={"variable": "discharge", "format": "json"},
-            )
-        except httpx.HTTPStatusError as exc:
-            raise ConnectorError(
-                self.slug,
-                f"Failed to fetch station list: "
-                f"HTTP {exc.response.status_code}",
-            ) from exc
+        """Return all discharge gauging stations from OpenHI.
 
-        return self._parse_stations(resp.json())
+        The ``/api/stations/`` endpoint is paginated (DRF style).
+        We follow ``next`` links until all pages are consumed.
+        """
+        stations: list[Station] = []
+        page = 1
+
+        while True:
+            try:
+                resp = await self._get(
+                    "/api/stations/",
+                    params={"page": page},
+                )
+            except httpx.HTTPStatusError as exc:
+                raise ConnectorError(
+                    self.slug,
+                    f"Failed to fetch station list: "
+                    f"HTTP {exc.response.status_code}",
+                ) from exc
+
+            data = resp.json()
+            items = data.get("results", [])
+            if not items:
+                break
+
+            stations.extend(self._parse_stations(items))
+
+            if data.get("next") is None:
+                break
+            page += 1
+
+        return stations
 
     async def fetch_observations(
         self,
@@ -86,26 +104,34 @@ class GreeceOpenhiConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Fetch discharge observations for *station_id* over [start, end]."""
+        """Fetch discharge observations for *station_id* over [start, end].
+
+        Tries ``/api/stations/{id}/data/`` first; falls back to
+        ``/api/ts_records/?station_id={id}`` on 404.
+        """
         native_id = station_id.removeprefix(f"{self.slug}:")
 
         params: dict[str, str] = {
-            "start": start.isoformat(),
-            "end": end.isoformat(),
-            "format": "json",
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
         }
 
         try:
             resp = await self._get(
-                f"/api/timeseries/{native_id}",
+                f"/api/stations/{native_id}/data/",
                 params=params,
             )
         except httpx.HTTPStatusError as exc:
-            raise ConnectorError(
-                self.slug,
-                f"Failed to fetch observations for {native_id}: "
-                f"HTTP {exc.response.status_code}",
-            ) from exc
+            if exc.response.status_code == 404:
+                resp = await self._try_ts_records_fallback(
+                    native_id, params, station_id,
+                )
+            else:
+                raise ConnectorError(
+                    self.slug,
+                    f"Failed to fetch observations for {native_id}: "
+                    f"HTTP {exc.response.status_code}",
+                ) from exc
 
         return self._parse_observations(resp.json(), station_id)
 
@@ -122,27 +148,39 @@ class GreeceOpenhiConnector(BaseConnector):
     # Internal helpers
     # -----------------------------------------------------------------
 
-    def _parse_stations(self, data: list[dict] | dict) -> list[Station]:
-        """Parse the OpenHI station-list JSON into ``Station`` models.
+    async def _try_ts_records_fallback(
+        self,
+        native_id: str,
+        params: dict[str, str],
+        station_id: str,
+    ) -> httpx.Response:
+        """Fallback to ``/api/ts_records/`` if per-station data endpoint 404s."""
+        try:
+            return await self._get(
+                "/api/ts_records/",
+                params={"station_id": native_id, **params},
+            )
+        except httpx.HTTPStatusError as exc:
+            raise ConnectorError(
+                self.slug,
+                f"Failed to fetch observations for {native_id} "
+                f"(fallback): HTTP {exc.response.status_code}",
+            ) from exc
 
-        The API may return a bare list or wrap it under a key.
-        Both forms are handled defensively.
+    def _parse_stations(self, items: list[dict]) -> list[Station]:
+        """Parse a page of station results into ``Station`` models.
+
+        Each station is expected to carry coordinates in a ``point``
+        field (GeoJSON-style ``{"type": "Point", "coordinates": [lon, lat]}``)
+        or as top-level ``latitude``/``longitude`` keys.
         """
-        if isinstance(data, list):
-            items = data
-        elif isinstance(data, dict):
-            items = data.get("stations", data.get("results", []))
-        else:
-            return []
-
         stations: list[Station] = []
         for entry in items:
             native_id = str(entry.get("id", "")).strip()
             if not native_id:
                 continue
 
-            lat = entry.get("latitude") or entry.get("lat")
-            lon = entry.get("longitude") or entry.get("lon")
+            lat, lon = self._extract_coords(entry)
             if lat is None or lon is None:
                 logger.warning(
                     "station_missing_coords",
@@ -173,6 +211,26 @@ class GreeceOpenhiConnector(BaseConnector):
 
         return stations
 
+    @staticmethod
+    def _extract_coords(entry: dict) -> tuple[float | None, float | None]:
+        """Extract (latitude, longitude) from a station dict.
+
+        Supports both GeoJSON ``point`` and flat ``latitude``/``longitude``.
+        """
+        point = entry.get("point")
+        if isinstance(point, dict):
+            coords = point.get("coordinates")
+            if isinstance(coords, (list, tuple)) and len(coords) >= 2:
+                # GeoJSON: [longitude, latitude]
+                return float(coords[1]), float(coords[0])
+
+        lat = entry.get("latitude") or entry.get("lat")
+        lon = entry.get("longitude") or entry.get("lon")
+        if lat is not None and lon is not None:
+            return float(lat), float(lon)
+
+        return None, None
+
     def _parse_observations(
         self,
         data: dict | list,
@@ -180,20 +238,13 @@ class GreeceOpenhiConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Parse the OpenHI observations response into a ``TimeSeriesChunk``.
 
-        Expected shape::
-
-            [
-                {"timestamp": "2024-06-01T12:00:00Z", "value": 34.5,
-                 "flag": "VALIDATED"},
-                ...
-            ]
-
-        The response may also be wrapped in a dict.
+        Handles both a bare list and a DRF-paginated dict with a
+        ``results`` or ``data`` key.
         """
         if isinstance(data, list):
             items = data
         elif isinstance(data, dict):
-            items = data.get("data", data.get("timeseries", []))
+            items = data.get("results", data.get("data", []))
         else:
             raise DataFormatError(
                 self.slug,
@@ -202,12 +253,18 @@ class GreeceOpenhiConnector(BaseConnector):
 
         observations: list[Observation] = []
         for entry in items:
-            try:
-                ts = datetime.fromisoformat(entry["timestamp"])
-            except (KeyError, ValueError) as exc:
+            ts_raw = entry.get("timestamp") or entry.get("date")
+            if ts_raw is None:
                 raise DataFormatError(
                     self.slug,
-                    f"Invalid or missing timestamp: {exc}",
+                    "Missing timestamp/date in observation record",
+                )
+            try:
+                ts = datetime.fromisoformat(str(ts_raw))
+            except ValueError as exc:
+                raise DataFormatError(
+                    self.slug,
+                    f"Invalid timestamp: {ts_raw!r}",
                 ) from exc
 
             value = entry.get("value")

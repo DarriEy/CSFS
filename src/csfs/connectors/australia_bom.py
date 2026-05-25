@@ -64,7 +64,7 @@ class AustraliaBomConnector(BaseConnector):
                 "request": "getStationList",
                 "service": "kisters",
                 "datasource": "0",
-                "type": "SqlSampleTable",
+                "type": "queryServices",
                 "format": "json",
                 "returnFields": self._STATION_FIELDS,
                 "parametertype_name": "Water Course Discharge",
@@ -87,6 +87,7 @@ class AustraliaBomConnector(BaseConnector):
             params={
                 "request": "getTimeseriesValues",
                 "service": "kisters",
+                "type": "queryServices",
                 "datasource": "0",
                 "format": "json",
                 "ts_id": ts_id,
@@ -238,6 +239,7 @@ class AustraliaBomConnector(BaseConnector):
             params={
                 "request": "getTimeseriesList",
                 "service": "kisters",
+                "type": "queryServices",
                 "datasource": "0",
                 "format": "json",
                 "station_no": native_id,

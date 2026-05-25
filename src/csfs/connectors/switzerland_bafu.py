@@ -1,10 +1,13 @@
-"""BAFU Hydrodaten connector — Swiss federal hydrological gauging stations."""
+"""BAFU Hydrodaten connector — Swiss federal hydrological gauging stations.
+
+Uses the third-party api.existenz.ch API which proxies Swiss FOEN/BAFU data.
+The official hydrodaten.admin.ch site blocks programmatic API access.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import httpx
 import structlog
 
 from csfs.connectors.base import BaseConnector
@@ -19,7 +22,7 @@ logger = structlog.get_logger()
 class SwitzerlandBafuConnector(BaseConnector):
     slug = "switzerland_bafu"
     display_name = "BAFU Hydrodaten (Switzerland)"
-    base_url = "https://www.hydrodaten.admin.ch"
+    base_url = "https://api.existenz.ch"
     country_codes = ["CH"]
 
     # ------------------------------------------------------------------
@@ -27,15 +30,13 @@ class SwitzerlandBafuConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all stations that measure discharge (Abfluss)."""
+        """Return all stations that report flow data via api.existenz.ch."""
         try:
-            resp = await self._get("/graphs/messstationen_uebersicht.json")
-        except (httpx.HTTPStatusError, ConnectorError) as exc:
-            logger.error(
-                "station_listing_failed",
-                provider=self.slug,
-                error=str(exc),
+            resp = await self._get(
+                "/apiv1/hydro/latest",
+                params={"parameters": "flow"},
             )
+        except Exception as exc:
             raise ConnectorError(
                 self.slug, f"Failed to fetch station listing: {exc}"
             ) from exc
@@ -57,13 +58,30 @@ class SwitzerlandBafuConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Fetch discharge measurements for a station over a time range.
 
-        BAFU's JSON endpoints return recent data (typically the last few days).
-        The *start* / *end* window is used to filter the returned records
-        client-side; BAFU does not support server-side date range queries on
-        its public JSON API.
+        api.existenz.ch returns recent data.  The *start* / *end* window
+        is used to filter the returned records client-side.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
-        observations = await self._fetch_discharge_json(native_id, station_id)
+
+        try:
+            resp = await self._get(
+                "/apiv1/hydro/latest",
+                params={"parameters": "flow", "locations": native_id},
+            )
+        except Exception as exc:
+            raise ConnectorError(
+                self.slug,
+                f"Failed to fetch observations for station {native_id}: {exc}",
+            ) from exc
+
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise DataFormatError(
+                self.slug, "Observations response is not valid JSON"
+            ) from exc
+
+        observations = self._parse_observations(data, station_id)
 
         # Client-side date filtering
         filtered = [
@@ -92,47 +110,50 @@ class SwitzerlandBafuConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     def _parse_stations(self, data: dict) -> list[Station]:
-        """Parse the station overview JSON.
+        """Parse the api.existenz.ch /hydro/latest response into stations.
 
-        The response is a JSON object keyed by station ID, each value
-        containing metadata and a *parameters* list.  Only stations whose
-        parameters include ``"Abfluss"`` (discharge) are returned.
+        Response shape: {"source": "Swiss FOEN/BAFU", "payload": [{...}, ...]}
+        Each payload entry has: timestamp, loc, par, val (and possibly others).
+        We extract unique station locations from the payload.
         """
-        stations: list[Station] = []
-
         if not isinstance(data, dict):
             logger.warning(
                 "unexpected_station_format",
                 provider=self.slug,
                 type=type(data).__name__,
             )
-            return stations
+            return []
 
-        for native_id, entry in data.items():
+        payload = data.get("payload", [])
+        if not isinstance(payload, list):
+            logger.warning(
+                "unexpected_payload_format",
+                provider=self.slug,
+                type=type(payload).__name__,
+            )
+            return []
+
+        # Deduplicate by location ID
+        seen: dict[str, dict] = {}
+        for entry in payload:
             if not isinstance(entry, dict):
                 continue
+            loc = entry.get("loc")
+            if loc is not None and str(loc) not in seen:
+                seen[str(loc)] = entry
 
-            # Only keep stations that measure discharge
-            parameters = entry.get("parameters", [])
-            if not isinstance(parameters, list):
-                continue
-            if "Abfluss" not in parameters:
-                continue
-
+        stations: list[Station] = []
+        for native_id, entry in seen.items():
             try:
-                coords = entry.get("Koordinaten", {}) or {}
-                lat = float(coords.get("lat", 0.0))
-                lng = float(coords.get("lng", 0.0))
-
                 stations.append(Station(
                     id=self._station_id(native_id),
                     provider=self.slug,
-                    native_id=str(native_id),
-                    name=entry.get("Name", ""),
-                    latitude=lat,
-                    longitude=lng,
+                    native_id=native_id,
+                    name=entry.get("name", native_id),
+                    latitude=float(entry.get("lat", 0.0)),
+                    longitude=float(entry.get("lon", 0.0)),
                     country_code="CH",
-                    river=entry.get("GewässerName"),
+                    river=entry.get("river"),
                 ))
             except (ValueError, KeyError, TypeError) as exc:
                 logger.warning(
@@ -145,119 +166,62 @@ class SwitzerlandBafuConnector(BaseConnector):
 
         return stations
 
-    async def _fetch_discharge_json(
-        self, native_id: str, station_id: str
+    def _parse_observations(
+        self, data: dict, station_id: str
     ) -> list[Observation]:
-        """Try known BAFU endpoint patterns for discharge data.
+        """Parse api.existenz.ch response payload into Observations.
 
-        BAFU's public API is undocumented and endpoint patterns can vary
-        across stations.  We attempt several URL patterns and return
-        results from the first one that succeeds.
+        Each payload entry has: timestamp, loc, par, val.
         """
-        url_patterns = [
-            f"/graphs/messwerte/{native_id}_Abfluss_m3s_10min.json",
-            f"/graphs/messwerte/lhg_{native_id}_AbflussPegel_10min.json",
-        ]
-
-        last_exc: Exception | None = None
-        for pattern in url_patterns:
-            try:
-                resp = await self._get(pattern)
-                return self._parse_timeseries(resp.json(), station_id)
-            except (httpx.HTTPStatusError, ConnectorError) as exc:
-                logger.debug(
-                    "endpoint_pattern_failed",
-                    provider=self.slug,
-                    station=native_id,
-                    pattern=pattern,
-                    error=str(exc),
-                )
-                last_exc = exc
-                continue
-            except (ValueError, DataFormatError) as exc:
-                logger.debug(
-                    "parse_failed_for_pattern",
-                    provider=self.slug,
-                    station=native_id,
-                    pattern=pattern,
-                    error=str(exc),
-                )
-                last_exc = exc
-                continue
-
-        # All patterns exhausted — log a warning and return empty
-        logger.warning(
-            "no_discharge_data",
-            provider=self.slug,
-            station=native_id,
-            last_error=str(last_exc),
-        )
-        return []
-
-    def _parse_timeseries(
-        self, data: dict | list, station_id: str
-    ) -> list[Observation]:
-        """Parse BAFU timeseries JSON into a list of Observations.
-
-        BAFU typically returns either:
-        - A JSON object with a ``"data"`` key containing ``[[epoch_ms, value], ...]``
-        - A bare JSON array of ``[epoch_ms, value]`` pairs
-        """
-        # Extract the data array from whichever shape we received
-        if isinstance(data, dict):
-            series = data.get("data") or data.get("values") or data.get("measurements")
-            if series is None:
-                # Try the first list-like value in the dict
-                for val in data.values():
-                    if isinstance(val, list):
-                        series = val
-                        break
-            if series is None:
-                raise DataFormatError(
-                    self.slug,
-                    "Timeseries JSON has no recognisable data array",
-                )
-        elif isinstance(data, list):
-            series = data
-        else:
+        if not isinstance(data, dict):
             raise DataFormatError(
                 self.slug,
-                f"Unexpected timeseries type: {type(data).__name__}",
+                f"Unexpected response type: {type(data).__name__}",
+            )
+
+        payload = data.get("payload", [])
+        if not isinstance(payload, list):
+            raise DataFormatError(
+                self.slug,
+                f"Unexpected payload type: {type(payload).__name__}",
             )
 
         observations: list[Observation] = []
-        for record in series:
-            try:
-                if isinstance(record, (list, tuple)) and len(record) >= 2:
-                    epoch_ms, value = record[0], record[1]
-                    ts = datetime.fromtimestamp(epoch_ms / 1000.0, tz=UTC)
-                    discharge = float(value) if value is not None else None
-                elif isinstance(record, dict):
-                    raw_ts = record.get("timestamp") or record.get("time")
-                    if raw_ts is None:
-                        continue
-                    if isinstance(raw_ts, (int, float)):
-                        ts = datetime.fromtimestamp(raw_ts / 1000.0, tz=UTC)
-                    else:
-                        ts = datetime.fromisoformat(str(raw_ts))
-                    value = record.get("value") or record.get("discharge")
-                    discharge = float(value) if value is not None else None
-                else:
-                    continue
+        for entry in payload:
+            if not isinstance(entry, dict):
+                continue
 
-                observations.append(Observation(
-                    station_id=station_id,
-                    timestamp=ts,
-                    discharge_m3s=discharge,
-                    quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
-                ))
+            raw_ts = entry.get("timestamp")
+            if raw_ts is None:
+                continue
+
+            try:
+                if isinstance(raw_ts, (int, float)):
+                    ts = datetime.fromtimestamp(raw_ts, tz=UTC)
+                else:
+                    ts = datetime.fromisoformat(str(raw_ts))
             except (ValueError, TypeError, OverflowError) as exc:
                 logger.debug(
                     "observation_parse_skipped",
                     provider=self.slug,
-                    record=str(record)[:200],
+                    record=str(entry)[:200],
                     error=str(exc),
                 )
                 continue
+
+            raw_val = entry.get("val")
+            discharge: float | None = None
+            if raw_val is not None:
+                try:
+                    discharge = float(raw_val)
+                except (ValueError, TypeError):
+                    discharge = None
+
+            observations.append(Observation(
+                station_id=station_id,
+                timestamp=ts,
+                discharge_m3s=discharge,
+                quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
+            ))
 
         return observations

@@ -7,63 +7,66 @@ import pytest
 import respx
 
 from csfs.connectors.switzerland_bafu import SwitzerlandBafuConnector
-from csfs.core.exceptions import ConnectorError
+from csfs.core.exceptions import ConnectorError, DataFormatError
 
-# Epoch timestamps in milliseconds for test data
-_TS1_MS = int(datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC).timestamp() * 1000)
-_TS2_MS = int(datetime(2024, 6, 1, 12, 10, 0, tzinfo=UTC).timestamp() * 1000)
-_TS3_MS = int(datetime(2024, 6, 1, 12, 20, 0, tzinfo=UTC).timestamp() * 1000)
+# ISO timestamps for test data
+_TS1_ISO = "2024-06-01T12:00:00+00:00"
+_TS2_ISO = "2024-06-01T12:10:00+00:00"
+_TS3_ISO = "2024-06-01T12:20:00+00:00"
+
+EXISTENZ_BASE = "https://api.existenz.ch"
 
 MOCK_STATIONS_RESPONSE = {
-    "2009": {
-        "Name": "Rhein - Basel, Rheinhalle",
-        "GewässerName": "Rhein",
-        "Kanton": "BS",
-        "Koordinaten": {"lat": 47.559, "lng": 7.613},
-        "parameters": ["Abfluss", "Pegel"],
-    },
-    "2033": {
-        "Name": "Aare - Bern, Schönau",
-        "GewässerName": "Aare",
-        "Kanton": "BE",
-        "Koordinaten": {"lat": 46.935, "lng": 7.451},
-        "parameters": ["Pegel"],
-    },
-    "2091": {
-        "Name": "Limmat - Zürich, Unterhard",
-        "GewässerName": "Limmat",
-        "Kanton": "ZH",
-        "Koordinaten": {"lat": 47.397, "lng": 8.498},
-        "parameters": ["Abfluss", "Wassertemperatur"],
-    },
+    "source": "Swiss FOEN/BAFU",
+    "payload": [
+        {
+            "timestamp": _TS1_ISO,
+            "loc": "2009",
+            "par": "flow",
+            "val": 523.4,
+            "name": "Rhein - Basel, Rheinhalle",
+            "river": "Rhein",
+            "lat": 47.559,
+            "lon": 7.613,
+        },
+        {
+            "timestamp": _TS1_ISO,
+            "loc": "2091",
+            "par": "flow",
+            "val": 100.0,
+            "name": "Limmat - Zürich, Unterhard",
+            "river": "Limmat",
+            "lat": 47.397,
+            "lon": 8.498,
+        },
+    ],
 }
 
-MOCK_TIMESERIES_RESPONSE = {
-    "data": [
-        [_TS1_MS, 523.4],
-        [_TS2_MS, 530.1],
-        [_TS3_MS, None],
+MOCK_OBSERVATIONS_RESPONSE = {
+    "source": "Swiss FOEN/BAFU",
+    "payload": [
+        {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 523.4},
+        {"timestamp": _TS2_ISO, "loc": "2009", "par": "flow", "val": 530.1},
+        {"timestamp": _TS3_ISO, "loc": "2009", "par": "flow", "val": None},
     ],
 }
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_filters_discharge():
-    """Only stations with 'Abfluss' in their parameters are returned."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messstationen_uebersicht.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
+async def test_fetch_stations_parses_payload():
+    """Stations are extracted from the api.existenz.ch payload."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         stations = await conn.fetch_stations()
 
-    # Station 2033 has only Pegel, so it should be excluded
     assert len(stations) == 2
     native_ids = {s.native_id for s in stations}
     assert native_ids == {"2009", "2091"}
 
-    # Check fields on first station
     station_rhein = next(s for s in stations if s.native_id == "2009")
     assert station_rhein.id == "switzerland_bafu:2009"
     assert station_rhein.provider == "switzerland_bafu"
@@ -76,10 +79,10 @@ async def test_fetch_stations_filters_discharge():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_handles_empty():
-    """An empty station dict returns no stations."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messstationen_uebersicht.json"
-    ).mock(return_value=httpx.Response(200, json={}))
+    """An empty payload returns no stations."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json={"source": "Swiss FOEN/BAFU", "payload": []})
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         stations = await conn.fetch_stations()
@@ -91,9 +94,9 @@ async def test_fetch_stations_handles_empty():
 @respx.mock
 async def test_fetch_stations_handles_unexpected_format():
     """A non-dict top-level response returns no stations with a warning."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messstationen_uebersicht.json"
-    ).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=[])
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         stations = await conn.fetch_stations()
@@ -103,39 +106,33 @@ async def test_fetch_stations_handles_unexpected_format():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_skips_malformed_entries():
-    """Entries with missing coordinates or bad data are skipped."""
+async def test_fetch_stations_deduplicates_locations():
+    """Multiple payload entries for the same loc produce only one station."""
     data = {
-        "9999": {
-            "Name": "Broken Station",
-            # Missing GewässerName, Koordinaten
-            "parameters": ["Abfluss"],
-        },
-        "2009": {
-            "Name": "Good Station",
-            "GewässerName": "Rhein",
-            "Koordinaten": {"lat": 47.0, "lng": 8.0},
-            "parameters": ["Abfluss"],
-        },
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 100.0},
+            {"timestamp": _TS2_ISO, "loc": "2009", "par": "flow", "val": 200.0},
+        ],
     }
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messstationen_uebersicht.json"
-    ).mock(return_value=httpx.Response(200, json=data))
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         stations = await conn.fetch_stations()
 
-    # Both should parse (missing coords default to 0.0, missing river is None)
-    assert len(stations) == 2
+    assert len(stations) == 1
+    assert stations[0].native_id == "2009"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_first_pattern_succeeds():
-    """Observations are parsed when the first endpoint pattern responds."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_TIMESERIES_RESPONSE))
+async def test_fetch_observations_parses_values():
+    """Observations are parsed from the api.existenz.ch payload."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -160,55 +157,11 @@ async def test_fetch_observations_first_pattern_succeeds():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_falls_back_to_second_pattern():
-    """When the first endpoint pattern fails, the second is tried."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(404))
-
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/lhg_2009_AbflussPegel_10min.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_TIMESERIES_RESPONSE))
-
-    async with SwitzerlandBafuConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "switzerland_bafu:2009",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 2, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 3
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_all_patterns_fail():
-    """When all endpoint patterns fail, an empty chunk is returned."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(404))
-
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/lhg_2009_AbflussPegel_10min.json"
-    ).mock(return_value=httpx.Response(404))
-
-    async with SwitzerlandBafuConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "switzerland_bafu:2009",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 2, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 0
-
-
-@pytest.mark.asyncio
-@respx.mock
 async def test_fetch_observations_filters_by_date_range():
     """Only observations within the requested date range are returned."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_TIMESERIES_RESPONSE))
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         # Request a narrow window that only includes the first timestamp
@@ -224,11 +177,11 @@ async def test_fetch_observations_filters_by_date_range():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_handles_empty_data():
-    """An empty data array returns zero observations."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json={"data": []}))
+async def test_fetch_observations_handles_empty_payload():
+    """An empty payload returns zero observations."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json={"source": "Swiss FOEN/BAFU", "payload": []})
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -242,41 +195,18 @@ async def test_fetch_observations_handles_empty_data():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_bare_array_format():
-    """The connector handles a bare JSON array (no wrapping object)."""
-    bare_array = [
-        [_TS1_MS, 100.0],
-        [_TS2_MS, 200.0],
-    ]
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json=bare_array))
-
-    async with SwitzerlandBafuConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "switzerland_bafu:2009",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 2, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 2
-    assert chunk.observations[0].discharge_m3s == pytest.approx(100.0)
-    assert chunk.observations[1].discharge_m3s == pytest.approx(200.0)
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_dict_record_format():
-    """The connector handles dict-style records with 'timestamp' and 'value' keys."""
-    dict_records = {
-        "measurements": [
-            {"timestamp": "2024-06-01T12:00:00+00:00", "value": 42.5},
-            {"timestamp": "2024-06-01T12:10:00+00:00", "value": 43.0},
+async def test_fetch_observations_numeric_timestamp():
+    """The connector handles numeric (epoch) timestamps in the payload."""
+    epoch_ts = datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC).timestamp()
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": epoch_ts, "loc": "2009", "par": "flow", "val": 42.5},
         ],
     }
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json=dict_records))
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -285,7 +215,7 @@ async def test_fetch_observations_dict_record_format():
             end=datetime(2024, 6, 2, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 2
+    assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(42.5)
 
 
@@ -293,9 +223,9 @@ async def test_fetch_observations_dict_record_format():
 @respx.mock
 async def test_fetch_stations_server_error_raises():
     """A server error on the station listing raises ConnectorError."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messstationen_uebersicht.json"
-    ).mock(return_value=httpx.Response(500))
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(500)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         with pytest.raises(ConnectorError):
@@ -306,9 +236,15 @@ async def test_fetch_stations_server_error_raises():
 @respx.mock
 async def test_station_id_prefix_is_stripped():
     """The slug prefix is correctly stripped from station_id."""
-    respx.get(
-        "https://www.hydrodaten.admin.ch/graphs/messwerte/2009_Abfluss_m3s_10min.json"
-    ).mock(return_value=httpx.Response(200, json={"data": [[_TS1_MS, 10.0]]}))
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 10.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
 
     async with SwitzerlandBafuConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -319,6 +255,23 @@ async def test_station_id_prefix_is_stripped():
 
     assert chunk.station_id == "switzerland_bafu:2009"
     assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_non_dict_response_raises():
+    """A non-dict response raises DataFormatError."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=[1, 2, 3])
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        with pytest.raises(DataFormatError, match="Unexpected response type"):
+            await conn.fetch_observations(
+                "switzerland_bafu:2009",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
 
 
 @pytest.mark.asyncio

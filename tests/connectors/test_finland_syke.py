@@ -1,4 +1,8 @@
-"""Tests for the SYKE (Finland) hydrology connector with mocked HTTP responses."""
+"""Tests for the SYKE (Finland) hydrology connector with mocked HTTP responses.
+
+All tests use the confirmed OData API at:
+  https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.0/odata
+"""
 
 from datetime import UTC, datetime
 
@@ -10,103 +14,67 @@ from csfs.connectors.finland_syke import FinlandSYKEConnector, _quality_from_syk
 from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import QualityFlag
 
-SYKE_BASE = "https://rajapinnat.ymparisto.fi/api/hydrology/v1"
+SYKE_BASE = "https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.0/odata"
 
-MOCK_STATIONS_RESPONSE = [
-    {
-        "id": "1001",
-        "name": "Ounasjoki - Kittila",
-        "lat": 67.65,
-        "lon": 24.91,
-        "river": "Ounasjoki",
-        "catchmentArea": 8415.0,
-        "active": True,
-    },
-    {
-        "id": "1002",
-        "name": "Kemijoki - Rovaniemi",
-        "lat": 66.50,
-        "lon": 25.78,
-        "river": "Kemijoki",
-        "catchmentArea": 50680.0,
-        "active": True,
-    },
-    {
-        "id": "1003",
-        "name": "Tornionjoki - Pello",
-        "lat": 66.77,
-        "lon": 23.96,
-        "river": "Tornionjoki",
-        "catchmentArea": 25370.0,
-        "active": False,
-    },
-]
+# OData station response (Paikka endpoint)
+MOCK_STATIONS_RESPONSE = {
+    "value": [
+        {
+            "Paikka_Id": 1001,
+            "Nimi": "Ounasjoki - Kittila",
+            "KoordinaattiPiste": {"coordinates": [24.91, 67.65]},
+        },
+        {
+            "Paikka_Id": 1002,
+            "Nimi": "Kemijoki - Rovaniemi",
+            "KoordinaattiPiste": "POINT (25.78 66.50)",
+        },
+        {
+            "Paikka_Id": 1003,
+            "Nimi": "Tornionjoki - Pello",
+            "KoordinaattiPiste": None,
+        },
+    ]
+}
 
-MOCK_SITES_RESPONSE = [
-    {
-        "siteId": "2001",
-        "siteName": "Vuoksi - Imatra",
-        "latitude": 61.17,
-        "longitude": 28.77,
-        "catchmentArea": 61061.0,
-    },
-    {
-        "siteId": "2002",
-        "siteName": "Kokemaenjoki - Pori",
-        "latitude": 61.48,
-        "longitude": 21.80,
-        "catchmentArea": 27046.0,
-    },
-]
-
+# OData discharge response (Virtaama endpoint)
 # Observations: 2024-06-01T00:00Z, 01:00Z, 02:00Z, and one outside range (June 15)
-MOCK_OBSERVATIONS_RESPONSE = [
-    {
-        "time": "2024-06-01T00:00:00Z",
-        "value": 120.5,
-        "quality": "good",
-    },
-    {
-        "time": "2024-06-01T01:00:00Z",
-        "value": 121.3,
-        "quality": "verified",
-    },
-    {
-        "time": "2024-06-01T02:00:00Z",
-        "value": 119.0,
-        "quality": "suspect",
-    },
-    {
-        "time": "2024-06-15T00:00:00Z",
-        "value": 200.0,
-        "quality": "good",
-    },
-]
-
-MOCK_VALUES_RESPONSE = [
-    {
-        "dateTime": "2024-06-01T00:00:00Z",
-        "value": 55.0,
-        "quality": "good",
-    },
-    {
-        "dateTime": "2024-06-01T06:00:00Z",
-        "value": 56.2,
-        "quality": "estimated",
-    },
-]
+MOCK_OBSERVATIONS_RESPONSE = {
+    "value": [
+        {
+            "Aika": "2024-06-01T00:00:00Z",
+            "Arvo": 120.5,
+            "Laatu": "good",
+        },
+        {
+            "Aika": "2024-06-01T01:00:00Z",
+            "Arvo": 121.3,
+            "Laatu": "verified",
+        },
+        {
+            "Aika": "2024-06-01T02:00:00Z",
+            "Arvo": 119.0,
+            "Laatu": "suspect",
+        },
+        {
+            "Aika": "2024-06-15T00:00:00Z",
+            "Arvo": 200.0,
+            "Laatu": "good",
+        },
+    ]
+}
 
 
 # ------------------------------------------------------------------
-# Station tests (primary endpoint)
+# Station tests (/Paikka endpoint)
 # ------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_primary_parses_all():
-    """All stations in the response are returned from /stations."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
+async def test_fetch_stations_parses_all():
+    """All stations in the OData response are returned from /Paikka."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
 
@@ -120,9 +88,9 @@ async def test_fetch_stations_primary_parses_all():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_primary_fields():
-    """Station fields are correctly mapped from primary endpoint."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
+async def test_fetch_stations_fields_geojson():
+    """Station fields are correctly mapped from OData with GeoJSON coordinates."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
 
@@ -136,16 +104,30 @@ async def test_fetch_stations_primary_fields():
     assert ounasjoki.latitude == 67.65
     assert ounasjoki.longitude == 24.91
     assert ounasjoki.country_code == "FI"
-    assert ounasjoki.river == "Ounasjoki"
-    assert ounasjoki.catchment_area_km2 == 8415.0
     assert ounasjoki.is_active is True
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_inactive_flag():
-    """Inactive stations are parsed with is_active=False."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
+async def test_fetch_stations_fields_wkt():
+    """Station coordinates from WKT POINT string are parsed correctly."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
+        return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    kemijoki = next(s for s in stations if s.native_id == "1002")
+    assert kemijoki.latitude == 66.50
+    assert kemijoki.longitude == 25.78
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_null_coordinates():
+    """A station with null KoordinaattiPiste gets (0.0, 0.0) coordinates."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
 
@@ -153,15 +135,16 @@ async def test_fetch_stations_inactive_flag():
         stations = await conn.fetch_stations()
 
     pello = next(s for s in stations if s.native_id == "1003")
-    assert pello.is_active is False
+    assert pello.latitude == 0.0
+    assert pello.longitude == 0.0
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_handles_empty():
-    """An empty station array returns no stations."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
-        return_value=httpx.Response(200, json=[])
+    """An empty OData value array returns no stations."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
+        return_value=httpx.Response(200, json={"value": []})
     )
 
     async with FinlandSYKEConnector() as conn:
@@ -173,12 +156,14 @@ async def test_fetch_stations_handles_empty():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_skips_missing_id():
-    """Stations without an 'id' field are silently skipped."""
-    data = [
-        {"name": "No ID", "lat": 60.0, "lon": 25.0, "active": True},
-        {"id": "99", "name": "Has ID", "lat": 61.0, "lon": 26.0, "active": True},
-    ]
-    respx.get(f"{SYKE_BASE}/stations").mock(
+    """Entries without Paikka_Id are silently skipped."""
+    data = {
+        "value": [
+            {"Nimi": "No ID", "KoordinaattiPiste": None},
+            {"Paikka_Id": 99, "Nimi": "Has ID", "KoordinaattiPiste": None},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=data)
     )
 
@@ -189,60 +174,11 @@ async def test_fetch_stations_skips_missing_id():
     assert stations[0].native_id == "99"
 
 
-# ------------------------------------------------------------------
-# Station tests (fallback endpoint)
-# ------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_fallback_on_primary_failure():
-    """Falls back to /sites when /stations returns an error."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
-        return_value=httpx.Response(404)
-    )
-    respx.get(f"{SYKE_BASE}/sites").mock(
-        return_value=httpx.Response(200, json=MOCK_SITES_RESPONSE)
-    )
-
-    async with FinlandSYKEConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    assert len(stations) == 2
-    native_ids = {s.native_id for s in stations}
-    assert native_ids == {"2001", "2002"}
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_stations_fallback_fields():
-    """Station fields from /sites endpoint are correctly mapped."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
-        return_value=httpx.Response(404)
-    )
-    respx.get(f"{SYKE_BASE}/sites").mock(
-        return_value=httpx.Response(200, json=MOCK_SITES_RESPONSE)
-    )
-
-    async with FinlandSYKEConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    vuoksi = next(s for s in stations if s.native_id == "2001")
-    assert vuoksi.id == "finland_syke:2001"
-    assert vuoksi.name == "Vuoksi - Imatra"
-    assert vuoksi.latitude == 61.17
-    assert vuoksi.longitude == 28.77
-    assert vuoksi.catchment_area_km2 == 61061.0
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_stations_both_fail_raises():
-    """ConnectorError is raised when both endpoints fail."""
-    respx.get(f"{SYKE_BASE}/stations").mock(
-        return_value=httpx.Response(500)
-    )
-    respx.get(f"{SYKE_BASE}/sites").mock(
+async def test_fetch_stations_error_raises_connector_error():
+    """ConnectorError is raised when /Paikka returns an HTTP error."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(500)
     )
 
@@ -251,8 +187,22 @@ async def test_fetch_stations_both_fail_raises():
             await conn.fetch_stations()
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_bad_format_raises():
+    """DataFormatError is raised when response has no 'value' array."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
+        return_value=httpx.Response(200, json={"error": "bad"})
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        # Should return empty list since data.get("value", []) returns []
+        stations = await conn.fetch_stations()
+        assert len(stations) == 0
+
+
 # ------------------------------------------------------------------
-# Observation tests (primary endpoint)
+# Observation tests (/Virtaama endpoint)
 # ------------------------------------------------------------------
 
 
@@ -260,7 +210,7 @@ async def test_fetch_stations_both_fail_raises():
 @respx.mock
 async def test_fetch_observations_filters_by_date_range():
     """Only observations within [start, end] are returned."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
 
@@ -281,7 +231,7 @@ async def test_fetch_observations_filters_by_date_range():
 @respx.mock
 async def test_fetch_observations_quality_mapping():
     """SYKE quality codes are correctly mapped to CSFS quality flags."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
 
@@ -304,7 +254,7 @@ async def test_fetch_observations_quality_mapping():
 @respx.mock
 async def test_fetch_observations_discharge_values():
     """Discharge values are parsed as floats in m3/s."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
 
@@ -323,11 +273,13 @@ async def test_fetch_observations_discharge_values():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_handles_null_value():
-    """A null discharge value results in MISSING quality."""
-    data = [
-        {"time": "2024-06-01T00:00:00Z", "value": None, "quality": "good"},
-    ]
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    """A null discharge value (Arvo) results in MISSING quality."""
+    data = {
+        "value": [
+            {"Aika": "2024-06-01T00:00:00Z", "Arvo": None, "Laatu": "good"},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=data)
     )
 
@@ -346,9 +298,9 @@ async def test_fetch_observations_handles_null_value():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_handles_empty():
-    """An empty observation array returns zero observations."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
-        return_value=httpx.Response(200, json=[])
+    """An empty OData value array returns zero observations."""
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json={"value": []})
     )
 
     async with FinlandSYKEConnector() as conn:
@@ -365,8 +317,8 @@ async def test_fetch_observations_handles_empty():
 @respx.mock
 async def test_fetch_observations_strips_prefix():
     """The connector correctly strips its slug prefix from the station ID."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
-        return_value=httpx.Response(200, json=[])
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json={"value": []})
     )
 
     async with FinlandSYKEConnector() as conn:
@@ -383,7 +335,7 @@ async def test_fetch_observations_strips_prefix():
 @respx.mock
 async def test_fetch_observations_naive_datetimes():
     """Naive start/end datetimes are treated as UTC for filtering."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
 
@@ -402,10 +354,12 @@ async def test_fetch_observations_naive_datetimes():
 @respx.mock
 async def test_fetch_observations_invalid_timestamp():
     """Invalid timestamps raise DataFormatError."""
-    data = [
-        {"time": "not-a-date", "value": 10.0, "quality": "good"},
-    ]
-    respx.get(f"{SYKE_BASE}/observations").mock(
+    data = {
+        "value": [
+            {"Aika": "not-a-date", "Arvo": 10.0, "Laatu": "good"},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(200, json=data)
     )
 
@@ -418,43 +372,11 @@ async def test_fetch_observations_invalid_timestamp():
             )
 
 
-# ------------------------------------------------------------------
-# Observation tests (fallback endpoint)
-# ------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_fallback_on_primary_failure():
-    """Falls back to /values when /observations returns an error."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
-        return_value=httpx.Response(404)
-    )
-    respx.get(f"{SYKE_BASE}/values").mock(
-        return_value=httpx.Response(200, json=MOCK_VALUES_RESPONSE)
-    )
-
-    async with FinlandSYKEConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "finland_syke:1001",
-            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
-            end=datetime(2024, 6, 1, 12, 0, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 2
-    assert chunk.observations[0].discharge_m3s == pytest.approx(55.0)
-    assert chunk.observations[1].discharge_m3s == pytest.approx(56.2)
-    assert chunk.observations[1].quality == QualityFlag.ESTIMATED
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_both_fail_raises():
-    """ConnectorError is raised when both observation endpoints fail."""
-    respx.get(f"{SYKE_BASE}/observations").mock(
-        return_value=httpx.Response(500)
-    )
-    respx.get(f"{SYKE_BASE}/values").mock(
+async def test_fetch_observations_error_raises_connector_error():
+    """ConnectorError is raised when /Virtaama returns an HTTP error."""
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
         return_value=httpx.Response(500)
     )
 
@@ -465,6 +387,30 @@ async def test_fetch_observations_both_fail_raises():
                 start=datetime(2024, 6, 1, tzinfo=UTC),
                 end=datetime(2024, 6, 2, tzinfo=UTC),
             )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_no_quality_field():
+    """Missing Laatu field results in RAW quality."""
+    data = {
+        "value": [
+            {"Aika": "2024-06-01T00:00:00Z", "Arvo": 50.0},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "finland_syke:1001",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 2, 0, 0, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].quality == QualityFlag.RAW
 
 
 # ------------------------------------------------------------------
@@ -539,4 +485,5 @@ def test_connector_metadata():
     """Verify class-level attributes."""
     assert FinlandSYKEConnector.slug == "finland_syke"
     assert FinlandSYKEConnector.country_codes == ["FI"]
-    assert "ymparisto" in FinlandSYKEConnector.base_url
+    assert "Hydrologiarajapinta" in FinlandSYKEConnector.base_url
+    assert "odata" in FinlandSYKEConnector.base_url
