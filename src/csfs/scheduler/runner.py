@@ -32,6 +32,8 @@ async def run_acquisition(
             async with connector_cls() as conn:
                 log.info("fetching_stations")
                 stations = await conn.fetch_stations()
+                if not stations:
+                    log.warning("no_stations_discovered")
                 n_stations = await store.upsert_stations(stations)
                 log.info("stations_synced", count=n_stations)
 
@@ -57,19 +59,35 @@ async def run_acquisition(
                     if (i + 1) % 100 == 0:
                         log.info("progress", fetched=i + 1, total=limit, obs=total_obs, failed=failed)
 
+                fetched = min(limit, len(stations))
+
+                if failed > 5:
+                    log.warning("station_failures_summary", failed=failed, fetched=fetched)
+
+                if n_stations > 0 and total_obs == 0 and failed < fetched:
+                    log.warning("zero_observations", stations=n_stations, fetched=fetched)
+
+                if fetched > 0 and failed == fetched:
+                    status = "error"
+                elif failed > 0 or (n_stations > 0 and total_obs == 0):
+                    status = "degraded"
+                else:
+                    status = "ok"
+
                 log.info(
                     "acquisition_complete",
                     stations=n_stations,
                     observations=total_obs,
-                    fetched=min(limit, len(stations)),
+                    fetched=fetched,
                     failed=failed,
+                    status=status,
                 )
                 results[slug] = {
                     "stations": n_stations,
                     "observations": total_obs,
-                    "fetched": min(limit, len(stations)),
+                    "fetched": fetched,
                     "failed": failed,
-                    "status": "ok",
+                    "status": status,
                 }
 
         except Exception as e:

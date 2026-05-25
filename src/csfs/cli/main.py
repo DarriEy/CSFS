@@ -68,13 +68,18 @@ def fetch(
             total_obs = 0
             for slug, info in results.items():
                 status = info.get("status", "unknown")
+                total_stations += info.get("stations", 0)
+                total_obs += info.get("observations", 0)
                 if status == "ok":
-                    total_stations += info["stations"]
-                    total_obs += info["observations"]
                     click.echo(
                         f"  {slug}: {info['stations']} stations, "
                         f"{info['observations']} obs "
                         f"({info['fetched']} queried, {info['failed']} failed)"
+                    )
+                elif status == "degraded":
+                    click.echo(
+                        f"  {slug}: DEGRADED — {info.get('observations', 0)} obs, "
+                        f"{info.get('failed', 0)}/{info.get('fetched', 0)} failed"
                     )
                 else:
                     click.echo(f"  {slug}: ERROR — {info.get('error', '?')}")
@@ -171,14 +176,31 @@ def status(ctx: click.Context) -> None:
     if time_range and time_range[0]:
         click.echo(f"  Time range: {time_range[0]} → {time_range[1]}")
 
-    click.echo(f"\n  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}")
-    click.echo(f"  {'─' * 25}  {'─' * 8}  {'─' * 10}")
+    click.echo(f"\n  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}  {'LATEST':>20s}  {'STATUS'}")
+    click.echo(f"  {'─' * 25}  {'─' * 8}  {'─' * 10}  {'─' * 20}  {'─' * 8}")
+    now = conn.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'").fetchone()[0]
     for row in conn.execute("""
-        SELECT s.provider, COUNT(DISTINCT s.id), COUNT(o.station_id)
+        SELECT s.provider, COUNT(DISTINCT s.id), COUNT(o.station_id),
+               MAX(o.fetched_at)
         FROM stations s LEFT JOIN observations o ON o.station_id = s.id
         GROUP BY s.provider ORDER BY COUNT(o.station_id) DESC
     """).fetchall():
-        click.echo(f"  {row[0]:<25s}  {row[1]:>8,}  {row[2]:>10,}")
+        provider, n_stations, n_obs, latest = row
+        if latest:
+            latest_naive = latest.replace(tzinfo=None) if hasattr(latest, 'replace') else latest
+            now_naive = now.replace(tzinfo=None) if hasattr(now, 'replace') else now
+            age_hours = (now_naive - latest_naive).total_seconds() / 3600
+            age_str = str(latest)[:16]
+            if age_hours > 168:
+                health = "STALE"
+            elif n_obs == 0:
+                health = "EMPTY"
+            else:
+                health = "ok"
+        else:
+            age_str = "—"
+            health = "EMPTY" if n_stations > 0 else "—"
+        click.echo(f"  {provider:<25s}  {n_stations:>8,}  {n_obs:>10,}  {age_str:>20s}  {health}")
 
     r = conn.execute("SELECT COUNT(DISTINCT country_code) FROM stations").fetchone()
     countries = r[0] if r else 0

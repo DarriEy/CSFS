@@ -115,9 +115,21 @@ async def run_daemon(
             results = await run_scheduled_cycle(
                 db_path, tier=tier, max_stations=max_stations,
             )
-            ok = sum(1 for r in results.values() if r.get("status") == "ok")
-            err = sum(1 for r in results.values() if r.get("status") == "error")
+            ok = [s for s, r in results.items() if r.get("status") == "ok"]
+            degraded = [s for s, r in results.items() if r.get("status") == "degraded"]
+            errored = [s for s, r in results.items() if r.get("status") == "error"]
             total_obs = sum(r.get("observations", 0) for r in results.values())
-            logger.info("cycle_complete", ok=ok, errors=err, observations=total_obs)
+
+            logger.info(
+                "cycle_complete",
+                ok=len(ok),
+                degraded=len(degraded),
+                errors=len(errored),
+                observations=total_obs,
+            )
+            if degraded:
+                logger.warning("degraded_providers", providers=degraded)
+            if errored:
+                logger.error("failed_providers", providers=errored)
         except Exception as e:
             logger.error("cycle_failed", error=str(e))
