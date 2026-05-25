@@ -63,35 +63,48 @@ class DuckDBStore(BaseStore):
     async def upsert_stations(self, stations: list[Station]) -> int:
         if not stations:
             return 0
-        count = 0
-        for s in stations:
-            self.conn.execute("""
-                INSERT OR REPLACE INTO stations
-                    (id, provider, native_id, name, latitude, longitude,
-                     country_code, river, catchment_area_km2, elevation_m, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, [
-                s.id, s.provider, s.native_id, s.name, s.latitude, s.longitude,
-                s.country_code, s.river, s.catchment_area_km2, s.elevation_m, s.is_active,
-            ])
-            count += 1
-        return count
+        self.conn.executemany("""
+            INSERT OR REPLACE INTO stations
+                (id, provider, native_id, name, latitude, longitude,
+                 country_code, river, catchment_area_km2, elevation_m, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            (s.id, s.provider, s.native_id, s.name, s.latitude, s.longitude,
+             s.country_code, s.river, s.catchment_area_km2, s.elevation_m, s.is_active)
+            for s in stations
+        ])
+        return len(stations)
 
     async def append_observations(self, chunk: TimeSeriesChunk) -> int:
         if not chunk.observations:
             return 0
-        count = 0
-        for obs in chunk.observations:
-            self.conn.execute("""
-                INSERT OR IGNORE INTO observations
-                    (station_id, timestamp, discharge_m3s, quality, fetched_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, [
-                obs.station_id, obs.timestamp, obs.discharge_m3s,
-                obs.quality.value, chunk.fetched_at,
-            ])
-            count += 1
-        return count
+        rows = [
+            (obs.station_id, obs.timestamp, obs.discharge_m3s,
+             obs.quality.value, chunk.fetched_at)
+            for obs in chunk.observations
+        ]
+        self.conn.execute(
+            "CREATE TEMPORARY TABLE IF NOT EXISTS _obs_staging "
+            "(station_id VARCHAR, timestamp TIMESTAMPTZ, "
+            "discharge_m3s DOUBLE, quality VARCHAR, fetched_at TIMESTAMP)"
+        )
+        self.conn.execute("DELETE FROM _obs_staging")
+        self.conn.executemany(
+            "INSERT INTO _obs_staging VALUES (?, ?, ?, ?, ?)", rows,
+        )
+        result = self.conn.execute("""
+            INSERT INTO observations
+                (station_id, timestamp, discharge_m3s, quality, fetched_at)
+            SELECT s.station_id, s.timestamp, s.discharge_m3s,
+                   s.quality, s.fetched_at
+            FROM _obs_staging s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM observations o
+                WHERE o.station_id = s.station_id
+                  AND o.timestamp = s.timestamp
+            )
+        """)
+        return result.fetchone()[0] if result.description else len(rows)
 
     async def get_stations(
         self,
