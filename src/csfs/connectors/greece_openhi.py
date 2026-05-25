@@ -215,14 +215,20 @@ class GreeceOpenhiConnector(BaseConnector):
     def _extract_coords(entry: dict) -> tuple[float | None, float | None]:
         """Extract (latitude, longitude) from a station dict.
 
-        Supports both GeoJSON ``point`` and flat ``latitude``/``longitude``.
+        Supports GeoJSON ``point``, WKT ``geom``, and flat keys.
         """
         point = entry.get("point")
         if isinstance(point, dict):
             coords = point.get("coordinates")
             if isinstance(coords, (list, tuple)) and len(coords) >= 2:
-                # GeoJSON: [longitude, latitude]
                 return float(coords[1]), float(coords[0])
+
+        geom = entry.get("geom")
+        if isinstance(geom, str) and "POINT" in geom:
+            import re
+            match = re.search(r"POINT\s*\(\s*([\d.+-]+)\s+([\d.+-]+)\s*\)", geom)
+            if match:
+                return float(match.group(2)), float(match.group(1))
 
         lat = entry.get("latitude") or entry.get("lat")
         lon = entry.get("longitude") or entry.get("lon")

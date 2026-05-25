@@ -47,6 +47,7 @@ class ColombiaIDEAMConnector(BaseConnector):
 
         while True:
             params: dict[str, str | int] = {
+                "$where": "categoria in('Limnigráfica','Limnimétrica')",
                 "$limit": _SODA_PAGE_SIZE,
                 "$offset": offset,
             }
@@ -167,7 +168,9 @@ class ColombiaIDEAMConnector(BaseConnector):
         """Parse the Socrata station catalog into Station models."""
         stations: list[Station] = []
         for entry in data:
-            native_id = str(entry.get("codigoestacion", "")).strip()
+            native_id = str(
+                entry.get("codigoestacion") or entry.get("codigo", "")
+            ).strip()
             if not native_id:
                 continue
 
@@ -183,7 +186,7 @@ class ColombiaIDEAMConnector(BaseConnector):
                 continue
 
             name = str(
-                entry.get("nombreestacion", native_id)
+                entry.get("nombreestacion") or entry.get("nombre", native_id)
             ).strip() or native_id
 
             river = entry.get("corriente")
