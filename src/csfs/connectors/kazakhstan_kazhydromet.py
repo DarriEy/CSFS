@@ -179,20 +179,11 @@ class KazakhstanKazhydrometConnector(BaseConnector):
     # ------------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return available stations from Kazhydromet.
+        """Return seed stations for Kazhydromet.
 
-        Attempts live endpoints first; on failure, returns the
-        built-in seed list.
+        The meteo.kazhydromet.kz portal is unreliable (frequent
+        timeouts). We return the curated seed list directly.
         """
-        stations = await self._try_live_stations()
-        if stations:
-            return stations
-
-        logger.info(
-            "using_seed_stations",
-            provider=self.slug,
-            reason="live API unavailable or returned no data",
-        )
         return self._build_seed_stations()
 
     async def fetch_observations(
@@ -208,19 +199,13 @@ class KazakhstanKazhydrometConnector(BaseConnector):
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
 
-        chunk = await self._try_live_observations(
-            native_id, station_id, start, end,
-        )
-        if chunk is not None:
-            return chunk
-
         logger.info(
             "observations_unavailable",
             provider=self.slug,
             station=native_id,
             hint=(
-                "Kazhydromet data endpoint not reachable. Check "
-                "https://meteo.kazhydromet.kz for current access."
+                "Kazhydromet portal unreliable. Download data manually "
+                "from https://meteo.kazhydromet.kz/database_hydro/"
             ),
         )
         return TimeSeriesChunk(
