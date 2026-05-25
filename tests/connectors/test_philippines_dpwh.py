@@ -85,9 +85,9 @@ async def test_fetch_stations_fallback_to_seed():
     assert len(stations) == len(_SEED_STATIONS)
     cagayan = next(
         s for s in stations
-        if s.native_id == "PH-CAG-001"
+        if s.native_id == "5654300"
     )
-    assert cagayan.river == "Cagayan"
+    assert cagayan.river == "Cagayan River"
     assert cagayan.country_code == "PH"
 
 

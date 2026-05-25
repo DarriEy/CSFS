@@ -45,85 +45,25 @@ logger = structlog.get_logger()
 # ------------------------------------------------------------------
 _SEED_STATIONS: list[dict[str, object]] = [
     {
-        "id": "JM-001", "name": "Rio Grande at Fellowship",
-        "lat": 18.1167, "lon": -76.3333, "river": "Rio Grande",
+        "id": "4584800", "name": "Fellowship",
+        "lat": 18.14, "lon": -76.46, "river": "Rio Grande",
     },
     {
-        "id": "JM-002", "name": "Rio Grande at Berridale",
-        "lat": 18.1500, "lon": -76.3167, "river": "Rio Grande",
+        "id": "4584200", "name": "Lacovia",
+        "lat": 18.08, "lon": -77.76, "river": "Black River",
     },
     {
-        "id": "JM-003", "name": "Black River at Maggotty",
-        "lat": 18.1667, "lon": -77.7500, "river": "Black River",
+        "id": "4584210", "name": "Martha Brae",
+        "lat": 18.47, "lon": -77.66,
+        "river": "Martha Brae River",
     },
     {
-        "id": "JM-004", "name": "Black River at Lacovia",
-        "lat": 18.1333, "lon": -77.7500, "river": "Black River",
+        "id": "4584700", "name": "Spanish Town",
+        "lat": 18.04, "lon": -76.98, "river": "Rio Cobre",
     },
     {
-        "id": "JM-005", "name": "Rio Cobre at Bog Walk",
-        "lat": 18.1000, "lon": -76.8833, "river": "Rio Cobre",
-    },
-    {
-        "id": "JM-006", "name": "Rio Cobre at Linstead",
-        "lat": 18.1333, "lon": -76.9500, "river": "Rio Cobre",
-    },
-    {
-        "id": "JM-007", "name": "Martha Brae at Sherwood Content",
-        "lat": 18.3333, "lon": -77.6333, "river": "Martha Brae",
-    },
-    {
-        "id": "JM-008", "name": "Martha Brae at Falmouth",
-        "lat": 18.4833, "lon": -77.6667, "river": "Martha Brae",
-    },
-    {
-        "id": "JM-009", "name": "Yallahs River at Mahogany Vale",
-        "lat": 18.0833, "lon": -76.5833, "river": "Yallahs River",
-    },
-    {
-        "id": "JM-010", "name": "Yallahs River at Bull Bay",
-        "lat": 17.9833, "lon": -76.6667, "river": "Yallahs River",
-    },
-    {
-        "id": "JM-011", "name": "Hope River at Gordon Town",
-        "lat": 18.0667, "lon": -76.6500, "river": "Hope River",
-    },
-    {
-        "id": "JM-012", "name": "Hope River at Papine",
-        "lat": 18.0333, "lon": -76.7333, "river": "Hope River",
-    },
-    {
-        "id": "JM-013", "name": "Rio Minho at Frankfield",
-        "lat": 18.1167, "lon": -77.3000, "river": "Rio Minho",
-    },
-    {
-        "id": "JM-014", "name": "Rio Minho at May Pen",
-        "lat": 17.9667, "lon": -77.2500, "river": "Rio Minho",
-    },
-    {
-        "id": "JM-015", "name": "Wag Water River at Castleton",
-        "lat": 18.2000, "lon": -76.6833, "river": "Wag Water River",
-    },
-    {
-        "id": "JM-016", "name": "Great River at Lethe",
-        "lat": 18.4333, "lon": -77.8333, "river": "Great River",
-    },
-    {
-        "id": "JM-017", "name": "Cabarita River at Savanna-la-Mar",
-        "lat": 18.2167, "lon": -78.1333, "river": "Cabarita River",
-    },
-    {
-        "id": "JM-018", "name": "Plantain Garden River at Bath",
-        "lat": 17.9833, "lon": -76.3667,
-        "river": "Plantain Garden River",
-    },
-    {
-        "id": "JM-019", "name": "Morant River at Cedar Valley",
-        "lat": 18.0000, "lon": -76.3333, "river": "Morant River",
-    },
-    {
-        "id": "JM-020", "name": "Milk River at Farquhars Beach",
-        "lat": 17.8833, "lon": -77.5500, "river": "Milk River",
+        "id": "4584100", "name": "Lethe",
+        "lat": 18.39, "lon": -77.97, "river": "Great River",
     },
 ]
 

@@ -50,66 +50,26 @@ logger = structlog.get_logger()
 # ------------------------------------------------------------------
 _SEED_STATIONS: list[dict[str, object]] = [
     {
-        "id": "SV-001", "name": "La Ceiba (Lempa)",
-        "lat": 14.3167, "lon": -89.1333, "river": "Lempa",
+        "id": "4664200", "name": "Colima",
+        "lat": 14.07, "lon": -89.13, "river": "Rio Lempa",
     },
     {
-        "id": "SV-002", "name": "El Guayabo (Lempa)",
-        "lat": 13.8500, "lon": -88.9167, "river": "Lempa",
+        "id": "4664800", "name": "San Marcos",
+        "lat": 13.43, "lon": -88.70, "river": "Rio Lempa",
     },
     {
-        "id": "SV-003", "name": "San Marcos (Lempa)",
-        "lat": 13.8833, "lon": -89.1833, "river": "Lempa",
+        "id": "4657700", "name": "Las Conchas",
+        "lat": 13.28, "lon": -88.42,
+        "river": "Rio Grande de San Miguel",
     },
     {
-        "id": "SV-004", "name": "Paso del Oso (Lempa)",
-        "lat": 13.8000, "lon": -88.7833, "river": "Lempa",
+        "id": "4657750", "name": "Vado Marin",
+        "lat": 13.30, "lon": -88.28,
+        "river": "Rio Grande de San Miguel",
     },
     {
-        "id": "SV-005", "name": "San Lorenzo (Lempa)",
-        "lat": 13.9667, "lon": -88.9333, "river": "Lempa",
-    },
-    {
-        "id": "SV-006", "name": "Puente Cuscatlan (Lempa)",
-        "lat": 13.7333, "lon": -88.7333, "river": "Lempa",
-    },
-    {
-        "id": "SV-007", "name": "Las Pavas (Jiboa)",
-        "lat": 13.4833, "lon": -88.9333, "river": "Jiboa",
-    },
-    {
-        "id": "SV-008", "name": "Desembocadura (Jiboa)",
-        "lat": 13.4167, "lon": -88.9500, "river": "Jiboa",
-    },
-    {
-        "id": "SV-009", "name": "La Hachadura (Paz)",
-        "lat": 13.8500, "lon": -90.1000, "river": "Paz",
-    },
-    {
-        "id": "SV-010", "name": "Puente Goascoran",
-        "lat": 13.5000, "lon": -87.8000, "river": "Goascorán",
-    },
-    {
-        "id": "SV-011", "name": "San Miguel (Grande de San Miguel)",
-        "lat": 13.4667, "lon": -88.1833,
-        "river": "Grande de San Miguel",
-    },
-    {
-        "id": "SV-012", "name": "Vado Marin (Grande de San Miguel)",
-        "lat": 13.3500, "lon": -88.1167,
-        "river": "Grande de San Miguel",
-    },
-    {
-        "id": "SV-013", "name": "Puente Sucio (Sucio)",
-        "lat": 13.7000, "lon": -89.2500, "river": "Sucio",
-    },
-    {
-        "id": "SV-014", "name": "San José Ingenio (Acelhuate)",
-        "lat": 13.7667, "lon": -89.2000, "river": "Acelhuate",
-    },
-    {
-        "id": "SV-015", "name": "Puente Acahuapa",
-        "lat": 13.6333, "lon": -88.5667, "river": "Acahuapa",
+        "id": "4665100", "name": "La Hacadura",
+        "lat": 13.85, "lon": -90.08, "river": "Rio Paz",
     },
 ]
 

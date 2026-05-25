@@ -57,49 +57,18 @@ _SEED_STATIONS: list[
     tuple[str, str, float, float, str, str, float | None]
 ] = [
     # Germany (DE)
-    ("DE-001", "Passau-Ingling", 48.58, 13.46, "Donau", "DE", 76653.0),
-    ("DE-002", "Hofkirchen", 48.68, 13.12, "Donau", "DE", 47496.0),
-    # Austria (AT)
-    ("AT-001", "Wien - Nussdorf", 48.25, 16.36, "Donau", "AT", 101700.0),
-    ("AT-002", "Linz", 48.31, 14.29, "Donau", "AT", 79490.0),
+    ("6342800", "Hofkirchen", 48.68, 13.12, "Danube", "DE", None),
+    ("6342900", "Achleiten", 48.58, 13.50, "Danube", "DE", None),
     # Slovakia (SK)
-    ("SK-001", "Bratislava", 48.14, 17.10, "Dunaj", "SK", 131338.0),
-    ("SK-002", "Komárno", 47.76, 18.13, "Dunaj", "SK", 170350.0),
+    ("6142200", "Bratislava", 48.14, 17.11, "Danube", "SK", None),
     # Hungary (HU)
-    ("HU-001", "Budapest", 47.50, 19.04, "Duna", "HU", 184700.0),
-    ("HU-002", "Mohács", 45.99, 18.68, "Duna", "HU", 209064.0),
-    ("HU-003", "Szeged", 46.25, 20.15, "Tisza", "HU", 138408.0),
-    # Croatia (HR)
-    ("HR-001", "Vukovar", 45.35, 19.00, "Dunav", "HR", None),
-    ("HR-002", "Zagreb", 45.81, 15.98, "Sava", "HR", 12450.0),
-    # Slovenia (SI)
-    ("SI-001", "Čatež", 45.89, 15.63, "Sava", "SI", 10186.0),
+    ("6442500", "Nagymaros", 47.78, 18.95, "Danube", "HU", None),
     # Serbia (RS)
-    ("RS-001", "Beograd", 44.82, 20.45, "Dunav", "RS", 525009.0),
-    ("RS-002", "Veliko Gradište", 44.76, 21.51, "Dunav", "RS", None),
-    ("RS-003", "Sremska Mitrovica", 44.97, 19.61, "Sava", "RS", 87966.0),
-    # Bosnia and Herzegovina (BA)
-    ("BA-001", "Županja / Orašje", 45.07, 18.70, "Sava", "BA", None),
+    ("6542100", "Bezdan", 45.85, 18.87, "Danube", "RS", None),
+    ("6542500", "Pancevo", 44.87, 20.64, "Danube", "RS", None),
     # Romania (RO)
-    ("RO-001", "Baziaș", 44.78, 21.41, "Dunărea", "RO", None),
-    ("RO-002", "Turnu Severin", 44.63, 22.66, "Dunărea", "RO", None),
-    ("RO-003", "Giurgiu", 43.89, 25.97, "Dunărea", "RO", None),
-    ("RO-004", "Brăila", 45.27, 27.97, "Dunărea", "RO", None),
-    ("RO-005", "Ceatal Izmail", 45.22, 28.73, "Dunărea", "RO", 807000.0),
-    # Bulgaria (BG)
-    ("BG-001", "Lom", 43.82, 23.24, "Dunav", "BG", None),
-    ("BG-002", "Svishtov", 43.62, 25.35, "Dunav", "BG", None),
-    ("BG-003", "Ruse", 43.85, 25.97, "Dunav", "BG", None),
-    # Ukraine (UA)
-    ("UA-001", "Reni", 45.46, 28.27, "Dunay", "UA", None),
-    ("UA-002", "Izmail", 45.35, 28.84, "Dunay", "UA", None),
-    # Czech Republic (CZ)
-    ("CZ-001", "Děčín", 50.78, 14.21, "Labe", "CZ", None),
-    ("CZ-002", "Lanžhot", 48.72, 16.97, "Morava", "CZ", 26658.0),
-    # Moldova (MD)
-    ("MD-001", "Giurgiulești", 45.48, 28.20, "Dunărea", "MD", None),
-    # Multi-country Danube Delta
-    ("RO-006", "Tulcea", 45.18, 28.80, "Dunărea", "RO", None),
+    ("6742200", "Orsova", 44.70, 22.42, "Danube", "RO", None),
+    ("6742900", "Ceatal Izmail", 45.22, 28.72, "Danube", "RO", None),
 ]
 
 

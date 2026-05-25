@@ -64,38 +64,25 @@ CATALOG_PATH = f"/index.php/catalog/{CATALOG_ID}"
 # Format: (native_id, name, lat, lon, river, area_km2 | None)
 # ---------------------------------------------------------------------------
 _SEED_STATIONS: list[tuple[str, str, float, float, str, float | None]] = [
-    ("BO-001", "Desaguadero - Puente Internacional",
-     -16.56, -69.04, "Desaguadero", 29500.0),
-    ("BO-002", "Calacoto", -17.28, -68.64, "Desaguadero", None),
-    ("BO-003", "Rurrenabaque", -14.44, -67.53, "Beni", 69966.0),
-    ("BO-004", "Angosto del Bala", -14.53, -67.56, "Beni", None),
-    ("BO-005", "Puerto Varador", -16.83, -64.80, "Mamoré", None),
-    ("BO-006", "Puerto Villarroel",
-     -16.87, -64.78, "Ichilo", 7230.0),
-    ("BO-007", "Puerto Grether", -16.48, -65.37, "Chapare", None),
-    ("BO-008", "Villamontes", -21.26, -63.47, "Pilcomayo", 96570.0),
-    ("BO-009", "Puente Arce", -19.56, -65.28, "Pilcomayo", None),
-    ("BO-010", "Abapo", -18.91, -63.39, "Grande", 59843.0),
-    ("BO-011", "Puente Arce (Grande)",
-     -18.45, -64.62, "Grande", None),
-    ("BO-012", "Miguelito", -17.97, -63.32, "Yapacaní", None),
-    ("BO-013", "Ivirgarzama", -17.00, -64.97, "Ivirgarzama", None),
-    ("BO-014", "Puerto Siles", -13.33, -63.80, "Mamoré", None),
-    ("BO-015", "Guayaramerín", -10.83, -65.35, "Mamoré", 599847.0),
-    ("BO-016", "Riberalta", -10.99, -66.10, "Beni", 283000.0),
-    ("BO-017", "Cachuela Esperanza",
-     -10.54, -65.60, "Beni", None),
-    ("BO-018", "Santa Rosa de Yacuma",
-     -14.99, -66.80, "Yacuma", None),
-    ("BO-019", "Miguillas", -16.67, -67.44, "La Paz", None),
+    ("3716400", "Angosto del Bala",
+     -14.55, -67.55, "Rio Beni", None),
+    ("3717600", "Abapo",
+     -18.85, -63.47, "Rio Grande", None),
+    ("3754100", "Calacoto",
+     -17.28, -68.61, "Rio Desaguadero", None),
+    ("3754200", "Ulloma",
+     -17.48, -68.47, "Rio Desaguadero", None),
+    ("3768500", "Villa Montes",
+     -21.25, -63.47, "Rio Pilcomayo", None),
 ]
 
 # GRDC station numbers for Bolivia (for cross-reference)
 _GRDC_BOLIVIAN_STATIONS: list[tuple[str, str]] = [
-    ("3629400", "Rurrenabaque"),
-    ("3629150", "Guayaramerín"),
-    ("3629500", "Angosto del Bala"),
-    ("3629300", "Cachuela Esperanza"),
+    ("3716400", "Angosto del Bala"),
+    ("3717600", "Abapo"),
+    ("3754100", "Calacoto"),
+    ("3754200", "Ulloma"),
+    ("3768500", "Villa Montes"),
 ]
 
 

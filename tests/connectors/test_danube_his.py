@@ -68,11 +68,10 @@ async def test_fetch_stations_returns_seed_list():
     countries = {s.country_code for s in stations}
     # Verify multi-country coverage
     assert "DE" in countries
-    assert "AT" in countries
+    assert "SK" in countries
     assert "HU" in countries
     assert "RS" in countries
     assert "RO" in countries
-    assert "BG" in countries
 
 
 @pytest.mark.asyncio
@@ -81,14 +80,14 @@ async def test_fetch_stations_seed_fields():
     async with DanubeHisConnector() as conn:
         stations = await conn.fetch_stations()
 
-    budapest = next(s for s in stations if s.native_id == "HU-001")
-    assert budapest.id == "danube_his:HU-001"
-    assert budapest.provider == "danube_his"
-    assert budapest.name == "Budapest"
-    assert budapest.country_code == "HU"
-    assert budapest.river == "Duna"
-    assert budapest.latitude == pytest.approx(47.50)
-    assert budapest.catchment_area_km2 == pytest.approx(184700.0)
+    nagymaros = next(s for s in stations if s.native_id == "6442500")
+    assert nagymaros.id == "danube_his:6442500"
+    assert nagymaros.provider == "danube_his"
+    assert nagymaros.name == "Nagymaros"
+    assert nagymaros.country_code == "HU"
+    assert nagymaros.river == "Danube"
+    assert nagymaros.latitude == pytest.approx(47.78)
+    assert nagymaros.catchment_area_km2 is None
 
 
 @pytest.mark.asyncio

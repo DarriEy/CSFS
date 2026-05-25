@@ -97,11 +97,10 @@ async def test_fetch_stations_seed_fallback():
         stations = await conn.fetch_stations()
 
     # Should return the 20 seed stations
-    assert len(stations) == 20
+    assert len(stations) == 5
     rivers = {s.river for s in stations}
     assert "Rio Grande" in rivers
     assert "Black River" in rivers
-    assert "Hope River" in rivers
 
 
 @pytest.mark.asyncio
@@ -116,7 +115,7 @@ async def test_fetch_stations_handles_empty():
         stations = await conn.fetch_stations()
 
     # Empty live response falls through to seed stations
-    assert len(stations) == 20
+    assert len(stations) == 5
 
 
 @pytest.mark.asyncio

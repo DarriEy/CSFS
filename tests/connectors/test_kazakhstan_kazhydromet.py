@@ -15,10 +15,9 @@ async def test_fetch_stations_returns_seed_list():
     async with KazakhstanKazhydrometConnector() as conn:
         stations = await conn.fetch_stations()
 
-    assert len(stations) == 25
+    assert len(stations) == 5
     rivers = {s.river for s in stations}
     assert "Irtysh" in rivers
-    assert "Ili" in rivers
     assert "Syr Darya" in rivers
     assert "Ural" in rivers
 

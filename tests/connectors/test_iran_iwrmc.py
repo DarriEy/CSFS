@@ -79,7 +79,7 @@ async def test_fetch_stations_fallback_to_seed():
     assert len(stations) == len(_SEED_STATIONS)
     # Check a known seed station
     karun = next(
-        s for s in stations if s.native_id == "21-001"
+        s for s in stations if s.native_id == "2423500"
     )
     assert karun.river == "Karun"
     assert karun.country_code == "IR"

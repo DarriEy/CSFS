@@ -46,104 +46,24 @@ logger = structlog.get_logger()
 # ------------------------------------------------------------------
 _SEED_STATIONS: list[dict[str, object]] = [
     {
-        "id": "KZ-001", "name": "Irtysh at Semey",
-        "lat": 50.4167, "lon": 80.2500, "river": "Irtysh",
+        "id": "2311104", "name": "Semiyarskoje",
+        "lat": 50.88, "lon": 78.32, "river": "Irtysh",
     },
     {
-        "id": "KZ-002", "name": "Irtysh at Ust-Kamenogorsk",
-        "lat": 49.9500, "lon": 82.6167, "river": "Irtysh",
+        "id": "2311109", "name": "Buran",
+        "lat": 48.00, "lon": 85.22, "river": "Chernyy Irtysh",
     },
     {
-        "id": "KZ-003", "name": "Irtysh at Pavlodar",
-        "lat": 52.2833, "lon": 76.9500, "river": "Irtysh",
+        "id": "2316200", "name": "Tyumen-Aryk",
+        "lat": 44.05, "lon": 67.05, "river": "Syr Darya",
     },
     {
-        "id": "KZ-004", "name": "Ili at Kapchagay",
-        "lat": 43.8833, "lon": 77.0667, "river": "Ili",
+        "id": "2319200", "name": "Kushum",
+        "lat": 50.85, "lon": 51.28, "river": "Ural",
     },
     {
-        "id": "KZ-005", "name": "Ili at Ush-Tobe",
-        "lat": 44.2000, "lon": 77.9667, "river": "Ili",
-    },
-    {
-        "id": "KZ-006", "name": "Syr Darya at Kazaly",
-        "lat": 45.7667, "lon": 62.1167, "river": "Syr Darya",
-    },
-    {
-        "id": "KZ-007", "name": "Syr Darya at Kyzylorda",
-        "lat": 44.8500, "lon": 65.5167, "river": "Syr Darya",
-    },
-    {
-        "id": "KZ-008", "name": "Ural at Oral",
-        "lat": 51.2333, "lon": 51.3833, "river": "Ural",
-    },
-    {
-        "id": "KZ-009", "name": "Ural at Atyrau",
-        "lat": 47.1000, "lon": 51.9167, "river": "Ural",
-    },
-    {
-        "id": "KZ-010", "name": "Ishim at Astana",
-        "lat": 51.1333, "lon": 71.4333, "river": "Ishim",
-    },
-    {
-        "id": "KZ-011", "name": "Ishim at Petropavl",
-        "lat": 54.8667, "lon": 69.1500, "river": "Ishim",
-    },
-    {
-        "id": "KZ-012", "name": "Tobol at Kostanay",
-        "lat": 53.2000, "lon": 63.6333, "river": "Tobol",
-    },
-    {
-        "id": "KZ-013", "name": "Tobol at Lisakovsk",
-        "lat": 52.5500, "lon": 62.4833, "river": "Tobol",
-    },
-    {
-        "id": "KZ-014", "name": "Chu at Shu",
-        "lat": 43.6000, "lon": 73.7500, "river": "Chu",
-    },
-    {
-        "id": "KZ-015", "name": "Chu at Korday",
-        "lat": 43.0333, "lon": 74.7333, "river": "Chu",
-    },
-    {
-        "id": "KZ-016", "name": "Nura at Temirtau",
-        "lat": 50.0667, "lon": 72.9500, "river": "Nura",
-    },
-    {
-        "id": "KZ-017", "name": "Nura at Karaganda",
-        "lat": 49.8000, "lon": 73.1000, "river": "Nura",
-    },
-    {
-        "id": "KZ-018", "name": "Torgai at Torgai",
-        "lat": 49.6167, "lon": 63.4833, "river": "Torgai",
-    },
-    {
-        "id": "KZ-019", "name": "Emba at Embi",
-        "lat": 48.8333, "lon": 58.1167, "river": "Emba",
-    },
-    {
-        "id": "KZ-020", "name": "Bukhtarma at Bukhtarma",
-        "lat": 49.3333, "lon": 83.5333, "river": "Bukhtarma",
-    },
-    {
-        "id": "KZ-021", "name": "Karatal at Ushtobe",
-        "lat": 45.2333, "lon": 77.9833, "river": "Karatal",
-    },
-    {
-        "id": "KZ-022", "name": "Sarysu at Zhezkazgan",
-        "lat": 47.7833, "lon": 67.7167, "river": "Sarysu",
-    },
-    {
-        "id": "KZ-023", "name": "Ulba at Ust-Kamenogorsk",
-        "lat": 49.9500, "lon": 82.6000, "river": "Ulba",
-    },
-    {
-        "id": "KZ-024", "name": "Lepsy at Lepsy",
-        "lat": 45.8667, "lon": 78.0500, "river": "Lepsy",
-    },
-    {
-        "id": "KZ-025", "name": "Uba at Shemonaikha",
-        "lat": 50.6333, "lon": 81.9167, "river": "Uba",
+        "id": "2311200", "name": "Petropavlovsk",
+        "lat": 54.97, "lon": 69.12, "river": "Ishim",
     },
 ]
 

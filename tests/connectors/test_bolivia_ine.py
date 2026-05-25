@@ -17,7 +17,7 @@ BASE_URL = "https://anda.ine.gob.bo"
 MOCK_CATALOG_VARIABLES = {
     "variables": [
         {
-            "id": "BO-001",
+            "id": "3716400",
             "label": "Desaguadero",
             "latitude": -16.56,
             "longitude": -69.04,
@@ -61,8 +61,8 @@ async def test_fetch_stations_returns_seed_list():
 
     assert len(stations) == len(_SEED_STATIONS)
     native_ids = {s.native_id for s in stations}
-    assert "BO-001" in native_ids
-    assert "BO-008" in native_ids
+    assert "3716400" in native_ids
+    assert "3717600" in native_ids
 
 
 @pytest.mark.asyncio
@@ -71,16 +71,16 @@ async def test_fetch_stations_seed_fields():
     async with BoliviaIneConnector() as conn:
         stations = await conn.fetch_stations()
 
-    rurrenabaque = next(
-        s for s in stations if s.native_id == "BO-003"
+    abapo = next(
+        s for s in stations if s.native_id == "3717600"
     )
-    assert rurrenabaque.id == "bolivia_ine:BO-003"
-    assert rurrenabaque.provider == "bolivia_ine"
-    assert rurrenabaque.name == "Rurrenabaque"
-    assert rurrenabaque.country_code == "BO"
-    assert rurrenabaque.river == "Beni"
-    assert rurrenabaque.latitude == pytest.approx(-14.44)
-    assert rurrenabaque.catchment_area_km2 == pytest.approx(69966.0)
+    assert abapo.id == "bolivia_ine:3717600"
+    assert abapo.provider == "bolivia_ine"
+    assert abapo.name == "Abapo"
+    assert abapo.country_code == "BO"
+    assert abapo.river == "Rio Grande"
+    assert abapo.latitude == pytest.approx(-18.85)
+    assert abapo.catchment_area_km2 is None
 
 
 @pytest.mark.asyncio
@@ -99,7 +99,7 @@ async def test_fetch_stations_from_catalog_api():
     # Only 2 valid entries (empty ID is skipped)
     assert len(stations) == 2
     ids = {s.native_id for s in stations}
-    assert ids == {"BO-001", "BO-003"}
+    assert ids == {"3716400", "BO-003"}
 
 
 @pytest.mark.asyncio
@@ -201,7 +201,7 @@ def test_grdc_cross_reference():
     grdc = BoliviaIneConnector.grdc_station_ids()
     assert len(grdc) == len(_GRDC_BOLIVIAN_STATIONS)
     ids = {g[0] for g in grdc}
-    assert "3629400" in ids  # Rurrenabaque
+    assert "3716400" in ids  # Angosto del Bala
 
 
 def test_connector_is_registered():

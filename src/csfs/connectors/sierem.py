@@ -51,7 +51,7 @@ SIEREM_COUNTRY_CODES: list[str] = [
 _SEED_STATIONS: list[dict] = [
     # ---- Niger River basin ----
     {
-        "native_id": "SIEREM-1270700103",
+        "native_id": "1134000103",
         "name": "NIGER A KOULIKORO",
         "lat": 12.87,
         "lon": -7.55,
@@ -60,7 +60,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 120000.0,
     },
     {
-        "native_id": "SIEREM-1270010700",
+        "native_id": "1270010700",
         "name": "NIGER A DIRE",
         "lat": 16.27,
         "lon": -3.38,
@@ -69,16 +69,16 @@ _SEED_STATIONS: list[dict] = [
         "area": 340000.0,
     },
     {
-        "native_id": "SIEREM-1270500103",
+        "native_id": "1134500103",
         "name": "NIGER A NIAMEY",
-        "lat": 13.51,
-        "lon": 2.09,
+        "lat": 13.52,
+        "lon": -2.09,
         "country": "NE",
         "river": "NIGER",
         "area": 700000.0,
     },
     {
-        "native_id": "SIEREM-1271100103",
+        "native_id": "1271100103",
         "name": "BANI A DOUNA",
         "lat": 13.22,
         "lon": -5.90,
@@ -87,7 +87,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 101600.0,
     },
     {
-        "native_id": "SIEREM-1271400103",
+        "native_id": "1271400103",
         "name": "BANI A SOFARA",
         "lat": 14.07,
         "lon": -4.23,
@@ -97,7 +97,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Senegal River basin ----
     {
-        "native_id": "SIEREM-1110100103",
+        "native_id": "1130300105",
         "name": "SENEGAL A BAKEL",
         "lat": 14.90,
         "lon": -12.46,
@@ -106,7 +106,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 218000.0,
     },
     {
-        "native_id": "SIEREM-1110400103",
+        "native_id": "1110400103",
         "name": "SENEGAL A KAYES",
         "lat": 14.45,
         "lon": -11.44,
@@ -115,7 +115,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 157400.0,
     },
     {
-        "native_id": "SIEREM-1111200103",
+        "native_id": "1111200103",
         "name": "FALEME A KIDIRA",
         "lat": 14.47,
         "lon": -12.21,
@@ -124,7 +124,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 28900.0,
     },
     {
-        "native_id": "SIEREM-1112000103",
+        "native_id": "1112000103",
         "name": "BAFING A DAKA SAIDOU",
         "lat": 11.95,
         "lon": -10.62,
@@ -134,7 +134,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Volta River basin ----
     {
-        "native_id": "SIEREM-1240100103",
+        "native_id": "1240100103",
         "name": "VOLTA NOIRE A BOROMO",
         "lat": 11.75,
         "lon": -2.93,
@@ -143,7 +143,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 30100.0,
     },
     {
-        "native_id": "SIEREM-1240200103",
+        "native_id": "1240200103",
         "name": "VOLTA BLANCHE A WAYEN",
         "lat": 12.38,
         "lon": -1.08,
@@ -152,7 +152,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 20300.0,
     },
     {
-        "native_id": "SIEREM-1240800103",
+        "native_id": "1240800103",
         "name": "MOUHOUN A SAMANDENI",
         "lat": 11.48,
         "lon": -4.07,
@@ -161,7 +161,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 4580.0,
     },
     {
-        "native_id": "SIEREM-1241100103",
+        "native_id": "1241100103",
         "name": "PENDJARI A PORGA",
         "lat": 11.05,
         "lon": 0.98,
@@ -171,7 +171,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Congo / Oubangui basin ----
     {
-        "native_id": "SIEREM-1430100103",
+        "native_id": "1430100103",
         "name": "OUBANGUI A BANGUI",
         "lat": 4.37,
         "lon": 18.58,
@@ -180,7 +180,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 500000.0,
     },
     {
-        "native_id": "SIEREM-1430500103",
+        "native_id": "1147010004",
         "name": "CONGO A BRAZZAVILLE",
         "lat": -4.27,
         "lon": 15.28,
@@ -189,7 +189,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 3475000.0,
     },
     {
-        "native_id": "SIEREM-1431200103",
+        "native_id": "1431200103",
         "name": "SANGHA A OUESSO",
         "lat": 1.62,
         "lon": 16.05,
@@ -198,7 +198,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 158350.0,
     },
     {
-        "native_id": "SIEREM-1431700103",
+        "native_id": "1431700103",
         "name": "LIKOUALA AUX HERBES A BOTOUALI",
         "lat": -0.90,
         "lon": 17.38,
@@ -208,7 +208,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Chari / Logone basin ----
     {
-        "native_id": "SIEREM-1300100103",
+        "native_id": "1300100103",
         "name": "CHARI A NDJAMENA",
         "lat": 12.12,
         "lon": 15.03,
@@ -217,7 +217,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 600000.0,
     },
     {
-        "native_id": "SIEREM-1300700103",
+        "native_id": "1300700103",
         "name": "LOGONE A MOUNDOU",
         "lat": 8.57,
         "lon": 16.07,
@@ -226,7 +226,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 33970.0,
     },
     {
-        "native_id": "SIEREM-1301100103",
+        "native_id": "1301100103",
         "name": "LOGONE A BONGOR",
         "lat": 10.28,
         "lon": 15.37,
@@ -235,7 +235,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 73700.0,
     },
     {
-        "native_id": "SIEREM-1301500103",
+        "native_id": "1301500103",
         "name": "CHARI A SARH",
         "lat": 9.15,
         "lon": 18.38,
@@ -245,7 +245,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Ivory Coast / Bandama / Comoe ----
     {
-        "native_id": "SIEREM-1250100103",
+        "native_id": "1250100103",
         "name": "BANDAMA A BRIMBO",
         "lat": 6.57,
         "lon": -4.97,
@@ -254,7 +254,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 60200.0,
     },
     {
-        "native_id": "SIEREM-1250400103",
+        "native_id": "1250400103",
         "name": "COMOE A ANIASSUE",
         "lat": 6.62,
         "lon": -3.72,
@@ -263,7 +263,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 66500.0,
     },
     {
-        "native_id": "SIEREM-1250700103",
+        "native_id": "1250700103",
         "name": "SASSANDRA A GUESSABO",
         "lat": 6.30,
         "lon": -6.78,
@@ -273,16 +273,16 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Cameroon ----
     {
-        "native_id": "SIEREM-1320100103",
+        "native_id": "1048700103",
         "name": "SANAGA A EDEA",
-        "lat": 3.80,
-        "lon": 10.13,
+        "lat": 3.78,
+        "lon": 10.07,
         "country": "CM",
         "river": "SANAGA",
         "area": 131500.0,
     },
     {
-        "native_id": "SIEREM-1320500103",
+        "native_id": "1320500103",
         "name": "NYONG A MBALMAYO",
         "lat": 3.52,
         "lon": 11.50,
@@ -291,7 +291,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 13555.0,
     },
     {
-        "native_id": "SIEREM-1321100103",
+        "native_id": "1321100103",
         "name": "BENOUE A GAROUA",
         "lat": 9.30,
         "lon": 13.40,
@@ -301,7 +301,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Gabon ----
     {
-        "native_id": "SIEREM-1410100103",
+        "native_id": "1410100103",
         "name": "OGOOUE A LAMBARENE",
         "lat": -0.70,
         "lon": 10.22,
@@ -310,7 +310,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 203500.0,
     },
     {
-        "native_id": "SIEREM-1410400103",
+        "native_id": "1410400103",
         "name": "OGOOUE A NDJOLE",
         "lat": -0.18,
         "lon": 10.77,
@@ -320,7 +320,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Guinea ----
     {
-        "native_id": "SIEREM-1200100103",
+        "native_id": "1200100103",
         "name": "KONKOURE A PONT DE TELIMELE",
         "lat": 10.90,
         "lon": -12.08,
@@ -329,7 +329,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 10250.0,
     },
     {
-        "native_id": "SIEREM-1200400103",
+        "native_id": "1200400103",
         "name": "NIGER A FARANAH",
         "lat": 10.03,
         "lon": -10.75,
@@ -339,7 +339,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Mauritania ----
     {
-        "native_id": "SIEREM-1130100103",
+        "native_id": "1130100103",
         "name": "SENEGAL A MATAM",
         "lat": 15.65,
         "lon": -13.25,
@@ -349,7 +349,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Niger (country) ----
     {
-        "native_id": "SIEREM-1270900103",
+        "native_id": "1270900103",
         "name": "NIGER A MALANVILLE",
         "lat": 11.87,
         "lon": 3.39,
@@ -358,7 +358,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 1000000.0,
     },
     {
-        "native_id": "SIEREM-1271700103",
+        "native_id": "1271700103",
         "name": "SIRBA A GARBE-KOUROU",
         "lat": 13.74,
         "lon": 1.59,
@@ -368,7 +368,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Senegal (country) ----
     {
-        "native_id": "SIEREM-1120100103",
+        "native_id": "1120100103",
         "name": "GAMBIE A KEDOUGOU",
         "lat": 12.55,
         "lon": -12.18,
@@ -377,7 +377,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 7540.0,
     },
     {
-        "native_id": "SIEREM-1120400103",
+        "native_id": "1120400103",
         "name": "CASAMANCE A KOLDA",
         "lat": 12.88,
         "lon": -14.95,
@@ -387,7 +387,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Togo ----
     {
-        "native_id": "SIEREM-1260100103",
+        "native_id": "1260100103",
         "name": "MONO A NANGBETO",
         "lat": 7.42,
         "lon": 1.45,
@@ -396,7 +396,7 @@ _SEED_STATIONS: list[dict] = [
         "area": 15700.0,
     },
     {
-        "native_id": "SIEREM-1260400103",
+        "native_id": "1260400103",
         "name": "OTI A MANGO",
         "lat": 10.37,
         "lon": 0.47,
@@ -406,7 +406,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Burkina Faso (additional) ----
     {
-        "native_id": "SIEREM-1240500103",
+        "native_id": "1240500103",
         "name": "NAKAMBE A WAYEN",
         "lat": 12.38,
         "lon": -1.08,
@@ -416,7 +416,7 @@ _SEED_STATIONS: list[dict] = [
     },
     # ---- Benin (additional) ----
     {
-        "native_id": "SIEREM-1241400103",
+        "native_id": "1241400103",
         "name": "OUEME A SAVE",
         "lat": 8.03,
         "lon": 2.48,

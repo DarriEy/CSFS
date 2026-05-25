@@ -57,8 +57,8 @@ async def test_fetch_stations_returns_seed_list():
 
     assert len(stations) == len(_SEED_STATIONS)
     native_ids = {s.native_id for s in stations}
-    assert "BG0001" in native_ids
-    assert "BG0007" in native_ids
+    assert "6842200" in native_ids
+    assert "6865100" in native_ids
 
 
 @pytest.mark.asyncio
@@ -67,14 +67,14 @@ async def test_fetch_stations_seed_fields():
     async with BulgariaNimhConnector() as conn:
         stations = await conn.fetch_stations()
 
-    plovdiv = next(s for s in stations if s.native_id == "BG0007")
-    assert plovdiv.id == "bulgaria_nimh:BG0007"
+    plovdiv = next(s for s in stations if s.native_id == "6865100")
+    assert plovdiv.id == "bulgaria_nimh:6865100"
     assert plovdiv.provider == "bulgaria_nimh"
     assert plovdiv.name == "Plovdiv"
     assert plovdiv.country_code == "BG"
     assert plovdiv.river == "Maritsa"
     assert plovdiv.latitude == pytest.approx(42.15)
-    assert plovdiv.catchment_area_km2 == pytest.approx(8370.0)
+    assert plovdiv.catchment_area_km2 is None
 
 
 @pytest.mark.asyncio

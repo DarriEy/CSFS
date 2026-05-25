@@ -52,21 +52,11 @@ logger = structlog.get_logger()
 # Format: (native_id, name, lat, lon, river, area_km2 | None)
 # ---------------------------------------------------------------------------
 _SEED_STATIONS: list[tuple[str, str, float, float, str, float | None]] = [
-    ("BG0001", "Novo Selo", 44.17, 22.78, "Timok", 4650.0),
-    ("BG0002", "Lom", 43.82, 23.24, "Lom", 3180.0),
-    ("BG0003", "Oryahovo", 43.73, 23.96, "Ogosta", 3157.0),
-    ("BG0004", "Nikopol", 43.70, 24.89, "Osam", 2824.0),
-    ("BG0005", "Svishtov", 43.62, 25.35, "Yantra", 7862.0),
-    ("BG0006", "Byala", 43.46, 25.73, "Yantra", 5400.0),
-    ("BG0007", "Plovdiv", 42.15, 24.75, "Maritsa", 8370.0),
-    ("BG0008", "Svilengrad", 41.77, 26.20, "Maritsa", 21080.0),
-    ("BG0009", "Edirne Bridge", 41.67, 26.56, "Maritsa", 28880.0),
-    ("BG0010", "Sofia - Iskar", 42.70, 23.32, "Iskar", 876.0),
-    ("BG0011", "Novi Iskar", 42.77, 23.35, "Iskar", 1070.0),
-    ("BG0012", "Blagoevgrad", 42.01, 23.10, "Struma", 1594.0),
-    ("BG0013", "Kresna", 41.73, 23.14, "Struma", 3020.0),
-    ("BG0014", "Gotse Delchev", 41.57, 23.73, "Mesta", 981.0),
-    ("BG0015", "Hadzhidimovo", 41.52, 23.86, "Mesta", 1367.0),
+    ("6842200", "Novo Selo", 44.16, 22.82, "Danube", None),
+    ("6842800", "Ruse", 43.86, 25.95, "Danube", None),
+    ("6842300", "Kunino", 43.18, 24.00, "Iskar", None),
+    ("6865100", "Plovdiv", 42.15, 24.75, "Maritsa", None),
+    ("6864100", "Krupnik", 41.85, 23.12, "Struma", None),
 ]
 
 

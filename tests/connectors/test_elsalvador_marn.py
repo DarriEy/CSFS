@@ -137,10 +137,9 @@ async def test_fetch_stations_seed_fallback():
         stations = await conn.fetch_stations()
 
     # Should return the 15 seed stations
-    assert len(stations) == 15
+    assert len(stations) == 5
     rivers = {s.river for s in stations}
-    assert "Lempa" in rivers
-    assert "Jiboa" in rivers
+    assert "Rio Lempa" in rivers
 
 
 @pytest.mark.asyncio
