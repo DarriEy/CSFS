@@ -64,7 +64,7 @@ class SwedenSMHIConnector(BaseConnector):
 
         resp = await self._get(
             f"/version/latest/parameter/1/station/{native_id}"
-            f"/period/latest-months/data.json",
+            f"/period/latest-day/data.json",
         )
         data = resp.json()
         return self._parse_observations(data, station_id, start, end)

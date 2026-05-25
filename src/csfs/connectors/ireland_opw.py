@@ -38,7 +38,14 @@ class IrelandOPWConnector(BaseConnector):
     country_codes = ["IE"]
 
     async def fetch_stations(self) -> list[Station]:
-        """Return stations from the EPA metadata endpoint."""
+        """Return stations from OPW station_list.csv (real station codes)."""
+        try:
+            resp = await self._get("/data/station_list.csv")
+            stations = self._parse_station_csv(resp.text)
+            if stations:
+                return stations
+        except Exception:
+            pass
         resp = await self._get_absolute(_EPA_METADATA_URL)
         return self._parse_epa_stations(resp.json())
 
@@ -74,6 +81,27 @@ class IrelandOPWConnector(BaseConnector):
             if resp.status_code not in (200, 206):
                 resp.raise_for_status()
             return resp
+
+    def _parse_station_csv(self, text: str) -> list[Station]:
+        """Parse station_list.csv: name,label format."""
+        stations: list[Station] = []
+        for line in text.strip().splitlines()[1:]:
+            parts = line.split(",", 1)
+            if len(parts) < 2:
+                continue
+            native_id = parts[0].strip()
+            if not native_id or native_id == "name":
+                continue
+            stations.append(Station(
+                id=self._station_id(native_id),
+                provider=self.slug,
+                native_id=native_id,
+                name=parts[1].strip(),
+                latitude=0.0,
+                longitude=0.0,
+                country_code="IE",
+            ))
+        return stations
 
     def _parse_epa_stations(self, data: list[dict]) -> list[Station]:
         """Parse the EPA HydroNet JSON station index."""
@@ -133,11 +161,14 @@ class IrelandOPWConnector(BaseConnector):
 
             try:
                 ts = datetime.fromisoformat(date_str)
-            except ValueError as exc:
-                raise DataFormatError(
-                    self.slug,
-                    f"Invalid date in dailymean CSV: {exc}",
-                ) from exc
+            except ValueError:
+                try:
+                    ts = datetime.strptime(date_str.strip(), "%Y/%m/%d %H:%M:%S")
+                except ValueError:
+                    try:
+                        ts = datetime.strptime(date_str.strip(), "%Y/%m/%d")
+                    except ValueError:
+                        continue
 
             # Filter to requested window
             ts_naive = ts.replace(tzinfo=None)
