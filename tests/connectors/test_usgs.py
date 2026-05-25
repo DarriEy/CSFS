@@ -33,7 +33,7 @@ MOCK_DV_RESPONSE = {
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_parses_json():
-    respx.get("https://waterservices.usgs.gov/nwis/dv/").mock(
+    respx.get("https://waterservices.usgs.gov/nwis/iv/").mock(
         return_value=httpx.Response(200, json=MOCK_DV_RESPONSE)
     )
 
@@ -53,7 +53,7 @@ async def test_fetch_observations_parses_json():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_handles_empty():
-    respx.get("https://waterservices.usgs.gov/nwis/dv/").mock(
+    respx.get("https://waterservices.usgs.gov/nwis/iv/").mock(
         return_value=httpx.Response(200, json={"value": {"timeSeries": []}})
     )
 

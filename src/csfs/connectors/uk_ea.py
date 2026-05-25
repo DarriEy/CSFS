@@ -63,7 +63,7 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         return stations
 
     # Preferred measure suffixes in priority order: mean daily, instantaneous 15-min
-    _MEASURE_PREFS = ["-flow-m-86400-m3s-qualified", "-flow-i-900-m3s-qualified"]
+    _MEASURE_PREFS = ["-flow-i-900-m3s-qualified", "-flow-m-86400-m3s-qualified"]
 
     async def _find_flow_measure(self, native_id: str) -> str | None:
         """Discover the best flow measure notation for a station."""
@@ -95,15 +95,34 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         if not measure:
             raise ConnectorError(self.slug, f"No flow measure found for station {native_id}")
 
-        resp = await self._get(
-            f"/id/measures/{measure}/readings",
-            params={
-                "min-date": start.strftime("%Y-%m-%d"),
-                "max-date": end.strftime("%Y-%m-%d"),
-                "_limit": 10000,
-            },
+        all_observations: list[Observation] = []
+        url: str | None = f"/id/measures/{measure}/readings"
+        params: dict | None = {
+            "min-date": start.strftime("%Y-%m-%d"),
+            "max-date": end.strftime("%Y-%m-%d"),
+            "_limit": 10000,
+        }
+
+        while url:
+            resp = await self._get(url, params=params)
+            data = resp.json()
+            chunk = self._parse_readings(data, station_id)
+            all_observations.extend(chunk.observations)
+
+            next_link: str | None = None
+            for link in data.get("links", []):
+                if link.get("rel") == "next":
+                    next_link = str(link["href"])
+                    break
+            url = next_link
+            params = None
+
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=all_observations,
+            fetched_at=datetime.now(UTC),
         )
-        return self._parse_readings(resp.json(), station_id)
 
     def _parse_readings(self, data: dict, station_id: str) -> TimeSeriesChunk:
         observations = []

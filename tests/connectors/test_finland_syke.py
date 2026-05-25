@@ -10,7 +10,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.finland_syke import FinlandSYKEConnector, _quality_from_syke
+from csfs.connectors.finland_syke import FinlandSYKEConnector, _dms_to_decimal, _quality_from_syke
 from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import QualityFlag
 
@@ -22,17 +22,20 @@ MOCK_STATIONS_RESPONSE = {
         {
             "Paikka_Id": 1001,
             "Nimi": "Ounasjoki - Kittila",
-            "KoordinaattiPiste": {"coordinates": [24.91, 67.65]},
+            "KoordLat": "673900",
+            "KoordLong": "245436",
         },
         {
             "Paikka_Id": 1002,
             "Nimi": "Kemijoki - Rovaniemi",
-            "KoordinaattiPiste": "POINT (25.78 66.50)",
+            "KoordLat": "663000",
+            "KoordLong": "254648",
         },
         {
             "Paikka_Id": 1003,
             "Nimi": "Tornionjoki - Pello",
-            "KoordinaattiPiste": None,
+            "KoordLat": "",
+            "KoordLong": "",
         },
     ]
 }
@@ -88,8 +91,8 @@ async def test_fetch_stations_parses_all():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_fields_geojson():
-    """Station fields are correctly mapped from OData with GeoJSON coordinates."""
+async def test_fetch_stations_fields_dms():
+    """Station fields are correctly mapped from OData with DDMMSS coordinates."""
     respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
@@ -101,16 +104,16 @@ async def test_fetch_stations_fields_geojson():
     assert ounasjoki.id == "finland_syke:1001"
     assert ounasjoki.provider == "finland_syke"
     assert ounasjoki.name == "Ounasjoki - Kittila"
-    assert ounasjoki.latitude == 67.65
-    assert ounasjoki.longitude == 24.91
+    assert ounasjoki.latitude == pytest.approx(67.65, abs=0.01)
+    assert ounasjoki.longitude == pytest.approx(24.91, abs=0.01)
     assert ounasjoki.country_code == "FI"
     assert ounasjoki.is_active is True
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_fields_wkt():
-    """Station coordinates from WKT POINT string are parsed correctly."""
+async def test_fetch_stations_fields_dms_second():
+    """Station coordinates from DDMMSS strings are parsed correctly."""
     respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
@@ -119,14 +122,14 @@ async def test_fetch_stations_fields_wkt():
         stations = await conn.fetch_stations()
 
     kemijoki = next(s for s in stations if s.native_id == "1002")
-    assert kemijoki.latitude == 66.50
-    assert kemijoki.longitude == 25.78
+    assert kemijoki.latitude == pytest.approx(66.50, abs=0.01)
+    assert kemijoki.longitude == pytest.approx(25.78, abs=0.01)
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_null_coordinates():
-    """A station with null KoordinaattiPiste gets (0.0, 0.0) coordinates."""
+async def test_fetch_stations_empty_coordinates():
+    """A station with empty coordinate strings gets (0.0, 0.0) coordinates."""
     respx.get(f"{SYKE_BASE}/Paikka").mock(
         return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
     )
@@ -137,6 +140,14 @@ async def test_fetch_stations_null_coordinates():
     pello = next(s for s in stations if s.native_id == "1003")
     assert pello.latitude == 0.0
     assert pello.longitude == 0.0
+
+
+def test_dms_to_decimal():
+    """DDMMSS conversion works for typical Finnish coordinates."""
+    assert _dms_to_decimal("622536") == pytest.approx(62.4267, abs=0.001)
+    assert _dms_to_decimal("302642") == pytest.approx(30.4450, abs=0.001)
+    assert _dms_to_decimal("") == 0.0
+    assert _dms_to_decimal("None") == 0.0
 
 
 @pytest.mark.asyncio

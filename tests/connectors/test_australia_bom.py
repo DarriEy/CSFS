@@ -19,8 +19,6 @@ MOCK_STATION_LIST_RESPONSE = [
         "station_name",
         "station_latitude",
         "station_longitude",
-        "catchment_area",
-        "parametertype_name",
     ],
     # Data rows
     [
@@ -28,16 +26,12 @@ MOCK_STATION_LIST_RESPONSE = [
         "Darling River at Bourke",
         -30.09,
         145.94,
-        390000.0,
-        "Water Course Discharge",
     ],
     [
         "401012",
         "Murray River at Albury",
         -36.08,
         146.91,
-        11500.0,
-        "Water Course Discharge",
     ],
 ]
 
@@ -47,8 +41,6 @@ MOCK_STATION_LIST_EMPTY = [
         "station_name",
         "station_latitude",
         "station_longitude",
-        "catchment_area",
-        "parametertype_name",
     ],
 ]
 
@@ -73,9 +65,8 @@ MOCK_TS_VALUES_EMPTY = [
     },
 ]
 
-BASE = "https://www.bom.gov.au/waterdata/services"
-# httpx appends a trailing slash when path is empty
-BASE_URL = BASE + "/"
+BASE = "https://www.bom.gov.au"
+BASE_URL = BASE + "/waterdata/services"
 
 
 # -- Tests: fetch_stations ---------------------------------------------
@@ -100,8 +91,6 @@ async def test_fetch_stations_parses_kiwis_response():
     assert bourke.latitude == pytest.approx(-30.09)
     assert bourke.longitude == pytest.approx(145.94)
     assert bourke.country_code == "AU"
-    assert bourke.catchment_area_km2 == pytest.approx(390000.0)
-
     albury = next(s for s in stations if s.native_id == "401012")
     assert albury.name == "Murray River at Albury"
 
@@ -158,11 +147,9 @@ async def test_fetch_stations_skips_malformed_rows():
             "station_name",
             "station_latitude",
             "station_longitude",
-            "catchment_area",
-            "parametertype_name",
         ],
         # Good row
-        ["410730", "Darling River at Bourke", -30.09, 145.94, 390000.0, "Water Course Discharge"],
+        ["410730", "Darling River at Bourke", -30.09, 145.94],
         # Bad row — too short
         ["BAD"],
     ]
@@ -377,23 +364,21 @@ def test_connector_class_attributes():
     assert "bom.gov.au" in AustraliaBomConnector.base_url
 
 
-# -- Tests: null/missing catchment area --------------------------------
+# -- Tests: station parsing edge cases --------------------------------
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_null_catchment():
-    """Stations with null or zero catchment area get None for that field."""
+async def test_fetch_stations_minimal_fields():
+    """Stations are parsed with only the required fields."""
     response = [
         [
             "station_no",
             "station_name",
             "station_latitude",
             "station_longitude",
-            "catchment_area",
-            "parametertype_name",
         ],
-        ["410730", "Test Station", -30.09, 145.94, None, "Water Course Discharge"],
-        ["401012", "Test Station 2", -36.08, 146.91, "0", "Water Course Discharge"],
+        ["410730", "Test Station", -30.09, 145.94],
+        ["401012", "Test Station 2", -36.08, 146.91],
     ]
     respx.get(BASE_URL).mock(
         return_value=httpx.Response(200, json=response),
@@ -403,5 +388,5 @@ async def test_fetch_stations_null_catchment():
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
-    assert stations[0].catchment_area_km2 is None
-    assert stations[1].catchment_area_km2 is None
+    assert stations[0].native_id == "410730"
+    assert stations[1].native_id == "401012"

@@ -46,7 +46,7 @@ class USGSConnector(BaseConnector):
                     "parameterCd": self.DISCHARGE_PARAM,
                     "siteType": "ST",
                     "siteStatus": "active",
-                    "hasDataTypeCd": "dv",
+                    "hasDataTypeCd": "iv",
                     "stateCd": state,
                 })
                 all_stations.extend(self._parse_site_rdb(resp.text))
@@ -61,12 +61,12 @@ class USGSConnector(BaseConnector):
         end: datetime,
     ) -> TimeSeriesChunk:
         native_id = station_id.removeprefix(f"{self.slug}:")
-        resp = await self._get("/dv/", params={
+        resp = await self._get("/iv/", params={
             "format": "json",
             "sites": native_id,
             "parameterCd": self.DISCHARGE_PARAM,
-            "startDT": start.strftime("%Y-%m-%d"),
-            "endDT": end.strftime("%Y-%m-%d"),
+            "startDT": start.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
+            "endDT": end.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         })
         return self._parse_dv_json(resp.json(), station_id)
 

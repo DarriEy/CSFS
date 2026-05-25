@@ -4,13 +4,12 @@ Uses the confirmed OData 3.0 API for hydrological observations from Finland.
 Base URL: https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.0/odata
 
 Endpoints:
-  - Stations: /Paikka  (Paikka_Id, Nimi, KoordinaattiPiste)
+  - Stations: /Paikka  (Paikka_Id, Nimi, KoordLat, KoordLong)
   - Discharge: /Virtaama (filtered by Paikka_Id, ordered by Aika desc)
 """
 
 from __future__ import annotations
 
-import re
 from datetime import UTC, datetime, timedelta
 
 import httpx
@@ -50,31 +49,18 @@ def _quality_from_syke(raw: str | None) -> QualityFlag:
     return QualityFlag.RAW
 
 
-def _parse_coordinates(coord_value: str | dict | None) -> tuple[float, float]:
-    """Extract (latitude, longitude) from the KoordinaattiPiste field.
-
-    The field may be a GeoJSON-like dict with "coordinates": [lon, lat]
-    or a WKT POINT string like "POINT (lon lat)".
-    Returns (0.0, 0.0) if parsing fails.
-    """
-    if coord_value is None:
-        return 0.0, 0.0
-
-    if isinstance(coord_value, dict):
-        coords = coord_value.get("coordinates")
-        if isinstance(coords, (list, tuple)) and len(coords) >= 2:
-            return float(coords[1]), float(coords[0])  # GeoJSON is [lon, lat]
-        return 0.0, 0.0
-
-    if isinstance(coord_value, str):
-        # Try WKT POINT (lon lat)
-        match = re.search(r"POINT\s*\(\s*([\d.+-]+)\s+([\d.+-]+)\s*\)", coord_value, re.IGNORECASE)
-        if match:
-            lon, lat = float(match.group(1)), float(match.group(2))
-            return lat, lon
-        return 0.0, 0.0
-
-    return 0.0, 0.0
+def _dms_to_decimal(dms: str) -> float:
+    """Convert a DDMMSS string (e.g. '622536') to decimal degrees."""
+    dms = dms.strip()
+    if len(dms) < 5:
+        return 0.0
+    try:
+        dd = int(dms[:-4])
+        mm = int(dms[-4:-2])
+        ss = int(dms[-2:])
+        return dd + mm / 60.0 + ss / 3600.0
+    except (ValueError, IndexError):
+        return 0.0
 
 
 @register("finland_syke")
@@ -88,11 +74,13 @@ class FinlandSYKEConnector(BaseConnector):
     # Public API
     # ------------------------------------------------------------------
 
+    _SUURE_DISCHARGE = 2
+
     async def fetch_stations(self) -> list[Station]:
-        """Return hydrological stations from the SYKE OData /Paikka endpoint."""
+        """Return discharge stations from the SYKE OData /Paikka endpoint."""
         params = {
-            "$select": "Paikka_Id,Nimi,KoordinaattiPiste",
-            "$format": "json",
+            "$filter": f"Suure_Id eq {self._SUURE_DISCHARGE}",
+            "$select": "Paikka_Id,Nimi,KoordLat,KoordLong",
         }
         try:
             resp = await self._get("/Paikka", params=params)
@@ -119,11 +107,16 @@ class FinlandSYKEConnector(BaseConnector):
         if end.tzinfo is None:
             end = end.replace(tzinfo=UTC)
 
+        start_str = start.strftime("%Y-%m-%dT%H:%M:%S")
+        end_str = end.strftime("%Y-%m-%dT%H:%M:%S")
         params = {
-            "$filter": f"Paikka_Id eq {native_id}",
-            "$top": "1000",
+            "$filter": (
+                f"Paikka_Id eq {native_id}"
+                f" and Aika ge datetime'{start_str}'"
+                f" and Aika le datetime'{end_str}'"
+            ),
+            "$top": "10000",
             "$orderby": "Aika desc",
-            "$format": "json",
         }
         try:
             resp = await self._get("/Virtaama", params=params)
@@ -168,7 +161,8 @@ class FinlandSYKEConnector(BaseConnector):
             native_id = str(native_id)
 
             name = entry.get("Nimi", "")
-            lat, lon = _parse_coordinates(entry.get("KoordinaattiPiste"))
+            lat = _dms_to_decimal(str(entry.get("KoordLat", "")))
+            lon = _dms_to_decimal(str(entry.get("KoordLong", "")))
 
             try:
                 stations.append(Station(

@@ -170,7 +170,7 @@ async def test_fetch_stations_skips_missing_key():
 async def test_fetch_observations_filters_by_date_range():
     """Only observations within [start, end] are returned."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE))
 
     async with SwedenSMHIConnector() as conn:
@@ -191,7 +191,7 @@ async def test_fetch_observations_filters_by_date_range():
 async def test_fetch_observations_quality_mapping():
     """SMHI quality codes are correctly mapped to CSFS quality flags."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE))
 
     async with SwedenSMHIConnector() as conn:
@@ -214,7 +214,7 @@ async def test_fetch_observations_quality_mapping():
 async def test_fetch_observations_discharge_values():
     """Discharge values are parsed as floats in m3/s."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE))
 
     async with SwedenSMHIConnector() as conn:
@@ -239,7 +239,7 @@ async def test_fetch_observations_handles_null_value():
         ]
     }
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json=data))
 
     async with SwedenSMHIConnector() as conn:
@@ -259,7 +259,7 @@ async def test_fetch_observations_handles_null_value():
 async def test_fetch_observations_handles_empty():
     """An empty value array returns zero observations."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json={"value": []}))
 
     async with SwedenSMHIConnector() as conn:
@@ -277,7 +277,7 @@ async def test_fetch_observations_handles_empty():
 async def test_fetch_observations_strips_prefix():
     """The connector correctly strips its slug prefix from the station ID."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/42/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/42/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json={"value": []}))
 
     async with SwedenSMHIConnector() as conn:
@@ -295,7 +295,7 @@ async def test_fetch_observations_strips_prefix():
 async def test_fetch_observations_naive_datetimes():
     """Naive start/end datetimes are treated as UTC for filtering."""
     respx.get(
-        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/latest-day/data.json"
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
     ).mock(return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE))
 
     async with SwedenSMHIConnector() as conn:

@@ -42,13 +42,12 @@ def _map_quality(code_str: str | None) -> QualityFlag:
 class AustraliaBomConnector(BaseConnector):
     slug = "australia_bom"
     display_name = "BOM Water Data Online (Australia)"
-    base_url = "https://www.bom.gov.au/waterdata/services"
+    base_url = "https://www.bom.gov.au"
     country_codes = ["AU"]
 
     # Column names requested in returnFields for station listing
     _STATION_FIELDS = (
-        "station_no,station_name,station_latitude,"
-        "station_longitude,catchment_area,parametertype_name"
+        "station_no,station_name,station_latitude,station_longitude"
     )
 
     def __init__(self, config: dict | None = None) -> None:
@@ -59,7 +58,7 @@ class AustraliaBomConnector(BaseConnector):
     async def fetch_stations(self) -> list[Station]:
         """Return all stations that have a Water Course Discharge parameter."""
         resp = await self._get(
-            "",
+            "/waterdata/services",
             params={
                 "request": "getStationList",
                 "service": "kisters",
@@ -83,7 +82,7 @@ class AustraliaBomConnector(BaseConnector):
         ts_id = await self._resolve_ts_id(native_id)
 
         resp = await self._get(
-            "",
+            "/waterdata/services",
             params={
                 "request": "getTimeseriesValues",
                 "service": "kisters",
@@ -128,7 +127,6 @@ class AustraliaBomConnector(BaseConnector):
             idx_name = columns.index("station_name")
             idx_lat = columns.index("station_latitude")
             idx_lon = columns.index("station_longitude")
-            idx_catchment = columns.index("catchment_area")
         except ValueError as exc:
             raise DataFormatError(
                 self.slug,
@@ -144,11 +142,6 @@ class AustraliaBomConnector(BaseConnector):
 
                 lat = float(row[idx_lat]) if row[idx_lat] is not None else 0.0
                 lon = float(row[idx_lon]) if row[idx_lon] is not None else 0.0
-                catchment = (
-                    float(row[idx_catchment])
-                    if row[idx_catchment] not in (None, "", "0")
-                    else None
-                )
 
                 stations.append(Station(
                     id=self._station_id(native_id),
@@ -158,7 +151,6 @@ class AustraliaBomConnector(BaseConnector):
                     latitude=lat,
                     longitude=lon,
                     country_code="AU",
-                    catchment_area_km2=catchment,
                 ))
             except (ValueError, IndexError, TypeError) as exc:
                 logger.warning(
@@ -235,7 +227,7 @@ class AustraliaBomConnector(BaseConnector):
             return self._station_to_ts_id[native_id]
 
         resp = await self._get(
-            "",
+            "/waterdata/services",
             params={
                 "request": "getTimeseriesList",
                 "service": "kisters",
