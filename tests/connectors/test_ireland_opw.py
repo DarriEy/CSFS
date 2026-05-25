@@ -9,36 +9,35 @@ import respx
 
 from csfs.connectors.ireland_opw import IrelandOPWConnector
 
-MOCK_EPA_STATIONS = [
-    {
-        "metadata_station_name": "Ballymote Bridge",
-        "metadata_station_longitude": "-8.515",
-        "metadata_station_latitude": "54.085",
-        "L1_DATA_AVAILABLE": True,
-        "L1_ts_name": "0000125001",
-    },
-    {
-        "metadata_station_name": "Foxford",
-        "metadata_station_longitude": "-9.112",
-        "metadata_station_latitude": "53.978",
-        "L1_DATA_AVAILABLE": True,
-        "L1_ts_name": "0000230002",
-    },
-    {
-        "metadata_station_name": "Bad Station",
-        "metadata_station_longitude": "not_a_number",
-        "metadata_station_latitude": "54.0",
-        "L1_DATA_AVAILABLE": False,
-        "L1_ts_name": "BAD001",
-    },
-    {
-        "metadata_station_name": "No ID Station",
-        "metadata_station_longitude": "-8.0",
-        "metadata_station_latitude": "53.0",
-        "L1_DATA_AVAILABLE": False,
-        "L1_ts_name": "",
-    },
-]
+MOCK_GEOJSON = {
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "id": 1,
+            "properties": {"name": "Ballymote Bridge", "ref": "0000125001"},
+            "geometry": {"type": "Point", "coordinates": [-8.515, 54.085]},
+        },
+        {
+            "type": "Feature",
+            "id": 2,
+            "properties": {"name": "Foxford", "ref": "0000230002"},
+            "geometry": {"type": "Point", "coordinates": [-9.112, 53.978]},
+        },
+        {
+            "type": "Feature",
+            "id": 3,
+            "properties": {"name": "Bad Station", "ref": "BAD"},
+            "geometry": {"type": "Point", "coordinates": [-8.0, 54.0]},
+        },
+        {
+            "type": "Feature",
+            "id": 4,
+            "properties": {"name": "No Geom", "ref": "0000199001"},
+            "geometry": {},
+        },
+    ],
+}
 
 _DAILYMEAN_CSV = (
     "Date,Value,Quality\n"
@@ -56,54 +55,51 @@ def _gzip_bytes(text: str) -> bytes:
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_parses_epa_json():
-    """Stations with valid coordinates are parsed from EPA metadata."""
-    respx.get(
-        "https://epawebapp.epa.ie"
-        "/hydronet/output/internet/layers/10/index.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_EPA_STATIONS))
+async def test_fetch_stations_parses_geojson():
+    """Stations with valid coordinates and refs are parsed from GeoJSON."""
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(200, json=MOCK_GEOJSON),
+    )
 
     async with IrelandOPWConnector() as conn:
         stations = await conn.fetch_stations()
 
-    # Bad Station has invalid lon, No ID Station has empty ts_name
+    # Bad Station has ref too short, No Geom has no coordinates
     assert len(stations) == 2
     native_ids = {s.native_id for s in stations}
-    assert native_ids == {"0000125001", "0000230002"}
+    assert native_ids == {"25001", "30002"}
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_field_values():
-    """Station fields are mapped correctly from EPA metadata."""
-    respx.get(
-        "https://epawebapp.epa.ie"
-        "/hydronet/output/internet/layers/10/index.json"
-    ).mock(return_value=httpx.Response(200, json=MOCK_EPA_STATIONS))
+    """Station fields are mapped correctly from GeoJSON."""
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(200, json=MOCK_GEOJSON),
+    )
 
     async with IrelandOPWConnector() as conn:
         stations = await conn.fetch_stations()
 
-    station = next(
-        s for s in stations if s.native_id == "0000125001"
-    )
-    assert station.id == "ireland_opw:0000125001"
+    station = next(s for s in stations if s.native_id == "25001")
+    assert station.id == "ireland_opw:25001"
     assert station.provider == "ireland_opw"
     assert station.name == "Ballymote Bridge"
     assert station.country_code == "IE"
     assert station.latitude == pytest.approx(54.085)
     assert station.longitude == pytest.approx(-8.515)
-    assert station.is_active is True
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_handles_empty():
-    """An empty station list returns no stations."""
-    respx.get(
-        "https://epawebapp.epa.ie"
-        "/hydronet/output/internet/layers/10/index.json"
-    ).mock(return_value=httpx.Response(200, json=[]))
+    """Empty GeoJSON falls through to CSV; empty CSV returns no stations."""
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(200, json={"type": "FeatureCollection", "features": []}),
+    )
+    respx.get("https://waterlevel.ie/data/station_list.csv").mock(
+        return_value=httpx.Response(200, text="name,label\n"),
+    )
 
     async with IrelandOPWConnector() as conn:
         stations = await conn.fetch_stations()
@@ -118,18 +114,18 @@ async def test_fetch_observations_parses_gzip_csv():
     compressed = _gzip_bytes(_DAILYMEAN_CSV)
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=compressed))
 
     async with IrelandOPWConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ireland_opw:0000125001",
+            "ireland_opw:25001",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 4),
         )
 
     assert chunk.provider == "ireland_opw"
-    assert chunk.station_id == "ireland_opw:0000125001"
+    assert chunk.station_id == "ireland_opw:25001"
     assert len(chunk.observations) == 4
 
 
@@ -140,12 +136,12 @@ async def test_fetch_observations_quality_mapping():
     compressed = _gzip_bytes(_DAILYMEAN_CSV)
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=compressed))
 
     async with IrelandOPWConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ireland_opw:0000125001",
+            "ireland_opw:25001",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 4),
         )
@@ -168,12 +164,12 @@ async def test_fetch_observations_filters_by_date_range():
     compressed = _gzip_bytes(_DAILYMEAN_CSV)
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=compressed))
 
     async with IrelandOPWConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ireland_opw:0000125001",
+            "ireland_opw:25001",
             start=datetime(2024, 1, 2),
             end=datetime(2024, 1, 3),
         )
@@ -191,12 +187,12 @@ async def test_fetch_observations_handles_empty_csv():
     compressed = _gzip_bytes("Date,Value,Quality\n")
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=compressed))
 
     async with IrelandOPWConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ireland_opw:0000125001",
+            "ireland_opw:25001",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 12, 31),
         )
@@ -210,7 +206,7 @@ async def test_fetch_observations_bad_gzip_raises():
     """Invalid gzip data raises DataFormatError."""
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=b"not-gzip-data"))
 
     from csfs.core.exceptions import DataFormatError
@@ -218,7 +214,7 @@ async def test_fetch_observations_bad_gzip_raises():
     async with IrelandOPWConnector() as conn:
         with pytest.raises(DataFormatError, match="decompress"):
             await conn.fetch_observations(
-                "ireland_opw:0000125001",
+                "ireland_opw:25001",
                 start=datetime(2024, 1, 1),
                 end=datetime(2024, 1, 2),
             )
@@ -226,27 +222,20 @@ async def test_fetch_observations_bad_gzip_raises():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_inactive_flag():
-    """Stations with L1_DATA_AVAILABLE=False are marked inactive."""
-    data = [
-        {
-            "metadata_station_name": "Inactive Station",
-            "metadata_station_longitude": "-7.0",
-            "metadata_station_latitude": "53.5",
-            "L1_DATA_AVAILABLE": False,
-            "L1_ts_name": "INACTIVE01",
-        },
-    ]
-    respx.get(
-        "https://epawebapp.epa.ie"
-        "/hydronet/output/internet/layers/10/index.json"
-    ).mock(return_value=httpx.Response(200, json=data))
+async def test_fetch_stations_csv_fallback():
+    """Falls back to CSV when GeoJSON fails."""
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(500),
+    )
+    respx.get("https://waterlevel.ie/data/station_list.csv").mock(
+        return_value=httpx.Response(200, text="name,label\n01041,Sandy Mills\n"),
+    )
 
     async with IrelandOPWConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
-    assert stations[0].is_active is False
+    assert stations[0].native_id == "01041"
 
 
 @pytest.mark.asyncio
@@ -257,12 +246,12 @@ async def test_fetch_observations_bom_encoded_csv():
     compressed = _gzip_bytes(csv_with_bom)
     respx.get(
         "https://waterlevel.ie"
-        "/data/dailymean/0000125001_dailymean.csv.gz"
+        "/data/dailymean/25001_dailymean.csv.gz"
     ).mock(return_value=httpx.Response(200, content=compressed))
 
     async with IrelandOPWConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ireland_opw:0000125001",
+            "ireland_opw:25001",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 30),
         )

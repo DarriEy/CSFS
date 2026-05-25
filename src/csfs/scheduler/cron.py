@@ -34,6 +34,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "colombia_ideam", "taiwan_wra",
     ],
     "daily": [
+        "argentina_ina", "ireland_opw",
         "japan_mlit", "south_africa_dws", "china_mwr",
         "bosnia_fhmz", "iceland_lamahice", "ecuador_inamhi",
         "elsalvador_marn", "jamaica_wra", "iran_iwrmc",

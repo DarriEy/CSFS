@@ -38,16 +38,16 @@ class IrelandOPWConnector(BaseConnector):
     country_codes = ["IE"]
 
     async def fetch_stations(self) -> list[Station]:
-        """Return stations from OPW station_list.csv (real station codes)."""
+        """Return stations from OPW GeoJSON (has coordinates), CSV fallback."""
         try:
-            resp = await self._get("/data/station_list.csv")
-            stations = self._parse_station_csv(resp.text)
+            resp = await self._get("/geojson/")
+            stations = self._parse_geojson(resp.json())
             if stations:
                 return stations
         except Exception:
             pass
-        resp = await self._get_absolute(_EPA_METADATA_URL)
-        return self._parse_epa_stations(resp.json())
+        resp = await self._get("/data/station_list.csv")
+        return self._parse_station_csv(resp.text)
 
     async def fetch_observations(
         self,
@@ -81,6 +81,33 @@ class IrelandOPWConnector(BaseConnector):
             if resp.status_code not in (200, 206):
                 resp.raise_for_status()
             return resp
+
+    def _parse_geojson(self, data: dict) -> list[Station]:
+        """Parse the OPW GeoJSON station feed with real coordinates."""
+        stations: list[Station] = []
+        for feat in data.get("features", []):
+            props = feat.get("properties", {})
+            ref = props.get("ref", "")
+            if not ref or len(ref) < 5:
+                continue
+            native_id = ref[-5:]
+            geom = feat.get("geometry", {})
+            coords = geom.get("coordinates", [])
+            if len(coords) < 2:
+                continue
+            try:
+                stations.append(Station(
+                    id=self._station_id(native_id),
+                    provider=self.slug,
+                    native_id=native_id,
+                    name=props.get("name") or native_id,
+                    latitude=float(coords[1]),
+                    longitude=float(coords[0]),
+                    country_code="IE",
+                ))
+            except (ValueError, KeyError):
+                continue
+        return stations
 
     def _parse_station_csv(self, text: str) -> list[Station]:
         """Parse station_list.csv: name,label format."""

@@ -83,7 +83,7 @@ class ArgentinaINAConnector(BaseConnector):
                     id=self._station_id(native_id),
                     provider=self.slug,
                     native_id=native_id,
-                    name=entry.get("nombre", native_id),
+                    name=entry.get("nombre") or native_id,
                     latitude=lat,
                     longitude=lon,
                     country_code="AR",
