@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -13,12 +14,15 @@ from csfs.store.base import BaseStore
 
 logger = structlog.get_logger()
 
+DEFAULT_CONCURRENCY = 10
+
 
 async def run_acquisition(
     store: BaseStore,
     providers: list[str] | None = None,
     lookback_hours: int = 48,
     max_stations: int | None = None,
+    concurrency: int = DEFAULT_CONCURRENCY,
 ) -> dict[str, dict]:
     """Run one acquisition cycle across selected (or all) providers."""
     discover()
@@ -42,24 +46,49 @@ async def run_acquisition(
                 end = datetime.now(UTC)
                 start = end - timedelta(hours=lookback_hours)
                 limit = max_stations or len(stations)
+                target_stations = stations[:limit]
 
-                for i, station in enumerate(stations[:limit]):
-                    try:
+                sem = asyncio.Semaphore(concurrency)
+
+                async def _fetch_one(station):
+                    async with sem:
                         latest = await store.get_latest_timestamp(station.id)
                         fetch_start = latest if latest else start
-                        chunk = await conn.fetch_observations(station.id, fetch_start, end)
-                        n_obs = await store.append_observations(chunk)
-                        total_obs += n_obs
-                    except Exception as e:
-                        failed += 1
-                        if failed <= 5:
-                            log.warning("station_fetch_failed", station=station.id, error=str(e)[:80])
-                        continue
+                        return await conn.fetch_observations(
+                            station.id, fetch_start, end,
+                        )
 
-                    if (i + 1) % 100 == 0:
-                        log.info("progress", fetched=i + 1, total=limit, obs=total_obs, failed=failed)
+                batch_size = max(concurrency * 5, 50)
+                for batch_start in range(0, len(target_stations), batch_size):
+                    batch = target_stations[batch_start:batch_start + batch_size]
+                    tasks = [_fetch_one(s) for s in batch]
+                    batch_results = await asyncio.gather(
+                        *tasks, return_exceptions=True,
+                    )
 
-                fetched = min(limit, len(stations))
+                    for station, result in zip(batch, batch_results):
+                        if isinstance(result, BaseException):
+                            failed += 1
+                            if failed <= 5:
+                                log.warning(
+                                    "station_fetch_failed",
+                                    station=station.id,
+                                    error=str(result)[:80],
+                                )
+                        else:
+                            n_obs = await store.append_observations(result)
+                            total_obs += n_obs
+
+                    done = min(batch_start + len(batch), len(target_stations))
+                    log.info(
+                        "progress",
+                        fetched=done,
+                        total=len(target_stations),
+                        obs=total_obs,
+                        failed=failed,
+                    )
+
+                fetched = len(target_stations)
 
                 if failed > 5:
                     log.warning("station_failures_summary", failed=failed, fetched=fetched)

@@ -34,6 +34,7 @@ def cli(ctx: click.Context, db: str) -> None:
     help="Max stations to fetch obs for (default: all)",
 )
 @click.option("--tier", "-t", default=None, help="Fetch a predefined tier: realtime, hourly, daily, weekly")
+@click.option("--concurrency", "-j", default=10, type=int, help="Max parallel station fetches (default: 10)")
 @click.pass_context
 def fetch(
     ctx: click.Context,
@@ -41,6 +42,7 @@ def fetch(
     lookback: int,
     max_stations: int | None,
     tier: str | None,
+    concurrency: int,
 ) -> None:
     """Run one acquisition cycle."""
     from csfs.scheduler.cron import PROVIDER_TIERS, TIER_LOOKBACK
@@ -63,6 +65,7 @@ def fetch(
                 providers=target_providers,
                 lookback_hours=lookback,
                 max_stations=max_stations,
+                concurrency=concurrency,
             )
             total_stations = 0
             total_obs = 0

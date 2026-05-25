@@ -62,6 +62,7 @@ async def run_scheduled_cycle(
     tier: str | None = None,
     providers: list[str] | None = None,
     max_stations: int | None = None,
+    concurrency: int = 10,
 ) -> dict[str, dict]:
     """Run one acquisition cycle for a tier or specific providers."""
     if tier and not providers:
@@ -74,6 +75,7 @@ async def run_scheduled_cycle(
             providers=providers,
             lookback_hours=lookback,
             max_stations=max_stations,
+            concurrency=concurrency,
         )
 
 
