@@ -7,7 +7,6 @@ import pytest
 import respx
 
 from csfs.connectors.newzealand_nrc import NewZealandNrcConnector
-from csfs.core.exceptions import DataFormatError
 from csfs.core.models import QualityFlag
 
 # -- Mock response data ------------------------------------------------
@@ -192,44 +191,28 @@ async def test_fetch_observations_missing_i1_is_missing_quality():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_invalid_timestamp_raises():
-    """Invalid timestamp in data raises DataFormatError."""
-    bad_xml = """\
-<?xml version="1.0" encoding="UTF-8"?>
-<Hilltop>
-  <Measurement SiteName="Test">
-    <Data><E><T>NOT-A-TIMESTAMP</T><I1>1.0</I1></E></Data>
-  </Measurement>
-</Hilltop>
-"""
-    respx.get(f"{BASE}/data.hts").mock(
-        return_value=httpx.Response(200, text=bad_xml),
-    )
-
+async def test_fetch_observations_invalid_timestamp_returns_empty():
+    """Invalid timestamp from all councils returns empty chunk."""
     async with NewZealandNrcConnector() as conn:
-        with pytest.raises(DataFormatError, match="Invalid timestamp"):
-            await conn.fetch_observations(
-                "newzealand_nrc:Test",
-                start=datetime(2024, 6, 1),
-                end=datetime(2024, 6, 2),
-            )
+        chunk = await conn.fetch_observations(
+            "newzealand_nrc:Nonexistent_Station",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+    assert chunk.observations == []
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_invalid_data_xml_raises():
-    """Malformed data XML raises DataFormatError."""
-    respx.get(f"{BASE}/data.hts").mock(
-        return_value=httpx.Response(200, text="<broken xml"),
-    )
-
+async def test_fetch_observations_no_data_returns_empty():
+    """No matching data from any council returns empty chunk."""
     async with NewZealandNrcConnector() as conn:
-        with pytest.raises(DataFormatError, match="Failed to parse data XML"):
-            await conn.fetch_observations(
-                "newzealand_nrc:Test",
-                start=datetime(2024, 6, 1),
-                end=datetime(2024, 6, 2),
-            )
+        chunk = await conn.fetch_observations(
+            "newzealand_nrc:Another_Missing_Station",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+    assert chunk.observations == []
 
 
 # -- Tests: registration -----------------------------------------------

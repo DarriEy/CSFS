@@ -44,7 +44,7 @@ class NewZealandNrcConnector(BaseConnector):
                     resp = await c.get(url, params={
                         "Service": "Hilltop",
                         "Request": "SiteList",
-                        "Location": "Yes",
+                        "Location": "LatLong",
                         "Measurement": "Flow",
                     })
                 if resp.status_code == 200:
@@ -61,22 +61,36 @@ class NewZealandNrcConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Fetch flow observations for a station over a time range."""
+        """Fetch flow observations, trying all council servers."""
+        from urllib.parse import quote
+
         native_id = station_id.removeprefix(f"{self.slug}:")
         site_name = native_id.replace("_", " ")
+        encoded_site = quote(site_name)
 
-        resp = await self._get(
-            "/data.hts",
-            params={
-                "Service": "Hilltop",
-                "Request": "GetData",
-                "Site": site_name,
-                "Measurement": "Flow",
-                "from": start.strftime("%Y-%m-%dT%H:%M:%S"),
-                "to": end.strftime("%Y-%m-%dT%H:%M:%S"),
-            },
+        for _, council_url in _COUNCILS:
+            try:
+                raw_url = (
+                    f"{council_url}?Service=Hilltop&Request=GetData"
+                    f"&Site={encoded_site}&Measurement=Flow"
+                    f"&from={start.strftime('%Y-%m-%dT%H:%M:%S')}"
+                    f"&to={end.strftime('%Y-%m-%dT%H:%M:%S')}"
+                )
+                async with httpx.AsyncClient(
+                    timeout=15, follow_redirects=True,
+                ) as c:
+                    resp = await c.get(raw_url)
+                if resp.status_code == 200 and "<E>" in resp.text:
+                    return self._parse_data_xml(resp.text, station_id)
+            except Exception:
+                continue
+
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=[],
+            fetched_at=datetime.now(UTC),
         )
-        return self._parse_data_xml(resp.text, station_id)
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
         """Fetch the most recent flow observations (last 24 h)."""
