@@ -24,7 +24,7 @@ class UKEnvironmentAgencyConnector(BaseConnector):
     async def fetch_stations(self) -> list[Station]:
         stations = []
         url: str | None = "/id/stations"
-        params: dict | None = {"observedProperty": "waterFlow", "_limit": 500}
+        params: dict | None = {"observedProperty": "waterFlow", "_limit": 10000}
 
         while url:
             resp = await self._get(url, params=params)

@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
-"""NRC Hilltop connector — Northland Regional Council (New Zealand) flow data."""
+"""New Zealand Hilltop connector — multiple regional council flow data."""
 
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 
+import httpx
 import structlog
 
 from csfs.connectors.base import BaseConnector
@@ -17,27 +18,42 @@ from csfs.core.registry import register
 logger = structlog.get_logger()
 
 
+_COUNCILS = [
+    ("NRC", "https://hilltop.nrc.govt.nz/data.hts"),
+    ("Horizons", "https://hilltopserver.horizons.govt.nz/boo.hts"),
+    ("GWRC", "https://hilltop.gw.govt.nz/Data.hts"),
+    ("ORC", "https://gisdata.orc.govt.nz/hilltop/data.hts"),
+]
+
+
 @register("newzealand_nrc")
 class NewZealandNrcConnector(BaseConnector):
-    """Connector for the NRC Hilltop server (Northland, New Zealand)."""
+    """Connector for NZ regional council Hilltop servers."""
 
     slug = "newzealand_nrc"
-    display_name = "NRC Hilltop (New Zealand)"
+    display_name = "NZ Hilltop (multi-council)"
     base_url = "https://hilltop.nrc.govt.nz"
     country_codes = ["NZ"]
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all stations that have Flow measurement."""
-        resp = await self._get(
-            "/data.hts",
-            params={
-                "Service": "Hilltop",
-                "Request": "SiteList",
-                "Location": "Yes",
-                "Measurement": "Flow",
-            },
-        )
-        return self._parse_station_xml(resp.text)
+        """Return flow stations from all reachable NZ councils."""
+        all_stations: list[Station] = []
+        for council_name, url in _COUNCILS:
+            try:
+                async with httpx.AsyncClient(timeout=15, follow_redirects=True) as c:
+                    resp = await c.get(url, params={
+                        "Service": "Hilltop",
+                        "Request": "SiteList",
+                        "Location": "Yes",
+                        "Measurement": "Flow",
+                    })
+                if resp.status_code == 200:
+                    stations = self._parse_station_xml(resp.text)
+                    logger.info("council_fetched", council=council_name, count=len(stations))
+                    all_stations.extend(stations)
+            except Exception:
+                logger.warning("council_unreachable", council=council_name)
+        return all_stations
 
     async def fetch_observations(
         self,

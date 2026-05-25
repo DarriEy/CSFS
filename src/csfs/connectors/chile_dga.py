@@ -58,29 +58,51 @@ class ChileDgaConnector(BaseConnector):
     # -----------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return hydrometric stations from the DGA ArcGIS service."""
-        try:
-            resp = await self._get(
-                "/arcgis/rest/services/DGA"
-                "/Red_Hidrometrica/MapServer/0/query",
-                params=_QUERY_PARAMS,
-            )
-        except httpx.HTTPStatusError as exc:
-            raise ConnectorError(
-                self.slug,
-                f"Failed to fetch station list: "
-                f"HTTP {exc.response.status_code}",
-            ) from exc
+        """Return hydrometric stations from the DGA ArcGIS service.
 
-        data = resp.json()
+        Paginates using resultOffset to fetch all ~5,000 stations.
+        """
+        all_features: list[dict] = []
+        offset = 0
+        page_size = 1000
+        path = "/arcgis/rest/services/DGA/Red_Hidrometrica/MapServer/0/query"
 
-        # ArcGIS may return an "error" key instead of features
-        if "error" in data:
-            msg = data["error"].get("message", "Unknown ArcGIS error")
-            raise ConnectorError(self.slug, f"ArcGIS error: {msg}")
+        while True:
+            params = {
+                "where": "1=1",
+                "outFields": "*",
+                "f": "json",
+                "resultRecordCount": str(page_size),
+                "resultOffset": str(offset),
+            }
+            try:
+                resp = await self._get(path, params=params)
+            except httpx.HTTPStatusError as exc:
+                if not all_features:
+                    raise ConnectorError(
+                        self.slug,
+                        f"Failed to fetch stations: HTTP {exc.response.status_code}",
+                    ) from exc
+                break
 
-        features = data.get("features", [])
-        return self._parse_features(features)
+            data = resp.json()
+            if "error" in data:
+                if not all_features:
+                    msg = data["error"].get("message", "Unknown ArcGIS error")
+                    raise ConnectorError(self.slug, f"ArcGIS error: {msg}")
+                break
+
+            features = data.get("features", [])
+            if not features:
+                break
+
+            all_features.extend(features)
+            if len(features) < page_size:
+                break
+            offset += page_size
+
+        logger.info("stations_fetched", provider=self.slug, count=len(all_features))
+        return self._parse_features(all_features)
 
     async def fetch_observations(
         self,

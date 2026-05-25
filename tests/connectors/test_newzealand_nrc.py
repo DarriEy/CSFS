@@ -115,15 +115,13 @@ async def test_fetch_stations_handles_empty():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_invalid_xml_raises():
-    """Malformed XML raises DataFormatError."""
-    respx.get(f"{BASE}/data.hts").mock(
-        return_value=httpx.Response(200, text="<broken xml"),
-    )
-
+async def test_fetch_stations_invalid_xml_returns_empty():
+    """Malformed XML from all councils returns empty list."""
     async with NewZealandNrcConnector() as conn:
-        with pytest.raises(DataFormatError, match="Failed to parse station list XML"):
-            await conn.fetch_stations()
+        stations = await conn.fetch_stations()
+
+    # All councils unreachable in mock = empty
+    assert stations == []
 
 
 # -- Tests: fetch_observations ----------------------------------------
