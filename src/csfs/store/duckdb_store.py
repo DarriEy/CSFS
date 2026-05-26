@@ -39,6 +39,23 @@ CREATE TABLE IF NOT EXISTS observations (
 
 CREATE INDEX IF NOT EXISTS idx_stations_provider ON stations (provider);
 CREATE INDEX IF NOT EXISTS idx_observations_fetched ON observations (fetched_at);
+
+CREATE TABLE IF NOT EXISTS acquisition_log (
+    provider        VARCHAR NOT NULL,
+    started_at      TIMESTAMPTZ NOT NULL,
+    duration_s      DOUBLE NOT NULL,
+    status          VARCHAR NOT NULL,
+    stations        INTEGER NOT NULL DEFAULT 0,
+    observations    INTEGER NOT NULL DEFAULT 0,
+    fetched         INTEGER NOT NULL DEFAULT 0,
+    failed          INTEGER NOT NULL DEFAULT 0,
+    retried         INTEGER NOT NULL DEFAULT 0,
+    recovered       INTEGER NOT NULL DEFAULT 0,
+    error_message   VARCHAR,
+    PRIMARY KEY (provider, started_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acqlog_provider ON acquisition_log (provider, started_at);
 """
 
 
@@ -161,3 +178,42 @@ class DuckDBStore(BaseStore):
             [station_id],
         ).fetchone()
         return result[0] if result and result[0] else None
+
+    async def record_acquisition(
+        self,
+        provider: str,
+        started_at: datetime,
+        duration_s: float,
+        status: str,
+        stations: int = 0,
+        observations: int = 0,
+        fetched: int = 0,
+        failed: int = 0,
+        retried: int = 0,
+        recovered: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        self.conn.execute(
+            """INSERT INTO acquisition_log
+                (provider, started_at, duration_s, status, stations, observations,
+                 fetched, failed, retried, recovered, error_message)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [provider, started_at, duration_s, status, stations, observations,
+             fetched, failed, retried, recovered, error_message],
+        )
+
+    async def get_acquisition_history(
+        self,
+        provider: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        query = "SELECT * FROM acquisition_log"
+        params: list = []
+        if provider:
+            query += " WHERE provider = ?"
+            params.append(provider)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params.append(limit)
+        rows = self.conn.execute(query, params).fetchall()
+        columns = [desc[0] for desc in self.conn.description]
+        return [dict(zip(columns, row)) for row in rows]

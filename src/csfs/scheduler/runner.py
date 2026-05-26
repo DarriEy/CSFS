@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import UTC, datetime, timedelta
 
 import structlog
@@ -31,6 +32,8 @@ async def run_acquisition(
 
     for slug in slugs:
         log = logger.bind(provider=slug)
+        t0 = time.monotonic()
+        started_at = datetime.now(UTC)
         try:
             connector_cls = get_connector(slug)
             async with connector_cls() as conn:
@@ -43,6 +46,7 @@ async def run_acquisition(
 
                 total_obs = 0
                 failed = 0
+                failed_stations: list = []
                 end = datetime.now(UTC)
                 start = end - timedelta(hours=lookback_hours)
                 limit = max_stations or len(stations)
@@ -69,6 +73,7 @@ async def run_acquisition(
                     for station, result in zip(batch, batch_results):
                         if isinstance(result, BaseException):
                             failed += 1
+                            failed_stations.append(station)
                             if failed <= 5:
                                 log.warning(
                                     "station_fetch_failed",
@@ -88,6 +93,41 @@ async def run_acquisition(
                         failed=failed,
                     )
 
+                retried = 0
+                recovered = 0
+                if failed_stations:
+                    retried = len(failed_stations)
+                    log.info("retrying_failed_stations", count=retried)
+                    retry_sem = asyncio.Semaphore(max(concurrency // 2, 2))
+
+                    async def _retry_one(station, _sem=retry_sem, _start=start, _end=end):
+                        async with _sem:
+                            latest = await store.get_latest_timestamp(station.id)
+                            fetch_start = latest if latest else _start
+                            return await conn.fetch_observations(
+                                station.id, fetch_start, _end,
+                            )
+
+                    retry_results = await asyncio.gather(
+                        *[_retry_one(s) for s in failed_stations],
+                        return_exceptions=True,
+                    )
+                    for station, result in zip(failed_stations, retry_results):
+                        if isinstance(result, BaseException):
+                            log.warning(
+                                "station_retry_failed",
+                                station=station.id,
+                                error=str(result)[:80],
+                            )
+                        else:
+                            recovered += 1
+                            failed -= 1
+                            n_obs = await store.append_observations(result)
+                            total_obs += n_obs
+
+                    if recovered:
+                        log.info("retry_recovered", recovered=recovered, still_failed=failed)
+
                 fetched = len(target_stations)
 
                 if failed > 5:
@@ -103,12 +143,16 @@ async def run_acquisition(
                 else:
                     status = "ok"
 
+                duration_s = time.monotonic() - t0
                 log.info(
                     "acquisition_complete",
                     stations=n_stations,
                     observations=total_obs,
                     fetched=fetched,
                     failed=failed,
+                    retried=retried,
+                    recovered=recovered,
+                    duration_s=round(duration_s, 1),
                     status=status,
                 )
                 results[slug] = {
@@ -116,11 +160,40 @@ async def run_acquisition(
                     "observations": total_obs,
                     "fetched": fetched,
                     "failed": failed,
+                    "retried": retried,
+                    "recovered": recovered,
                     "status": status,
                 }
 
+                try:
+                    await store.record_acquisition(
+                        provider=slug,
+                        started_at=started_at,
+                        duration_s=duration_s,
+                        status=status,
+                        stations=n_stations,
+                        observations=total_obs,
+                        fetched=fetched,
+                        failed=failed,
+                        retried=retried,
+                        recovered=recovered,
+                    )
+                except Exception:
+                    log.warning("acquisition_log_write_failed", exc_info=True)
+
         except Exception as e:
+            duration_s = time.monotonic() - t0
             log.error("acquisition_failed", error=str(e))
             results[slug] = {"status": "error", "error": str(e)}
+            try:
+                await store.record_acquisition(
+                    provider=slug,
+                    started_at=started_at,
+                    duration_s=duration_s,
+                    status="error",
+                    error_message=str(e)[:500],
+                )
+            except Exception:
+                log.warning("acquisition_log_write_failed", exc_info=True)
 
     return results

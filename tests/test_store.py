@@ -1,6 +1,6 @@
 """Tests for DuckDB store."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -54,3 +54,40 @@ async def test_deduplication(store: DuckDBStore, sample_station: Station, sample
 
     obs = await store.get_observations("usgs:01646500")
     assert len(obs) == 2  # no duplicates
+
+
+@pytest.mark.asyncio
+async def test_record_and_query_acquisition_log(store: DuckDBStore):
+    t1 = datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
+    t2 = datetime(2024, 6, 2, 12, 0, tzinfo=UTC)
+    t3 = datetime(2024, 6, 3, 12, 0, tzinfo=UTC)
+
+    await store.record_acquisition("usgs", t1, 45.0, "ok", stations=100, observations=5000, fetched=100, failed=0)
+    await store.record_acquisition("usgs", t2, 50.0, "degraded", stations=100, observations=3000, fetched=100, failed=10, retried=10, recovered=3)
+    await store.record_acquisition("uk_ea", t3, 30.0, "error", error_message="Connection refused")
+
+    history = await store.get_acquisition_history()
+    assert len(history) == 3
+    assert history[0]["provider"] == "uk_ea"
+    assert history[0]["status"] == "error"
+    assert history[0]["error_message"] == "Connection refused"
+
+    usgs_history = await store.get_acquisition_history(provider="usgs")
+    assert len(usgs_history) == 2
+    assert usgs_history[0]["status"] == "degraded"
+    assert usgs_history[0]["recovered"] == 3
+    assert usgs_history[1]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_acquisition_log_limit(store: DuckDBStore):
+    for i in range(10):
+        t = datetime(2024, 6, 1, i, 0, tzinfo=UTC)
+        await store.record_acquisition("usgs", t, 10.0, "ok", stations=50, observations=1000, fetched=50, failed=0)
+
+    history = await store.get_acquisition_history(provider="usgs", limit=3)
+    assert len(history) == 3
+    newest = history[0]["started_at"]
+    if hasattr(newest, 'astimezone'):
+        newest = newest.astimezone(UTC)
+    assert newest.hour == 9

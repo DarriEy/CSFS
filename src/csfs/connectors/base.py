@@ -94,8 +94,22 @@ class BaseConnector(ABC):
             try:
                 chunk = await self.fetch_observations(sid, start, end)
                 yield chunk
-            except ConnectorError:
-                logger.warning("fetch_failed", provider=self.slug, station=sid)
+            except (
+                ConnectorError,
+                httpx.HTTPStatusError,
+                httpx.ConnectError,
+                httpx.ReadTimeout,
+                httpx.RemoteProtocolError,
+            ) as exc:
+                logger.warning(
+                    "fetch_failed", provider=self.slug, station=sid,
+                    error_type=type(exc).__name__, error=str(exc)[:120],
+                )
+            except Exception as exc:
+                logger.error(
+                    "fetch_unexpected_error", provider=self.slug, station=sid,
+                    error_type=type(exc).__name__, error=str(exc)[:120],
+                )
 
     _RETRYABLE = (RateLimitError, httpx.RemoteProtocolError, httpx.ConnectError, httpx.ReadTimeout)
 

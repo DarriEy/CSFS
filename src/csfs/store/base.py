@@ -42,3 +42,28 @@ class BaseStore(ABC):
     @abstractmethod
     async def get_latest_timestamp(self, station_id: str) -> datetime | None:
         """Return the most recent observation timestamp for incremental fetches."""
+
+    @abstractmethod
+    async def record_acquisition(
+        self,
+        provider: str,
+        started_at: datetime,
+        duration_s: float,
+        status: str,
+        stations: int = 0,
+        observations: int = 0,
+        fetched: int = 0,
+        failed: int = 0,
+        retried: int = 0,
+        recovered: int = 0,
+        error_message: str | None = None,
+    ) -> None:
+        """Persist the outcome of one provider acquisition run."""
+
+    @abstractmethod
+    async def get_acquisition_history(
+        self,
+        provider: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Return recent acquisition log entries, newest first."""

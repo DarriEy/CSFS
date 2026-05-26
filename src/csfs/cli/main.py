@@ -155,8 +155,9 @@ def stations(ctx: click.Context, provider: str | None, country: str | None) -> N
 
 
 @cli.command()
+@click.option("--history", "-h", default=0, type=int, help="Show last N acquisition runs per provider")
 @click.pass_context
-def status(ctx: click.Context) -> None:
+def status(ctx: click.Context, history: int) -> None:
     """Show database status and provider coverage."""
     import duckdb
 
@@ -208,6 +209,116 @@ def status(ctx: click.Context) -> None:
     r = conn.execute("SELECT COUNT(DISTINCT country_code) FROM stations").fetchone()
     countries = r[0] if r else 0
     click.echo(f"\n  {countries} countries represented")
+
+    has_acq_log = conn.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name = 'acquisition_log'"
+    ).fetchone()[0]
+    if not has_acq_log:
+        conn.close()
+        return
+
+    acq_count = conn.execute("SELECT COUNT(*) FROM acquisition_log").fetchone()[0]
+    if acq_count == 0:
+        conn.close()
+        return
+
+    click.echo(f"\n  Acquisition health ({acq_count} runs logged)")
+    click.echo(
+        f"  {'PROVIDER':<25s}  {'LAST RUN':>10s}  {'STATUS':<10s}  "
+        f"{'TREND':<12s}  {'SINCE OK':>10s}"
+    )
+    click.echo(
+        f"  {'─' * 25}  {'─' * 10}  {'─' * 10}  "
+        f"{'─' * 12}  {'─' * 10}"
+    )
+
+    now_naive = now.replace(tzinfo=None) if hasattr(now, 'replace') else now
+    providers_acq = conn.execute(
+        "SELECT DISTINCT provider FROM acquisition_log ORDER BY provider"
+    ).fetchall()
+
+    for (prov,) in providers_acq:
+        rows = conn.execute(
+            "SELECT status, failed, fetched, started_at FROM acquisition_log "
+            "WHERE provider = ? ORDER BY started_at DESC LIMIT 5",
+            [prov],
+        ).fetchall()
+        if not rows:
+            continue
+
+        last_status = rows[0][0]
+        last_started = rows[0][3]
+        last_naive = last_started.replace(tzinfo=None) if hasattr(last_started, 'replace') else last_started
+        age_h = (now_naive - last_naive).total_seconds() / 3600
+        if age_h < 1:
+            last_ago = f"{int(age_h * 60)}m ago"
+        elif age_h < 48:
+            last_ago = f"{int(age_h)}h ago"
+        else:
+            last_ago = f"{int(age_h / 24)}d ago"
+
+        last_ok = conn.execute(
+            "SELECT started_at FROM acquisition_log "
+            "WHERE provider = ? AND status = 'ok' ORDER BY started_at DESC LIMIT 1",
+            [prov],
+        ).fetchone()
+        if last_ok:
+            ok_naive = last_ok[0].replace(tzinfo=None) if hasattr(last_ok[0], 'replace') else last_ok[0]
+            ok_h = (now_naive - ok_naive).total_seconds() / 3600
+            if ok_h < 1:
+                since_ok = f"{int(ok_h * 60)}m ago"
+            elif ok_h < 48:
+                since_ok = f"{int(ok_h)}h ago"
+            else:
+                since_ok = f"{int(ok_h / 24)}d ago"
+        else:
+            since_ok = "never"
+
+        if len(rows) >= 3:
+            fail_rates = [r[1] / max(r[2], 1) for r in rows]
+            if fail_rates[0] > fail_rates[-1] + 0.1:
+                trend = "worsening"
+            elif fail_rates[0] < fail_rates[-1] - 0.1:
+                trend = "improving"
+            else:
+                trend = "stable"
+        else:
+            trend = "—"
+
+        click.echo(
+            f"  {prov:<25s}  {last_ago:>10s}  {last_status:<10s}  "
+            f"{trend:<12s}  {since_ok:>10s}"
+        )
+
+    if history > 0:
+        click.echo(f"\n  Detailed history (last {history} per provider)")
+        click.echo(
+            f"  {'PROVIDER':<20s}  {'STARTED':<20s}  {'STATUS':<8s}  "
+            f"{'DUR':>5s}  {'STA':>5s}  {'OBS':>8s}  "
+            f"{'FAIL':>5s}  {'RETRY':>5s}  {'RECOV':>5s}  ERROR"
+        )
+        sep = f"  {'─' * 20}  {'─' * 20}  {'─' * 8}  {'─' * 5}  {'─' * 5}  {'─' * 8}"
+        click.echo(f"{sep}  {'─' * 5}  {'─' * 5}  {'─' * 5}  {'─' * 20}")
+        for (prov,) in providers_acq:
+            rows = conn.execute(
+                "SELECT provider, started_at, status, duration_s, stations, "
+                "observations, failed, retried, recovered, error_message "
+                "FROM acquisition_log WHERE provider = ? "
+                "ORDER BY started_at DESC LIMIT ?",
+                [prov, history],
+            ).fetchall()
+            for row in rows:
+                p, sa, st, dur, sta, obs, fail, retr, recov, err = row
+                sa_str = str(sa)[:16]
+                dur_str = f"{dur:.0f}s"
+                err_str = (err[:30] + "…") if err and len(err) > 30 else (err or "")
+                click.echo(
+                    f"  {p:<20s}  {sa_str:<20s}  {st:<8s}  "
+                    f"{dur_str:>5s}  {sta:>5}  {obs:>8}  "
+                    f"{fail:>5}  {retr:>5}  {recov:>5}  {err_str}"
+                )
+
     conn.close()
 
 
