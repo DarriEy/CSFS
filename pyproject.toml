@@ -66,6 +66,21 @@ ignore = ["B905"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+addopts = "--cov=csfs --cov-report=term-missing:skip-covered --cov-report=html:htmlcov"
+
+[tool.coverage.run]
+source = ["csfs"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 0
+precision = 0
+sort = "Cover"
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
 
 [tool.mypy]
 python_version = "3.11"
