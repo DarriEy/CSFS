@@ -31,7 +31,8 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "hourly": [
         "norway_nve", "sweden_smhi", "switzerland_bafu",
         "australia_bom", "finland_syke", "greece_openhi",
-        "colombia_ideam", "taiwan_wra",
+        "colombia_ideam", "taiwan_wra", "newzealand_nrc",
+        "lithuania_meteo",
     ],
     "daily": [
         "argentina_ina", "ireland_opw",
