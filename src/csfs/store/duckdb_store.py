@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS observations (
     fetched_at      TIMESTAMP DEFAULT current_timestamp,
     PRIMARY KEY (station_id, timestamp)
 );
+
+CREATE INDEX IF NOT EXISTS idx_stations_provider ON stations (provider);
+CREATE INDEX IF NOT EXISTS idx_observations_fetched ON observations (fetched_at);
 """
 
 
