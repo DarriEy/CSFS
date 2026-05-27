@@ -28,9 +28,9 @@ def test_timeseries_chunk_observation_count(sample_chunk: TimeSeriesChunk):
 
 
 def test_registry_get_unknown_raises():
-    from csfs.core.registry import get_connector
-
     import pytest
+
+    from csfs.core.registry import get_connector
     with pytest.raises(KeyError, match="No connector registered"):
         get_connector("nonexistent_provider_xyz")
 

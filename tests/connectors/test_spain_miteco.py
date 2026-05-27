@@ -495,7 +495,6 @@ async def test_fetch_observations_zip_non_csv_skipped(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_find_column_returns_none_for_no_match():
     """_find_column returns None when no candidates match."""
-    conn = SpainMITECOConnector()
     result = SpainMITECOConnector._find_column(
         {"foo": "Foo", "bar": "Bar"},
         ("baz", "qux"),

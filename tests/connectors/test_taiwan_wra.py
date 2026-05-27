@@ -1,6 +1,6 @@
 """Tests for the WRA (Taiwan) connector with mocked HTTP responses."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import httpx
 import pytest

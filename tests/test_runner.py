@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -70,7 +70,8 @@ async def test_retry_recovers_transient_failures(store: DuckDBStore):
     mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_conn.__aexit__ = AsyncMock(return_value=False)
 
-    mock_cls = lambda **kw: mock_conn
+    def mock_cls(**kw):
+        return mock_conn
 
     with (
         patch("csfs.scheduler.runner.discover"),
@@ -105,7 +106,8 @@ async def test_permanent_failure_stays_failed(store: DuckDBStore):
     mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_conn.__aexit__ = AsyncMock(return_value=False)
 
-    mock_cls = lambda **kw: mock_conn
+    def mock_cls(**kw):
+        return mock_conn
 
     with (
         patch("csfs.scheduler.runner.discover"),
@@ -137,7 +139,8 @@ async def test_acquisition_log_persisted(store: DuckDBStore):
     mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_conn.__aexit__ = AsyncMock(return_value=False)
 
-    mock_cls = lambda **kw: mock_conn
+    def mock_cls(**kw):
+        return mock_conn
 
     with (
         patch("csfs.scheduler.runner.discover"),

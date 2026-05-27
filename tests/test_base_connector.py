@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.exceptions import ConnectorError, RateLimitError
+from csfs.core.exceptions import ConnectorError
 from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 
 

@@ -1,6 +1,5 @@
 """Tests for the CSFS config loader."""
 
-from pathlib import Path
 
 from csfs.core.config import load_config
 

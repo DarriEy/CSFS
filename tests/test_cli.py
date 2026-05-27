@@ -54,7 +54,9 @@ def test_db(tmp_path):
     # Insert acquisition_log rows
     conn.execute("""
         INSERT INTO acquisition_log
-            (provider, started_at, duration_s, status, stations, observations, fetched, failed, retried, recovered, error_message)
+            (provider, started_at, duration_s, status,
+             stations, observations, fetched, failed,
+             retried, recovered, error_message)
         VALUES
             ('usgs',  ?, 45.0, 'ok',       100, 5000, 100, 0, 0, 0, NULL),
             ('usgs',  ?, 50.0, 'degraded', 100, 3000, 100, 10, 10, 3, NULL),
@@ -194,7 +196,10 @@ def test_status_trend_calculation(runner, test_db):
     assert result.exit_code == 0
     # usgs has 3 runs, so should have a computed trend (not "---")
     lines = result.output.split("\n")
-    usgs_acq_lines = [l for l in lines if "usgs" in l and ("stable" in l or "improving" in l or "worsening" in l)]
+    usgs_acq_lines = [
+        line for line in lines
+        if "usgs" in line and ("stable" in line or "improving" in line or "worsening" in line)
+    ]
     assert len(usgs_acq_lines) >= 1, "Expected usgs to have a computed trend"
 
 
@@ -218,9 +223,13 @@ def test_fetch_calls_run_acquisition(runner, tmp_path):
         }
     }
 
-    with patch("csfs.cli.main.click") as _:
-        # We need to patch run_acquisition inside the fetch command's local import
-        with patch("csfs.scheduler.runner.run_acquisition", new_callable=AsyncMock, return_value=mock_results) as mock_run:
+    with (
+        patch("csfs.cli.main.click"),
+        patch(
+            "csfs.scheduler.runner.run_acquisition",
+            new_callable=AsyncMock, return_value=mock_results,
+        ) as mock_run,
+    ):
             result = runner.invoke(cli, [
                 "--db", str(db_path),
                 "fetch", "-p", "usgs", "--lookback", "24",

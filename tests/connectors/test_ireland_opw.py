@@ -1,7 +1,7 @@
 """Tests for the Ireland OPW connector with mocked HTTP responses."""
 
 import gzip
-from datetime import UTC, datetime
+from datetime import datetime
 
 import httpx
 import pytest

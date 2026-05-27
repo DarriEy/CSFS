@@ -276,7 +276,6 @@ async def test_parse_stations_skips_no_uuid():
 @respx.mock
 async def test_parse_stations_value_error_skipped():
     """Stations that cause ValueError during parsing are skipped (lines 105-112)."""
-    from csfs.core.exceptions import DataFormatError
 
     conn = GermanyPegelonlineConnector()
     # Test _parse_stations with an entry that might cause issues

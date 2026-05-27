@@ -63,6 +63,12 @@ line-length = 120
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
 ignore = ["B905"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/csfs/connectors/estreams.py" = ["E501"]
+"src/csfs/connectors/gsim.py" = ["E501"]
+"src/csfs/connectors/israel_caravan.py" = ["E501"]
+"src/csfs/connectors/panama_stri.py" = ["E501"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

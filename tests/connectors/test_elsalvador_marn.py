@@ -433,7 +433,6 @@ async def test_station_parse_failed_logged():
 @respx.mock
 async def test_aquarius_ts_invalid_timestamp_raises():
     """Invalid timestamp in AQUARIUS response raises DataFormatError."""
-    from csfs.core.exceptions import DataFormatError
 
     data = {
         "Points": [

@@ -278,7 +278,6 @@ async def test_fetch_observations_suspect_quality():
 @respx.mock
 async def test_fetch_observations_invalid_timestamp_raises():
     """Invalid timestamp in observation raises DataFormatError."""
-    from csfs.core.exceptions import DataFormatError
 
     data = {
         "data": [

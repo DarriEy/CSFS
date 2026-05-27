@@ -56,12 +56,12 @@ async def run_acquisition(
 
                 sem = asyncio.Semaphore(concurrency)
 
-                async def _fetch_one(station):
-                    async with sem:
+                async def _fetch_one(station, _sem=sem, _start=start, _end=end):
+                    async with _sem:
                         latest = await store.get_latest_timestamp(station.id)
-                        fetch_start = latest if latest else start
+                        fetch_start = latest if latest else _start
                         return await conn.fetch_observations(
-                            station.id, fetch_start, end,
+                            station.id, fetch_start, _end,
                         )
 
                 batch_size = max(concurrency * 5, 50)

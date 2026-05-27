@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Station, TimeSeriesChunk
 from csfs.store.duckdb_store import DuckDBStore
 
 
@@ -63,7 +63,10 @@ async def test_record_and_query_acquisition_log(store: DuckDBStore):
     t3 = datetime(2024, 6, 3, 12, 0, tzinfo=UTC)
 
     await store.record_acquisition("usgs", t1, 45.0, "ok", stations=100, observations=5000, fetched=100, failed=0)
-    await store.record_acquisition("usgs", t2, 50.0, "degraded", stations=100, observations=3000, fetched=100, failed=10, retried=10, recovered=3)
+    await store.record_acquisition(
+        "usgs", t2, 50.0, "degraded", stations=100,
+        observations=3000, fetched=100, failed=10, retried=10, recovered=3,
+    )
     await store.record_acquisition("uk_ea", t3, 30.0, "error", error_message="Connection refused")
 
     history = await store.get_acquisition_history()

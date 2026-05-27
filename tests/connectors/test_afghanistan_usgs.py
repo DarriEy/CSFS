@@ -216,7 +216,6 @@ async def test_fetch_observations_bad_json_raises():
 @respx.mock
 async def test_fetch_stations_no_rdb_header_falls_back():
     """RDB response without header falls back to seed list."""
-    from csfs.core.exceptions import DataFormatError
 
     respx.get("https://waterservices.usgs.gov/nwis/site/").mock(
         return_value=httpx.Response(200, text="# No data here\n"),
