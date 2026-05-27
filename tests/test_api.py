@@ -5,11 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from httpx import ASGITransport, AsyncClient
 
-from csfs.api.app import create_app
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
-from csfs.store.duckdb_store import DuckDBStore
+fastapi = pytest.importorskip("fastapi")
+
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+
+from csfs.api.app import create_app  # noqa: E402
+from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk  # noqa: E402
+from csfs.store.duckdb_store import DuckDBStore  # noqa: E402
 
 
 @pytest.fixture
