@@ -200,3 +200,132 @@ async def test_fetch_stations_handles_empty():
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
+
+
+# ======================================================================
+# Additional coverage tests — error branches, edge cases
+# ======================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest delegates to fetch_observations with last 24h (lines 61-64)."""
+    conn = GermanyPegelonlineConnector()
+    conn._number_to_uuid["10010000"] = "aaaa-bbbb-cccc-1111"
+
+    respx.get(
+        "https://www.pegelonline.wsv.de/webservices/rest-api/v2"
+        "/stations/aaaa-bbbb-cccc-1111/Q/measurements.json"
+    ).mock(return_value=httpx.Response(200, json=MOCK_MEASUREMENTS_RESPONSE))
+
+    async with conn:
+        chunk = await conn.fetch_latest("germany_pegelonline:10010000")
+
+    assert len(chunk.observations) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_skips_no_uuid():
+    """Station entries without uuid are skipped (line 88)."""
+    stations_data = [
+        {
+            "uuid": "",
+            "number": "10010000",
+            "shortname": "NO UUID",
+            "longname": "No UUID Station",
+            "latitude": 52.0,
+            "longitude": 13.0,
+            "water": {"longname": "RHEIN"},
+            "timeseries": [{"shortname": "Q"}],
+        },
+        {
+            "uuid": "aaaa-bbbb-cccc-1111",
+            "number": "",
+            "shortname": "NO NUMBER",
+            "longname": "No Number Station",
+            "latitude": 52.0,
+            "longitude": 13.0,
+            "water": {"longname": "RHEIN"},
+            "timeseries": [{"shortname": "Q"}],
+        },
+        {
+            "uuid": "aaaa-bbbb-cccc-3333",
+            "number": "10030000",
+            "shortname": "GOOD",
+            "longname": "Good Station",
+            "latitude": 50.0,
+            "longitude": 7.0,
+            "water": {"longname": "ELBE"},
+            "timeseries": [{"shortname": "Q"}],
+        },
+    ]
+    respx.get(
+        "https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json"
+    ).mock(return_value=httpx.Response(200, json=stations_data))
+
+    async with GermanyPegelonlineConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "10030000"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_value_error_skipped():
+    """Stations that cause ValueError during parsing are skipped (lines 105-112)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = GermanyPegelonlineConnector()
+    # Test _parse_stations with an entry that might cause issues
+    data = [
+        {
+            "uuid": "aaaa",
+            "number": "10010000",
+            "shortname": "GOOD",
+            "longname": "Good Station",
+            "latitude": 52.0,
+            "longitude": 13.0,
+            "water": {"longname": "RHEIN"},
+            "timeseries": [{"shortname": "Q"}],
+        },
+    ]
+    stations = conn._parse_stations(data)
+    assert len(stations) == 1
+
+
+def test_parse_measurements_invalid_timestamp_raises():
+    """Invalid timestamp in measurements raises DataFormatError (lines 123-124)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = GermanyPegelonlineConnector()
+    data = [{"timestamp": "not-a-date", "value": 100.0}]
+    with pytest.raises(DataFormatError, match="Invalid timestamp"):
+        conn._parse_measurements(data, "germany_pegelonline:10010000")
+
+
+def test_parse_measurements_missing_timestamp_raises():
+    """Missing timestamp key in measurements raises DataFormatError (lines 123-124)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = GermanyPegelonlineConnector()
+    data = [{"value": 100.0}]  # no "timestamp" key
+    with pytest.raises(DataFormatError, match="Invalid timestamp"):
+        conn._parse_measurements(data, "germany_pegelonline:10010000")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_resolve_uuid_not_found_raises():
+    """When uuid can't be found even after fetching stations, raises DataFormatError (line 159)."""
+    from csfs.core.exceptions import DataFormatError
+
+    respx.get(
+        "https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json"
+    ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
+
+    async with GermanyPegelonlineConnector() as conn:
+        with pytest.raises(DataFormatError, match="No uuid found"):
+            await conn._resolve_uuid("NONEXISTENT_NUMBER")

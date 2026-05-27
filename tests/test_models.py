@@ -25,3 +25,20 @@ def test_observation_missing_discharge():
 def test_timeseries_chunk_observation_count(sample_chunk: TimeSeriesChunk):
     assert len(sample_chunk.observations) == 2
     assert sample_chunk.provider == "usgs"
+
+
+def test_registry_get_unknown_raises():
+    from csfs.core.registry import get_connector
+
+    import pytest
+    with pytest.raises(KeyError, match="No connector registered"):
+        get_connector("nonexistent_provider_xyz")
+
+
+def test_registry_list_providers_returns_sorted():
+    from csfs.core.registry import discover, list_providers
+
+    discover()
+    providers = list_providers()
+    assert providers == sorted(providers)
+    assert len(providers) > 0

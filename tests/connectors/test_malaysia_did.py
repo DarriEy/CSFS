@@ -221,6 +221,212 @@ async def test_fetch_observations_malay_field_names():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_latest():
+    """fetch_latest fetches last 7 days of observations."""
+    respx.get(
+        url__startswith=f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(
+            200, json=MOCK_OBSERVATIONS_RESPONSE,
+        ),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_latest("malaysia_did:3527412")
+
+    assert chunk.station_id == "malaysia_did:3527412"
+    assert len(chunk.observations) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_dict_response_with_nested_data():
+    """Stations returned as dict with 'data' key are unwrapped."""
+    wrapped = {"data": MOCK_STATIONS_RESPONSE}
+    respx.get(
+        f"{BASE}/aras-air/data-paras-air/",
+    ).mock(
+        return_value=httpx.Response(200, json=wrapped),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_dict_unexpected_format_skips():
+    """Dict without list values logs and continues to next endpoint."""
+    bad_dict = {"message": "not stations"}
+    respx.get(
+        f"{BASE}/aras-air/data-paras-air/",
+    ).mock(
+        return_value=httpx.Response(200, json=bad_dict),
+    )
+    respx.get(f"{BASE}/api/stations").mock(
+        return_value=httpx.Response(200, json=bad_dict),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Falls back to seed stations
+    assert len(stations) == len(_SEED_STATIONS)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_parse_exception_skips_entry():
+    """Entries that raise during parsing are skipped gracefully."""
+    data = [
+        {
+            "station_id": "S1",
+            "station_name": "OK",
+            "latitude": "not-a-float",
+            "longitude": "not-a-float",
+        },
+    ]
+    respx.get(
+        f"{BASE}/aras-air/data-paras-air/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "S1"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_obs_list_not_a_list():
+    """When obs_list resolves to a non-list, it's replaced with []."""
+    data = {"data": "not-a-list"}
+    respx.get(
+        f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "malaysia_did:3527412",
+            start=datetime(2024, 8, 1, tzinfo=UTC),
+            end=datetime(2024, 8, 4, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_missing_timestamp_skipped():
+    """Entries with no parseable timestamp are skipped."""
+    data = [
+        {"flow_rate": 100.0},  # no date key at all
+        {"date": "", "flow_rate": 50.0},  # empty string
+    ]
+    respx.get(
+        f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "malaysia_did:3527412",
+            start=datetime(2024, 8, 1, tzinfo=UTC),
+            end=datetime(2024, 8, 4, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_parse_exception_skips_entry():
+    """Entries that raise ValueError/TypeError during parse are skipped."""
+    data = [
+        {"date": "2024-08-01", "flow_rate": 100.0},
+        {"tarikh": "2024-08-02", "kadar_alir": 200.0},
+    ]
+    respx.get(
+        f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "malaysia_did:3527412",
+            start=datetime(2024, 8, 1, tzinfo=UTC),
+            end=datetime(2024, 8, 4, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_timestamp_unparseable_returns_none():
+    """Completely unparseable timestamps are skipped."""
+    data = [
+        {"date": "not-a-date-at-all!!!", "flow_rate": 100.0},
+    ]
+    respx.get(
+        f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "malaysia_did:3527412",
+            start=datetime(2024, 8, 1, tzinfo=UTC),
+            end=datetime(2024, 8, 4, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_timestamp_fallback_formats():
+    """Timestamps in non-ISO formats are parsed via fallback."""
+    data = [
+        {"date": "01/08/2024", "flow_rate": 100.0},
+        {"date": "01-08-2024", "flow_rate": 200.0},
+    ]
+    respx.get(
+        f"{BASE}/cerapan/kadar-alir/data-kadar-alir/",
+    ).mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with MalaysiaDIDConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "malaysia_did:3527412",
+            start=datetime(2024, 1, 1, tzinfo=UTC),
+            end=datetime(2024, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+def test_safe_float_non_numeric():
+    """_safe_float returns None for non-numeric strings."""
+    conn = MalaysiaDIDConnector()
+    assert conn._safe_float("abc") is None
+    assert conn._safe_float(None) is None
+    assert conn._safe_float("123.4") == pytest.approx(123.4)
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_connector_registration():
     """Connector is registered under the correct slug."""
     from csfs.core.registry import get_connector

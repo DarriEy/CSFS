@@ -219,3 +219,311 @@ async def test_connector_registration():
 
     cls = get_connector("gsim")
     assert cls is GSIMConnector
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_file_not_found(tmp_path: Path):
+    """When data_dir exists but file is missing, returns empty chunk."""
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_MISSING",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_text_line_too_short(
+    tmp_path: Path,
+):
+    """Text lines with fewer than 3 parts are skipped."""
+    text = "# Comment\nyear\tmonth\n1960\t1\n1960\t2\t8500.0\n"
+    gsim_file = tmp_path / "GSIM_TEST.mon"
+    gsim_file.write_text(text, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    # First data line has only 2 parts (after header skip), second is ok
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_text_invalid_year_month(
+    tmp_path: Path,
+):
+    """Text lines with invalid year/month are skipped."""
+    text = (
+        "# Comment\n"
+        "year\tmonth\tmean\n"
+        "bad\t1\t8500.0\n"
+        "1960\t2\t9100.0\n"
+    )
+    gsim_file = tmp_path / "GSIM_TEST.mon"
+    gsim_file.write_text(text, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_text_unparseable_value_missing(
+    tmp_path: Path,
+):
+    """Text lines with non-numeric value produce MISSING quality."""
+    text = "year\tmonth\tmean\n1960\t1\tabc\n1960\t2\t9100.0\n"
+    gsim_file = tmp_path / "GSIM_TEST.mon"
+    gsim_file.write_text(text, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_no_value_column(
+    tmp_path: Path,
+):
+    """CSV with no recognized value column returns empty."""
+    csv_content = "year,month,unknown\n1970,1,100.0\n"
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_invalid_year_skipped(
+    tmp_path: Path,
+):
+    """CSV rows with invalid year values are skipped."""
+    csv_content = (
+        "year,month,mean\n"
+        "bad,1,100.0\n"
+        "1970,2,200.0\n"
+    )
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_date_yyyy_mm_dd(
+    tmp_path: Path,
+):
+    """CSV date in YYYY-MM-DD format is parsed."""
+    csv_content = (
+        "date,mean\n"
+        "1980-01-01,5000.0\n"
+        "1980-02-01,5500.0\n"
+    )
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_date_bad_format_skipped(
+    tmp_path: Path,
+):
+    """CSV rows with unrecognized date format are skipped."""
+    csv_content = (
+        "date,mean\n"
+        "Jun 1980,5000.0\n"
+        "1980-02,5500.0\n"
+    )
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    # First row has bad date format, second is ok
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_no_date_no_year(
+    tmp_path: Path,
+):
+    """CSV with neither date nor year column returns None for timestamp."""
+    csv_content = "month,mean\n1,5000.0\n"
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_missing_value_sentinel(
+    tmp_path: Path,
+):
+    """CSV with -999.0 sentinel produces MISSING quality."""
+    csv_content = (
+        "year,month,mean\n"
+        "1970,1,-999.0\n"
+        "1970,2,200.0\n"
+    )
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_unparseable_value(
+    tmp_path: Path,
+):
+    """CSV rows with non-numeric value produce MISSING quality."""
+    csv_content = (
+        "year,month,mean\n"
+        "1970,1,abc\n"
+        "1970,2,200.0\n"
+    )
+    csv_file = tmp_path / "GSIM_TEST.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_text_empty_file(tmp_path: Path):
+    """Empty text file returns empty observations."""
+    gsim_file = tmp_path / "GSIM_TEST.mon"
+    gsim_file.write_text("", encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_naive_datetimes(tmp_path: Path):
+    """Naive start/end datetimes are treated as UTC."""
+    gsim_file = tmp_path / "GSIM_TEST.mon"
+    gsim_file.write_text(SAMPLE_GSIM_TEXT, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1),  # naive
+            end=datetime(1960, 12, 31),  # naive
+        )
+
+    assert len(chunk.observations) == 5
+
+
+def test_safe_float_none():
+    """_safe_float returns None for None input."""
+    from csfs.connectors.gsim import _safe_float
+
+    assert _safe_float(None) is None
+
+
+def test_safe_float_invalid():
+    """_safe_float returns None for non-numeric string."""
+    from csfs.connectors.gsim import _safe_float
+
+    assert _safe_float("abc") is None

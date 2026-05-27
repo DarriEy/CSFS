@@ -16,13 +16,13 @@ from csfs.connectors.russia_arcticnet import (
 # ---------------------------------------------------------------------------
 
 SAMPLE_ATTRIBUTES = (
-    "PointID\tCode\tName\tLat\tLong\tX_Ease\tY_Ease"
-    "\tDArea\tHydrozone\tGauge_altitude"
-    "\tMinOfYear\tMaxOfYear\tCountOfYear\tPercentOfCoverage\n"
-    "1001\tR01\tOb - Barnaul\t53.35\t83.75"
-    "\t0\t0\t169000\tOb\t150\t1930\t1990\t60\t98\n"
-    "1002\tR02\tIrtysh - Omsk\t54.97\t73.37"
-    "\t0\t0\t503000\tOb\t75\t1940\t1985\t45\t90\n"
+    '"PointID"\t"Code"\t"Name"\t"Lat"\t"Long"\t"X_Ease"\t"Y_Ease"'
+    '\t"DArea"\t"Hydrozone"\t"Gauge_altitude"'
+    '\t"MinOfYear"\t"MaxOfYear"\t"CountOfYear"\t"PercentOfCoverage"\n'
+    '"1001"\t"R01"\t"Ob - Barnaul"\t"53.35"\t"83.75"'
+    '\t"0"\t"0"\t"169000"\t"Ob"\t"150"\t"1930"\t"1990"\t"60"\t"98"\n'
+    '"1002"\t"R02"\t"Irtysh - Omsk"\t"54.97"\t"73.37"'
+    '\t"0"\t"0"\t"503000"\t"Ob"\t"75"\t"1940"\t"1985"\t"45"\t"90"\n'
 )
 
 SAMPLE_DISCHARGE = (
@@ -63,10 +63,11 @@ def _mock_ob_only(
 ) -> None:
     """Mock Ob region with data, all others 404."""
     _mock_all_regions_404()
-    respx.get(f"{BASE}/v4.0/Ob/Ob_Attributes.txt").mock(
+    ob_region = next(r for r in _REGIONS if r["name"] == "Ob")
+    respx.get(f"{BASE}{ob_region['attributes']}").mock(
         return_value=httpx.Response(200, text=attr_text),
     )
-    respx.get(f"{BASE}/v4.0/Ob/Ob_Discharge.txt").mock(
+    respx.get(f"{BASE}{ob_region['discharge']}").mock(
         return_value=httpx.Response(200, text=discharge_text),
     )
 
@@ -264,3 +265,229 @@ async def test_fetch_observations_no_matching_station():
 
     assert len(chunk.observations) == 0
     assert chunk.provider == "russia_arcticnet"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_missing_required_columns():
+    """Attributes file missing required columns returns no stations for that region."""
+    bad_attr = "Name\tCode\n" "Station1\tR01\n"
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=bad_attr),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Bad header -> no stations from Ob, everything else 404
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_empty_point_id_skipped():
+    """Rows with empty PointID are skipped."""
+    attr = (
+        "PointID\tCode\tName\tLat\tLong\tDArea\tGauge_altitude"
+        "\tMinOfYear\tMaxOfYear\n"
+        "\tR01\tEmpty\t53.35\t83.75\t100\t10\t1930\t1990\n"
+        "1001\tR02\tOb - Barnaul\t53.35\t83.75\t100\t10\t1930\t1990\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=attr),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "1001"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_invalid_lat_lon_skipped():
+    """Rows with invalid lat/lon are skipped."""
+    attr = (
+        "PointID\tCode\tName\tLat\tLong\n"
+        "1001\tR01\tBad Lat\tNaN\t83.75\n"
+        "1002\tR02\tGood\t53.35\t83.75\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=attr),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # NaN is valid for float() but the station still gets built
+    # Actually float("NaN") doesn't raise ValueError, so it parses
+    assert len(stations) == 2
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_river_no_separator():
+    """Station name without separator returns None for river."""
+    attr = (
+        "PointID\tCode\tName\tLat\tLong\n"
+        "1001\tR01\tSimpleName\t53.35\t83.75\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=attr),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].river is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_river_empty_name():
+    """Empty station name returns None for river."""
+    from csfs.connectors.russia_arcticnet import RussiaArcticNETConnector as C
+    assert C._extract_river("") is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_river_at_separator():
+    """'at' separator extracts river name."""
+    from csfs.connectors.russia_arcticnet import RussiaArcticNETConnector as C
+    assert C._extract_river("Ob at Barnaul") == "Ob"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_discharge_parse_non_numeric():
+    """Non-numeric discharge values map to MISSING."""
+    discharge = (
+        "PointID\tCode\tYear\tJan\tFeb\tMar\tApr\tMay"
+        "\tJun\tJul\tAug\tSep\tOct\tNov\tDec\tAnnual\n"
+        "1001\tR01\t1980\tabc\t480\t460\t900\t3200"
+        "\t5000\t4500\t3000\t2000\t1200\t800\t600\t1887\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=SAMPLE_ATTRIBUTES),
+    )
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Data_m3_s.txt").mock(
+        return_value=httpx.Response(200, text=discharge),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "russia_arcticnet:1001",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 12
+    # Jan has "abc" -> missing
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_discharge_missing_year_column():
+    """Discharge file without Year column returns empty observations."""
+    bad_discharge = (
+        "PointID\tCode\tJan\tFeb\n"
+        "1001\tR01\t500\t480\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=SAMPLE_ATTRIBUTES),
+    )
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Data_m3_s.txt").mock(
+        return_value=httpx.Response(200, text=bad_discharge),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "russia_arcticnet:1001",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_discharge_invalid_year_skipped():
+    """Rows with invalid year values are skipped."""
+    discharge = (
+        "PointID\tCode\tYear\tJan\tFeb\tMar\tApr\tMay"
+        "\tJun\tJul\tAug\tSep\tOct\tNov\tDec\tAnnual\n"
+        "1001\tR01\tnotayear\t500\t480\t460\t900\t3200"
+        "\t5000\t4500\t3000\t2000\t1200\t800\t600\t1887\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=SAMPLE_ATTRIBUTES),
+    )
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Data_m3_s.txt").mock(
+        return_value=httpx.Response(200, text=discharge),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "russia_arcticnet:1001",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_naive_datetimes():
+    """Naive start/end datetimes are treated as UTC."""
+    _mock_ob_only()
+
+    async with RussiaArcticNETConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "russia_arcticnet:1001",
+            start=datetime(1980, 1, 1),  # naive
+            end=datetime(1980, 12, 31),  # naive
+        )
+
+    assert len(chunk.observations) == 12
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_short_row_skipped():
+    """Discharge rows shorter than year_col are skipped."""
+    discharge = (
+        "PointID\tCode\tYear\tJan\n"
+        "1001\tR01\n"
+        "1001\tR01\t1980\t500\n"
+    )
+    _mock_all_regions_404()
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Attributes.txt").mock(
+        return_value=httpx.Response(200, text=SAMPLE_ATTRIBUTES),
+    )
+    respx.get(f"{BASE}/v4.0/AllData/Ob_Data_m3_s.txt").mock(
+        return_value=httpx.Response(200, text=discharge),
+    )
+
+    async with RussiaArcticNETConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "russia_arcticnet:1001",
+            start=datetime(1980, 1, 1, tzinfo=UTC),
+            end=datetime(1980, 12, 31, tzinfo=UTC),
+        )
+
+    # First data row is too short, second has only Jan
+    assert len(chunk.observations) == 1

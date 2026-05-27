@@ -363,3 +363,203 @@ class TestSafeFloat:
 
     def test_non_numeric_string(self):
         assert _safe_float("N/A") is None
+
+
+# ── Additional coverage tests ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest calls fetch_observations for last 24h."""
+    import json
+
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=json.dumps(MOCK_OBSERVATIONS_JSON)),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_latest("south_africa_dws:A2H012")
+
+    assert chunk.provider == "south_africa_dws"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stations_from_json_missing_station_id_skipped():
+    """JSON station entries with empty Station field are skipped."""
+    body = '[{"Station": "", "StationName": "Empty", "Latitude": -25.0, "Longitude": 27.0}]'
+    respx.get(f"{BASE}/HyDataSets.aspx").mock(
+        return_value=httpx.Response(200, text=body),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Empty station ID skipped, falls to seed
+    assert len(stations) == 8
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stations_from_json_invalid_lat_lon():
+    """Stations with invalid lat/lon default to 0.0."""
+    body = '[{"Station": "X1H001", "Latitude": "bad", "Longitude": "bad"}]'
+    respx.get(f"{BASE}/HyDataSets.aspx").mock(
+        return_value=httpx.Response(200, text=body),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].latitude == 0.0
+    assert stations[0].longitude == 0.0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stations_from_html_invalid_coords():
+    """HTML station entries with invalid coordinates use defaults."""
+    html = """
+    <html><body><table>
+    <tr><td>A2H012</td><td>Test</td><td>bad</td><td>bad</td><td>River</td></tr>
+    </table></body></html>
+    """
+    respx.get(f"{BASE}/HyDataSets.aspx").mock(
+        return_value=httpx.Response(200, text=html),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].latitude == 0.0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_json_invalid_timestamp_skipped():
+    """JSON observations with invalid timestamps are skipped."""
+    import json
+
+    data = [
+        {"Date": "not-a-date", "Value": 45.0},
+        {"Date": "2024-06-01", "Value": 50.0},
+    ]
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=json.dumps(data)),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "south_africa_dws:A2H012",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_json_missing_date_skipped():
+    """JSON observations missing Date field are skipped."""
+    import json
+
+    data = [
+        {"Value": 45.0},
+        {"Date": "2024-06-01", "Value": 50.0},
+    ]
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=json.dumps(data)),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "south_africa_dws:A2H012",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_csv_tab_separated():
+    """Tab-separated observations are parsed."""
+    body = "Date\tValue\n2024-06-01\t45.3\n2024-06-02\t0.0\n"
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=body),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "south_africa_dws:A2H012",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 3),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    assert chunk.observations[1].discharge_m3s == pytest.approx(0.0)
+    assert chunk.observations[1].quality == QualityFlag.RAW
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_csv_invalid_date_skipped():
+    """CSV lines with invalid dates are skipped."""
+    body = "Date,Value\nnot-a-date,45.3\n2024-06-01,50.0\n"
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=body),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "south_africa_dws:A2H012",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observations_csv_single_column_skipped():
+    """CSV lines with only one column are skipped."""
+    body = "Date,Value\n2024-06-01\n2024-06-02,50.0\n"
+    respx.get(f"{BASE}/HyDataValues.aspx").mock(
+        return_value=httpx.Response(200, text=body),
+    )
+
+    async with SouthAfricaDWSConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "south_africa_dws:A2H012",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 3),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+class TestParseTimestampAdditional:
+    def test_datetime_with_space(self):
+        ts = _parse_timestamp("2024-06-01 12:00:00")
+        assert ts.year == 2024
+        assert ts.hour == 12
+
+    def test_datetime_with_minute_only(self):
+        ts = _parse_timestamp("2024-06-01 12:00")
+        assert ts.year == 2024
+
+    def test_slash_with_time(self):
+        ts = _parse_timestamp("2024/06/01 12:00:00")
+        assert ts.year == 2024
+
+    def test_dd_mm_yyyy_with_time(self):
+        ts = _parse_timestamp("01/06/2024 12:00:00")
+        assert ts.day == 1

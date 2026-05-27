@@ -66,282 +66,26 @@ _MISSING_VALUE = -999.0
 # ---------------------------------------------------------------------------
 
 _SEED_STATIONS: list[dict] = [
-    # North America
-    {
-        "id": "4127800",
-        "name": "Mississippi at Vicksburg",
-        "lat": 32.32,
-        "lon": -90.91,
-        "country": "US",
-        "river": "Mississippi",
-        "area": 2964255.0,
-    },
-    {
-        "id": "4121660",
-        "name": "Missouri at Hermann",
-        "lat": 38.71,
-        "lon": -91.44,
-        "country": "US",
-        "river": "Missouri",
-        "area": 1353280.0,
-    },
-    {
-        "id": "4119150",
-        "name": "Ohio at Metropolis",
-        "lat": 37.15,
-        "lon": -88.73,
-        "country": "US",
-        "river": "Ohio",
-        "area": 526000.0,
-    },
-    {
-        "id": "4208025",
-        "name": "Fraser at Hope",
-        "lat": 49.38,
-        "lon": -121.45,
-        "country": "CA",
-        "river": "Fraser",
-        "area": 217000.0,
-    },
-    {
-        "id": "4213711",
-        "name": "Mackenzie at Arctic Red River",
-        "lat": 67.45,
-        "lon": -133.74,
-        "country": "CA",
-        "river": "Mackenzie",
-        "area": 1660000.0,
-    },
-    {
-        "id": "4335100",
-        "name": "Rio Balsas at El Infiernillo",
-        "lat": 18.27,
-        "lon": -101.89,
-        "country": "MX",
-        "river": "Balsas",
-        "area": 47800.0,
-    },
-    # South America
-    {
-        "id": "3629001",
-        "name": "Amazon at Obidos",
-        "lat": -1.95,
-        "lon": -55.51,
-        "country": "BR",
-        "river": "Amazon",
-        "area": 4680000.0,
-    },
-    {
-        "id": "3649900",
-        "name": "Parana at Corrientes",
-        "lat": -27.47,
-        "lon": -58.84,
-        "country": "BR",
-        "river": "Parana",
-        "area": 1950000.0,
-    },
-    {
-        "id": "3625050",
-        "name": "Amazon at Iquitos",
-        "lat": -3.75,
-        "lon": -73.25,
-        "country": "PE",
-        "river": "Amazon",
-        "area": 720000.0,
-    },
-    # Europe
-    {
-        "id": "6335060",
-        "name": "Rhine at Cologne",
-        "lat": 50.94,
-        "lon": 6.96,
-        "country": "DE",
-        "river": "Rhine",
-        "area": 144232.0,
-    },
-    {
-        "id": "6340110",
-        "name": "Rhine at Lobith",
-        "lat": 51.84,
-        "lon": 6.11,
-        "country": "DE",
-        "river": "Rhine",
-        "area": 160800.0,
-    },
-    {
-        "id": "6123500",
-        "name": "Rhine at Basel",
-        "lat": 47.56,
-        "lon": 7.62,
-        "country": "FR",
-        "river": "Rhine",
-        "area": 35897.0,
-    },
-    {
-        "id": "6343100",
-        "name": "Danube at Passau",
-        "lat": 48.57,
-        "lon": 13.47,
-        "country": "FR",
-        "river": "Danube",
-        "area": 76653.0,
-    },
-    {
-        "id": "6602100",
-        "name": "Glomma at Langnes",
-        "lat": 59.33,
-        "lon": 11.33,
-        "country": "NO",
-        "river": "Glomma",
-        "area": 40440.0,
-    },
-    {
-        "id": "6226800",
-        "name": "Gota Alv at Sjotorp",
-        "lat": 58.92,
-        "lon": 13.96,
-        "country": "SE",
-        "river": "Gota Alv",
-        "area": 47000.0,
-    },
-    {
-        "id": "6346100",
-        "name": "Po at Pontelagoscuro",
-        "lat": 44.89,
-        "lon": 11.60,
-        "country": "IT",
-        "river": "Po",
-        "area": 70091.0,
-    },
-    {
-        "id": "6108003",
-        "name": "Gudenaa at Randers",
-        "lat": 56.47,
-        "lon": 10.04,
-        "country": "DK",
-        "river": "Gudenaa",
-        "area": 2650.0,
-    },
-    {
-        "id": "6620100",
-        "name": "Narva at Narva",
-        "lat": 59.38,
-        "lon": 28.04,
-        "country": "EE",
-        "river": "Narva",
-        "area": 56200.0,
-    },
-    {
-        "id": "6110151",
-        "name": "Douro at Porto",
-        "lat": 41.14,
-        "lon": -8.61,
-        "country": "PT",
-        "river": "Douro",
-        "area": 97603.0,
-    },
-    # Asia
-    {
-        "id": "2903430",
-        "name": "Yenisei at Igarka",
-        "lat": 67.47,
-        "lon": 86.50,
-        "country": "RU",
-        "river": "Yenisei",
-        "area": 2440000.0,
-    },
-    {
-        "id": "2909150",
-        "name": "Ob at Salekhard",
-        "lat": 66.53,
-        "lon": 66.60,
-        "country": "RU",
-        "river": "Ob",
-        "area": 2950000.0,
-    },
-    {
-        "id": "2181900",
-        "name": "Yangtze at Datong",
-        "lat": 30.77,
-        "lon": 117.62,
-        "country": "CN",
-        "river": "Yangtze",
-        "area": 1705383.0,
-    },
-    {
-        "id": "2180800",
-        "name": "Yellow River at Huayuankou",
-        "lat": 34.91,
-        "lon": 113.65,
-        "country": "CN",
-        "river": "Yellow River",
-        "area": 730036.0,
-    },
-    {
-        "id": "2646200",
-        "name": "Ganges at Farakka",
-        "lat": 25.00,
-        "lon": 87.92,
-        "country": "IN",
-        "river": "Ganges",
-        "area": 835000.0,
-    },
-    {
-        "id": "2546151",
-        "name": "Brahmaputra at Bahadurabad",
-        "lat": 25.18,
-        "lon": 89.67,
-        "country": "IN",
-        "river": "Brahmaputra",
-        "area": 580000.0,
-    },
-    {
-        "id": "2369100",
-        "name": "Mekong at Nakhon Phanom",
-        "lat": 17.42,
-        "lon": 104.78,
-        "country": "TH",
-        "river": "Mekong",
-        "area": 373000.0,
-    },
-    {
-        "id": "2969100",
-        "name": "Mekong at Can Tho",
-        "lat": 10.05,
-        "lon": 105.79,
-        "country": "VN",
-        "river": "Mekong",
-        "area": 760000.0,
-    },
-    {
-        "id": "2174200",
-        "name": "Han at Seoul",
-        "lat": 37.53,
-        "lon": 126.97,
-        "country": "KR",
-        "river": "Han",
-        "area": 23800.0,
-    },
-    # Africa
-    {
-        "id": "1159100",
-        "name": "Orange at Vioolsdrif",
-        "lat": -28.77,
-        "lon": 17.73,
-        "country": "ZA",
-        "river": "Orange",
-        "area": 850530.0,
-    },
-    # Oceania
-    {
-        "id": "5101002",
-        "name": "Murray at Albury",
-        "lat": -36.08,
-        "lon": 146.91,
-        "country": "AU",
-        "river": "Murray",
-        "area": 981000.0,
-    },
+    {"id": "BR_0000243", "name": "Amazon at Obidos", "lat": -1.95, "lon": -55.51, "country": "BR", "river": "Amazon", "area": 4670000.0},
+    {"id": "CD_0000004", "name": "Congo at Kinshasa", "lat": -4.14, "lon": 15.33, "country": "CD", "river": "Congo", "area": 3747320.0},
+    {"id": "RU_0000081", "name": "Ob at Salekhard", "lat": 66.57, "lon": 66.53, "country": "RU", "river": "Ob", "area": 2949998.0},
+    {"id": "AR_0000006", "name": "Parana at Timbues", "lat": -32.67, "lon": -60.71, "country": "AR", "river": "Parana", "area": 2346000.0},
+    {"id": "CN_0000180", "name": "Yangtze at Datong", "lat": 30.77, "lon": 117.62, "country": "CN", "river": "Yangtze", "area": 1705383.0},
+    {"id": "CA_0006066", "name": "Mackenzie at Arctic Red River", "lat": 67.46, "lon": -133.75, "country": "CA", "river": "Mackenzie", "area": 1679100.0},
+    {"id": "US_0005806", "name": "Mississippi at Vicksburg", "lat": 32.32, "lon": -90.91, "country": "US", "river": "Mississippi", "area": 1140500.0},
+    {"id": "BJ_0000017", "name": "Niger at Malanville", "lat": 11.87, "lon": 3.38, "country": "BJ", "river": "Niger", "area": 1000000.0},
+    {"id": "MZ_0000002", "name": "Zambezi at Matundo-Cais", "lat": -16.15, "lon": 33.59, "country": "MZ", "river": "Zambezi", "area": 940000.0},
+    {"id": "ZA_0000001", "name": "Orange at Vioolsdrif", "lat": -28.76, "lon": 17.72, "country": "ZA", "river": "Orange", "area": 866486.0},
+    {"id": "RO_0000038", "name": "Danube at Ceatal Izmail", "lat": 45.22, "lon": 28.72, "country": "RO", "river": "Danube", "area": 807000.0},
+    {"id": "KH_0000001", "name": "Mekong at Phnom Penh", "lat": 11.58, "lon": 104.94, "country": "KH", "river": "Mekong", "area": 663000.0},
+    {"id": "BD_0000001", "name": "Brahmaputra at Bahadurabad", "lat": 25.18, "lon": 89.67, "country": "BD", "river": "Brahmaputra", "area": 636130.0},
+    {"id": "MX_0000008", "name": "Colorado at Lindero Internacional", "lat": 32.72, "lon": -114.72, "country": "MX", "river": "Colorado", "area": 631960.0},
+    {"id": "LA_0000014", "name": "Mekong at Pakse", "lat": 15.12, "lon": 105.80, "country": "LA", "river": "Mekong", "area": 545000.0},
+    {"id": "DE_0000332", "name": "Elbe at Neu-Darchau", "lat": 53.23, "lon": 10.89, "country": "DE", "river": "Elbe", "area": 131950.0},
+    {"id": "BG_0000005", "name": "Danube at Silistra", "lat": 44.13, "lon": 27.26, "country": "BG", "river": "Danube", "area": 689700.0},
+    {"id": "VE_0000009", "name": "Orinoco at Puente Angostura", "lat": 8.15, "lon": -63.60, "country": "VE", "river": "Orinoco", "area": 836000.0},
+    {"id": "ML_0000032", "name": "Niger at Ansongo", "lat": 15.67, "lon": 0.50, "country": "ML", "river": "Niger", "area": 566000.0},
+    {"id": "TD_0000003", "name": "Chari at Ndjamena", "lat": 12.12, "lon": 15.03, "country": "TD", "river": "Chari", "area": 600000.0},
 ]
 
 
@@ -539,6 +283,13 @@ class GSIMConnector(BaseConnector):
             data_dir / f"{station_id}.year",
             data_dir / f"{station_id}.csv",
         ]
+        # Also search inside GSIM_indices subdirectories
+        for sub in ["GSIM_indices/TIMESERIES/monthly",
+                     "GSIM_indices/TIMESERIES/yearly",
+                     "TIMESERIES/monthly",
+                     "TIMESERIES/yearly"]:
+            candidates.append(data_dir / sub / f"{station_id}.mon")
+            candidates.append(data_dir / sub / f"{station_id}.year")
         for candidate in candidates:
             if candidate.is_file():
                 return candidate
@@ -607,6 +358,11 @@ class GSIMConnector(BaseConnector):
         # Skip header row if present
         first = data_lines[0]
         if not first[0].isdigit():
+            # Detect GSIM .mon CSV format: "date", "MEAN", ...
+            if "date" in first.lower() and "mean" in first.lower():
+                return self._parse_gsim_mon_csv(
+                    data_lines, station_id, start, end,
+                )
             data_lines = data_lines[1:]
 
         for line in data_lines:
@@ -615,6 +371,50 @@ class GSIMConnector(BaseConnector):
             )
             if obs is not None:
                 observations.append(obs)
+
+        return observations
+
+    def _parse_gsim_mon_csv(
+        self,
+        data_lines: list[str],
+        station_id: str,
+        start: datetime,
+        end: datetime,
+    ) -> list[Observation]:
+        """Parse GSIM .mon/.year CSV: date,MEAN,SD,CV,...
+
+        GSIM files use ``,\\t`` as delimiter. Normalise to plain comma.
+        """
+        import csv
+        import io
+
+        observations: list[Observation] = []
+        cleaned = [line.replace(",\t", ",").replace('"', '') for line in data_lines]
+        text = "\n".join(cleaned)
+        reader = csv.DictReader(io.StringIO(text))
+
+        for row in reader:
+            date_str = (row.get("date") or "").strip()
+            if not date_str:
+                continue
+            try:
+                ts = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=UTC)
+            except ValueError:
+                continue
+            if ts < start or ts > end:
+                continue
+
+            mean_str = (row.get("MEAN") or "").strip()
+            discharge = _safe_float(mean_str)
+            if discharge is not None and abs(discharge - _MISSING_VALUE) < 0.01:
+                discharge = None
+
+            observations.append(Observation(
+                station_id=station_id,
+                timestamp=ts,
+                discharge_m3s=discharge,
+                quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
+            ))
 
         return observations
 

@@ -1,0 +1,55 @@
+# CSFS provider configuration
+# Paths are relative to the project root.
+
+providers:
+  # -- Local-file datasets --
+  # Run `csfs download-data --list` to see download instructions.
+
+  grdc:
+    data_dir: data/datasets/grdc
+
+  gsim:
+    data_dir: data/datasets/gsim
+
+  caravan:
+    data_dir: data/datasets/caravan
+
+  israel_caravan:
+    data_dir: data/datasets/israel_caravan
+
+  bolivia_ine:
+    data_dir: data/datasets/bolivia_ine
+
+  spain_miteco:
+    data_dir: data/datasets/spain_miteco
+
+  vietnam_mekong:
+    data_dir: data/datasets/vietnam_mekong
+
+  panama_stri:
+    data_dir: data/datasets/panama_stri
+
+  lamah_ce:
+    data_dir: data/datasets/lamah_ce
+
+  ca_discharge:
+    data_dir: data/datasets/ca_discharge
+
+  sierem:
+    data_dir: data/datasets/sierem
+
+  adhi:
+    data_dir: data/datasets/adhi
+
+  nepal_icimod:
+    data_dir: data/datasets/nepal_icimod
+
+  pakistan_wapda:
+    data_dir: data/datasets/pakistan_wapda
+
+  # -- API keys --
+  # norway_nve:
+  #   api_key: ""  # Register at https://hydapi.nve.no/
+
+  # danube_his:
+  #   api_token: ""  # Register at https://www.danubehis.org

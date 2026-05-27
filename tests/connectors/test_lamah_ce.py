@@ -185,3 +185,229 @@ async def test_seed_station_ids_are_canonical():
         assert station.id == f"lamah_ce:{station.native_id}"
         assert station.provider == "lamah_ce"
         assert station.latitude != 0.0 or station.longitude != 0.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_comma_delimiter(tmp_path: Path):
+    """Comma-delimited CSV is detected and parsed."""
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(SAMPLE_LAMAH_CSV_COMMA, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s == pytest.approx(45.2)
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_no_header(tmp_path: Path):
+    """CSV without recognized header uses positional columns."""
+    csv_content = "1990-01-01;45.2\n1990-01-02;47.8\n"
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_date_skipped(
+    tmp_path: Path,
+):
+    """Lines with unparseable dates are skipped."""
+    csv_content = (
+        "date;qobs\n"
+        "not-a-date;45.2\n"
+        "1990-01-01;47.8\n"
+    )
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_short_line_skipped(tmp_path: Path):
+    """Lines with too few columns are skipped."""
+    csv_content = (
+        "date;qobs\n"
+        "1990-01-01\n"
+        "1990-01-02;47.8\n"
+    )
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_value_missing(
+    tmp_path: Path,
+):
+    """Lines with unparseable discharge values result in MISSING quality."""
+    csv_content = (
+        "date;qobs\n"
+        "1990-01-01;abc\n"
+        "1990-01-02;47.8\n"
+    )
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_id_prefix_naming(tmp_path: Path):
+    """Files named ID_{gauge_id}.csv are found."""
+    csv_file = tmp_path / "ID_1.csv"
+    csv_file.write_text(SAMPLE_LAMAH_CSV, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 5
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_daily_suffix_naming(
+    tmp_path: Path,
+):
+    """Files named {gauge_id}_daily.csv are found."""
+    csv_file = tmp_path / "1_daily.csv"
+    csv_file.write_text(SAMPLE_LAMAH_CSV, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 5
+
+
+@pytest.mark.asyncio
+async def test_parse_date_yyyymmdd_format():
+    """Date in YYYYMMDD format is parsed."""
+    ts = LamaHCEConnector._parse_date("19900101")
+    assert ts.year == 1990
+    assert ts.month == 1
+
+
+@pytest.mark.asyncio
+async def test_parse_date_dd_mm_yyyy_format():
+    """Date in dd.mm.yyyy format is parsed."""
+    ts = LamaHCEConnector._parse_date("01.01.1990")
+    assert ts.year == 1990
+    assert ts.month == 1
+
+
+@pytest.mark.asyncio
+async def test_parse_date_invalid_raises():
+    """Invalid date string raises ValueError."""
+    with pytest.raises(ValueError, match="Unparseable date"):
+        LamaHCEConnector._parse_date("invalid")
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_comment_lines_skipped(
+    tmp_path: Path,
+):
+    """Lines starting with # are skipped."""
+    csv_content = (
+        "date;qobs\n"
+        "# This is a comment\n"
+        "1990-01-01;45.2\n"
+    )
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_dash_missing_value(
+    tmp_path: Path,
+):
+    """Lines with '-' value are treated as missing."""
+    csv_content = (
+        "date;qobs\n"
+        "1990-01-01;-\n"
+        "1990-01-02;47.8\n"
+    )
+    csv_file = tmp_path / "1.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with LamaHCEConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "lamah_ce:1",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"

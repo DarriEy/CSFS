@@ -366,6 +366,135 @@ def test_connector_class_attributes():
 
 # -- Tests: station parsing edge cases --------------------------------
 
+# -- Tests: fetch_latest -----------------------------------------------
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates_to_observations():
+    """fetch_latest fetches last 24 hours of observations."""
+    conn = AustraliaBomConnector()
+    conn._station_to_ts_id["410730"] = "94856"
+
+    respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_TS_VALUES_EMPTY),
+    )
+
+    async with conn:
+        chunk = await conn.fetch_latest("australia_bom:410730")
+
+    assert chunk.provider == "australia_bom"
+    assert chunk.station_id == "australia_bom:410730"
+    assert len(chunk.observations) == 0
+
+
+# -- Tests: station parsing edge cases ---------------------------------
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_empty_native_id_skipped():
+    """Rows with an empty station_no are skipped."""
+    response = [
+        [
+            "station_no",
+            "station_name",
+            "station_latitude",
+            "station_longitude",
+        ],
+        ["", "No ID Station", -30.0, 145.0],
+        ["410730", "Darling River at Bourke", -30.09, 145.94],
+    ]
+    respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json=response),
+    )
+
+    async with AustraliaBomConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "410730"
+
+
+# -- Tests: timeseries parsing edge cases ------------------------------
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_non_dict_first_element():
+    """Non-dict first element results in empty observations."""
+    conn = AustraliaBomConnector()
+    conn._station_to_ts_id["410730"] = "94856"
+
+    respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json=["not_a_dict"]),
+    )
+
+    async with conn:
+        chunk = await conn.fetch_observations(
+            "australia_bom:410730",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_unparseable_discharge():
+    """Non-numeric discharge values result in None and MISSING quality."""
+    ts_response = [{"data": [
+        ["2024-06-01T00:00:00.000+10:00", "not_a_number", "1"],
+    ]}]
+    conn = AustraliaBomConnector()
+    conn._station_to_ts_id["410730"] = "94856"
+
+    respx.get(BASE_URL).mock(
+        return_value=httpx.Response(200, json=ts_response),
+    )
+
+    async with conn:
+        chunk = await conn.fetch_observations(
+            "australia_bom:410730",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality == QualityFlag.MISSING
+
+
+# -- Tests: ts_list row parsing edge cases -----------------------------
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_ts_list_malformed_row_skipped():
+    """Malformed rows in timeseries list are skipped without crashing."""
+    ts_list = [
+        ["ts_id", "ts_name", "station_no"],
+        ["94856", "Discharge.Master", "410730"],
+        [],  # malformed row
+    ]
+    ts_values = MOCK_TS_VALUES_RESPONSE
+
+    route = respx.get(BASE_URL)
+    route.side_effect = [
+        httpx.Response(200, json=ts_list),
+        httpx.Response(200, json=ts_values),
+    ]
+
+    async with AustraliaBomConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "australia_bom:410730",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 3
+    assert conn._station_to_ts_id["410730"] == "94856"
+
+
+# -- Tests: minimal station fields -------------------------------------
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_minimal_fields():

@@ -295,3 +295,157 @@ def test_connector_is_registered():
 
     cls = get_connector("netherlands_rws")
     assert cls is NetherlandsRwsConnector
+
+
+# ======================================================================
+# Additional coverage tests — error branches, edge cases
+# ======================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_http_error_raises_connector_error():
+    """HTTPStatusError on station listing raises ConnectorError (lines 87-88)."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch station list"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_http_error_raises_connector_error():
+    """HTTPStatusError on observations raises ConnectorError (lines 118-119)."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch observations"):
+            await conn.fetch_observations(
+                "netherlands_rws:Rotterdam",
+                start=datetime(2024, 6, 1),
+                end=datetime(2024, 6, 2),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest delegates to fetch_observations (lines 133-134)."""
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(200, json=MOCK_LATEST_GEOJSON),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        chunk = await conn.fetch_latest("netherlands_rws:Rotterdam")
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(125.4)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_station_features_invalid_coords_skipped():
+    """Features with non-numeric coordinates are skipped (lines 173-180)."""
+    bad_coords = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": ["not_a_number", "also_bad"],
+                },
+                "properties": {"NAAM": "BadCoords"},
+            },
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [4.3571, 51.8908],
+                },
+                "properties": {"NAAM": "Rotterdam"},
+            },
+        ],
+    }
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(200, json=bad_coords),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "Rotterdam"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_latest_missing_timestamp_skipped():
+    """Observation with missing timestamp is skipped (lines 213-218)."""
+    missing_ts = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [4.3571, 51.8908]},
+                "properties": {
+                    "NAAM": "Rotterdam",
+                    "WAARDE_LAATSTE_METING": 125.4,
+                    "TIJDSTIP_LAATSTE_METING": None,
+                },
+            },
+        ],
+    }
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(200, json=missing_ts),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "netherlands_rws:Rotterdam",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_latest_invalid_timestamp_skipped():
+    """Observation with invalid timestamp is skipped (lines 222-229)."""
+    invalid_ts = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [4.3571, 51.8908]},
+                "properties": {
+                    "NAAM": "Rotterdam",
+                    "WAARDE_LAATSTE_METING": 125.4,
+                    "TIJDSTIP_LAATSTE_METING": "not-a-date",
+                },
+            },
+        ],
+    }
+    respx.get(f"{BASE_URL}{WFS_PATH}").mock(
+        return_value=httpx.Response(200, json=invalid_ts),
+    )
+
+    async with NetherlandsRwsConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "netherlands_rws:Rotterdam",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0

@@ -307,6 +307,96 @@ async def test_station_html_parse_no_matches():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_html_empty_name_skipped():
+    """HTML rows with empty station names are skipped."""
+    html_with_empty_name = (
+        '<html><body><table>'
+        '<tr><td>399999999999999</td><td>   </td></tr>'
+        '</table></body></html>'
+    )
+    respx.get(f"{BASE_URL}/cgi-bin/SiteInfo.exe").mock(
+        return_value=httpx.Response(200, text=html_with_empty_name),
+    )
+
+    async with JapanMlitConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Only seed stations, no extra from live (empty name skipped)
+    assert len(stations) == len(_SEED_STATIONS)
+
+
+def test_parse_csv_response_unparseable_raises():
+    """Text that fails both CSV and whitespace parsing raises DataFormatError."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = JapanMlitConnector()
+    with pytest.raises(DataFormatError, match="Unable to parse"):
+        conn._parse_csv_response(
+            "@@@ garbage data with no timestamps @@@",
+            "japan_mlit:305011283018070",
+            datetime(2024, 6, 1, tzinfo=UTC),
+        )
+
+
+def test_parse_timestamp_returns_none_for_invalid():
+    """_parse_timestamp returns None for unparseable strings."""
+    result = JapanMlitConnector._parse_timestamp(
+        "not-a-timestamp", datetime(2024, 6, 1, tzinfo=UTC),
+    )
+    assert result is None
+
+
+def test_parse_discharge_returns_none_for_non_numeric():
+    """_parse_discharge returns None for non-numeric strings."""
+    assert JapanMlitConnector._parse_discharge("abc") is None
+    assert JapanMlitConnector._parse_discharge("N/A") is None
+    assert JapanMlitConnector._parse_discharge("") is None
+
+
+def test_try_parse_csv_no_valid_observations_returns_none():
+    """CSV with no valid timestamps returns None (fallback to whitespace)."""
+    conn = JapanMlitConnector()
+    result = conn._try_parse_csv(
+        "header1,header2\nno-date,100\n",
+        "japan_mlit:305011283018070",
+        datetime(2024, 6, 1, tzinfo=UTC),
+    )
+    assert result is None
+
+
+def test_try_parse_whitespace_no_valid_observations_returns_none():
+    """Whitespace text with no valid timestamps returns None."""
+    conn = JapanMlitConnector()
+    result = conn._try_parse_whitespace(
+        "no-time 100\nbad-time 200\n",
+        "japan_mlit:305011283018070",
+        datetime(2024, 6, 1, tzinfo=UTC),
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_whitespace_format_skips_comment_and_blank_lines():
+    """Whitespace parser correctly skips comments and blank lines."""
+    ws_data = "# Comment\n\n   \n00:00  100.5\n"
+    respx.get(f"{BASE_URL}/cgi-bin/DspFlowData.exe").mock(
+        return_value=httpx.Response(200, text=ws_data),
+    )
+
+    async with JapanMlitConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "japan_mlit:305011283018070",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(100.5)
+
+
 def test_connector_is_registered():
     """The connector is discoverable via the registry."""
     from csfs.core.registry import get_connector

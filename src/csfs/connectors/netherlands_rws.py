@@ -45,21 +45,21 @@ from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
-_WFS_PARAMS_STATIONS = {
-    "service": "WFS",
-    "request": "GetFeature",
-    "typeName": "DDAPI20:locaties",
-    "outputFormat": "application/json",
-    "maxFeatures": "500",
-}
+# Pre-built query strings to avoid httpx URL-encoding the colon in
+# typeName (DDAPI20:locaties), which the WFS server rejects.
+_WFS_QS_STATIONS = (
+    "/services/ogc/hws/DDAPI20/ows"
+    "?service=WFS&request=GetFeature"
+    "&typeName=DDAPI20:locaties"
+    "&outputFormat=application/json&maxFeatures=500"
+)
 
-_WFS_PARAMS_LATEST = {
-    "service": "WFS",
-    "request": "GetFeature",
-    "typeName": "DDAPI20:locatiesmetlaatstewaarneming",
-    "outputFormat": "application/json",
-    "maxFeatures": "500",
-}
+_WFS_QS_LATEST = (
+    "/services/ogc/hws/DDAPI20/ows"
+    "?service=WFS&request=GetFeature"
+    "&typeName=DDAPI20:locatiesmetlaatstewaarneming"
+    "&outputFormat=application/json&maxFeatures=500"
+)
 
 
 @register("netherlands_rws")
@@ -80,10 +80,7 @@ class NetherlandsRwsConnector(BaseConnector):
     async def fetch_stations(self) -> list[Station]:
         """Return all stations from the DDAPI20:locaties WFS layer."""
         try:
-            resp = await self._get(
-                "/services/ogc/hws/DDAPI20/ows",
-                params=_WFS_PARAMS_STATIONS,
-            )
+            resp = await self._get(_WFS_QS_STATIONS)
         except httpx.HTTPStatusError as exc:
             raise ConnectorError(
                 self.slug,
@@ -111,10 +108,7 @@ class NetherlandsRwsConnector(BaseConnector):
         native_id = station_id.removeprefix(f"{self.slug}:")
 
         try:
-            resp = await self._get(
-                "/services/ogc/hws/DDAPI20/ows",
-                params=_WFS_PARAMS_LATEST,
-            )
+            resp = await self._get(_WFS_QS_LATEST)
         except httpx.HTTPStatusError as exc:
             raise ConnectorError(
                 self.slug,
@@ -147,10 +141,10 @@ class NetherlandsRwsConnector(BaseConnector):
         stations: list[Station] = []
         for feat in features:
             props = feat.get("properties", {})
-            geom = feat.get("geometry", {})
+            geom = feat.get("geometry") or {}
 
             native_id = str(
-                props.get("NAAM", ""),
+                props.get("LOCATIE_CODE", props.get("NAAM", "")),
             ).strip()
             if not native_id:
                 continue
@@ -179,11 +173,15 @@ class NetherlandsRwsConnector(BaseConnector):
                 )
                 continue
 
+            display_name = str(
+                props.get("LOCATIE_NAAM", props.get("NAAM", "")),
+            ).strip()
+
             stations.append(Station(
                 id=self._station_id(native_id),
                 provider=self.slug,
                 native_id=native_id,
-                name=native_id,
+                name=display_name or native_id,
                 latitude=lat,
                 longitude=lon,
                 country_code="NL",
@@ -202,7 +200,9 @@ class NetherlandsRwsConnector(BaseConnector):
 
         for feat in features:
             props = feat.get("properties", {})
-            name = str(props.get("NAAM", "")).strip()
+            name = str(
+                props.get("LOCATIE_CODE", props.get("NAAM", ""))
+            ).strip()
             if name != native_id:
                 continue
 

@@ -352,3 +352,103 @@ def test_connector_metadata():
     assert SwedenSMHIConnector.slug == "sweden_smhi"
     assert SwedenSMHIConnector.country_codes == ["SE"]
     assert "smhi" in SwedenSMHIConnector.base_url
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest calls fetch_observations for the last 24h."""
+    respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
+    ).mock(return_value=httpx.Response(200, json={"value": []}))
+
+    async with SwedenSMHIConnector() as conn:
+        chunk = await conn.fetch_latest("sweden_smhi:1")
+
+    assert chunk.provider == "sweden_smhi"
+    assert chunk.station_id == "sweden_smhi:1"
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_station_parse_error_skips():
+    """Entries that raise ValueError/KeyError during Station creation are skipped."""
+    data = {
+        "station": [
+            {
+                "key": "bad",
+                "name": "Bad Station",
+                "latitude": "not-a-number",
+                "longitude": 18.0,
+                "active": True,
+            },
+            {
+                "key": "99",
+                "name": "Good Station",
+                "latitude": 61.0,
+                "longitude": 19.0,
+                "active": True,
+            },
+        ]
+    }
+    respx.get(f"{SMHI_BASE}/version/latest/parameter/1.json").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwedenSMHIConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # "not-a-number" triggers ValueError in float(), caught by except block
+    # Only the good station should be parsed
+    assert len(stations) == 1
+    assert stations[0].native_id == "99"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_invalid_timestamp_raises():
+    """An invalid epoch timestamp raises DataFormatError."""
+    from csfs.core.exceptions import DataFormatError
+
+    data = {
+        "value": [
+            {"date": 99999999999999999, "value": 42.5, "quality": "G"},
+        ]
+    }
+    respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
+    ).mock(return_value=httpx.Response(200, json=data))
+
+    async with SwedenSMHIConnector() as conn:
+        with pytest.raises(DataFormatError, match="Invalid epoch timestamp"):
+            await conn.fetch_observations(
+                "sweden_smhi:1",
+                start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+                end=datetime(2024, 6, 2, 0, 0, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_skips_null_date():
+    """Observations with null date are skipped."""
+    data = {
+        "value": [
+            {"date": None, "value": 42.5, "quality": "G"},
+            {"date": 1717200000000, "value": 43.0, "quality": "G"},
+        ]
+    }
+    respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
+    ).mock(return_value=httpx.Response(200, json=data))
+
+    async with SwedenSMHIConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "sweden_smhi:1",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 2, 0, 0, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(43.0)

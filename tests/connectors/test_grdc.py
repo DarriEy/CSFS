@@ -305,3 +305,198 @@ async def test_fetch_stations_wfs_empty():
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — WFS feature parsing edge cases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_wfs_missing_grdc_no():
+    """WFS features without grdc_no or short coords are skipped."""
+    response = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [6.11, 51.84]},
+                "properties": {
+                    "grdc_no": "",  # empty grdc_no
+                    "station": "No ID",
+                    "country_code": "DE",
+                },
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [6.11]},  # short coords
+                "properties": {
+                    "grdc_no": "1234567",
+                    "station": "Short Coords",
+                    "country_code": "DE",
+                },
+            },
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [6.11, 51.84]},
+                "properties": {
+                    "grdc_no": "6340110",
+                    "station": "RHINE AT LOBITH",
+                    "country_code": "DE",
+                    "river": "RHINE",
+                    "area": 160800.0,
+                },
+            },
+        ],
+    }
+    respx.get("https://grdc.bafg.de/GRDC/ows").mock(
+        return_value=httpx.Response(200, json=response),
+    )
+
+    async with GRDCConnector(config={"seed_only": False}) as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "6340110"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — file read error
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_file_read_error(tmp_path: Path):
+    """OSError when reading a GRDC file raises ConnectorError."""
+    from csfs.core.exceptions import ConnectorError
+
+    grdc_file = tmp_path / "6340110_Q_Day.Cmd.txt"
+    grdc_file.write_text(SAMPLE_GRDC_FILE, encoding="utf-8")
+    grdc_file.chmod(0o000)
+
+    try:
+        async with GRDCConnector(
+            config={"data_dir": str(tmp_path)},
+        ) as conn:
+            with pytest.raises(ConnectorError, match="Cannot read GRDC file"):
+                await conn.fetch_observations(
+                    "grdc:6340110",
+                    start=datetime(1950, 1, 1, tzinfo=UTC),
+                    end=datetime(1950, 1, 5, tzinfo=UTC),
+                )
+    finally:
+        grdc_file.chmod(0o644)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — empty data lines
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_only_comments(tmp_path: Path):
+    """A file with only comment lines returns empty observations."""
+    grdc_file = tmp_path / "6340110_Q_Day.Cmd.txt"
+    grdc_file.write_text(
+        "# Only comments\n# No data\n\n",
+        encoding="utf-8",
+    )
+
+    async with GRDCConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "grdc:6340110",
+            start=datetime(1950, 1, 1, tzinfo=UTC),
+            end=datetime(1950, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — short data line (< 3 parts)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_short_lines_skipped(tmp_path: Path):
+    """Data lines with fewer than 3 semicolons are skipped."""
+    grdc_file = tmp_path / "6340110_Q_Day.Cmd.txt"
+    grdc_file.write_text(
+        "# Header\n"
+        "1950-01-01;00:00\n"  # only 2 parts
+        "1950-01-02; 00:00;    620.000;0\n",
+        encoding="utf-8",
+    )
+
+    async with GRDCConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "grdc:6340110",
+            start=datetime(1950, 1, 1, tzinfo=UTC),
+            end=datetime(1950, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(620.0)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — invalid date in data line
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_bad_date_skipped(tmp_path: Path):
+    """Data lines with unparseable dates are skipped."""
+    grdc_file = tmp_path / "6340110_Q_Day.Cmd.txt"
+    grdc_file.write_text(
+        "# Header\n"
+        "bad-date; 00:00;    620.000;0\n"
+        "1950-01-02; 00:00;    635.500;0\n",
+        encoding="utf-8",
+    )
+
+    async with GRDCConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "grdc:6340110",
+            start=datetime(1950, 1, 1, tzinfo=UTC),
+            end=datetime(1950, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(635.5)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — non-numeric value string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_non_numeric_value(tmp_path: Path):
+    """Non-numeric value strings result in MISSING quality."""
+    grdc_file = tmp_path / "6340110_Q_Day.Cmd.txt"
+    grdc_file.write_text(
+        "# Header\n"
+        "1950-01-01; 00:00;    abc;0\n",
+        encoding="utf-8",
+    )
+
+    async with GRDCConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "grdc:6340110",
+            start=datetime(1950, 1, 1, tzinfo=UTC),
+            end=datetime(1950, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"

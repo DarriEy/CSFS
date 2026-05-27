@@ -243,3 +243,141 @@ async def test_fetch_observations_french_date_format(tmp_path: Path):
     assert len(chunk.observations) == 2
     assert chunk.observations[0].timestamp.day == 1
     assert chunk.observations[1].timestamp.day == 2
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — file read error
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_file_read_error(tmp_path: Path):
+    """OSError when reading a SIEREM file raises ConnectorError."""
+    from csfs.core.exceptions import ConnectorError
+
+    data_file = tmp_path / "SIEREM-1270700103.csv"
+    data_file.write_text(SAMPLE_SIEREM_CSV_SEMICOLON, encoding="utf-8")
+    data_file.chmod(0o000)
+
+    try:
+        async with SIEREMConnector(
+            config={"data_dir": str(tmp_path)},
+        ) as conn:
+            with pytest.raises(ConnectorError, match="Cannot read SIEREM file"):
+                await conn.fetch_observations(
+                    "sierem:SIEREM-1270700103",
+                    start=datetime(1965, 1, 1, tzinfo=UTC),
+                    end=datetime(1965, 1, 5, tzinfo=UTC),
+                )
+    finally:
+        data_file.chmod(0o644)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — short data line (< 2 parts)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_short_line_skipped(tmp_path: Path):
+    """Data lines with fewer than 2 parts after splitting are skipped."""
+    data_file = tmp_path / "SIEREM-1270700103.csv"
+    # Delimiter detected as semicolon from first line; second line has no
+    # semicolons, so after split it has < 2 parts and is skipped.
+    data_file.write_text(
+        "# Header\n"
+        "1965-01-02;1180.5;0\n"
+        "1965-01-03\n",  # no semicolons -> 1 part -> skipped
+        encoding="utf-8",
+    )
+
+    async with SIEREMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "sierem:SIEREM-1270700103",
+            start=datetime(1965, 1, 1, tzinfo=UTC),
+            end=datetime(1965, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(1180.5)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — bad date in data line
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_bad_date_skipped(tmp_path: Path):
+    """Data lines with unparseable dates are skipped."""
+    data_file = tmp_path / "SIEREM-1270700103.csv"
+    data_file.write_text(
+        "# Header\n"
+        "bad-date;1250.0;0\n"
+        "1965-01-02;1180.5;0\n",
+        encoding="utf-8",
+    )
+
+    async with SIEREMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "sierem:SIEREM-1270700103",
+            start=datetime(1965, 1, 1, tzinfo=UTC),
+            end=datetime(1965, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(1180.5)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — non-numeric value string
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_non_numeric_value(tmp_path: Path):
+    """Non-numeric value strings result in MISSING quality."""
+    data_file = tmp_path / "SIEREM-1270700103.csv"
+    data_file.write_text(
+        "# Header\n"
+        "1965-01-01;abc;0\n",
+        encoding="utf-8",
+    )
+
+    async with SIEREMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "sierem:SIEREM-1270700103",
+            start=datetime(1965, 1, 1, tzinfo=UTC),
+            end=datetime(1965, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — _parse_date returns None for all formats
+# ---------------------------------------------------------------------------
+
+
+def test_parse_date_returns_none_for_invalid():
+    """_parse_date returns None for strings that match no format."""
+    assert SIEREMConnector._parse_date("not-a-date") is None
+    assert SIEREMConnector._parse_date("") is None
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — _detect_delimiter fallback
+# ---------------------------------------------------------------------------
+
+
+def test_detect_delimiter_no_known_delimiter():
+    """_detect_delimiter returns comma when no known delimiter found."""
+    assert SIEREMConnector._detect_delimiter("1965-01-01 1250.0 0") == ","

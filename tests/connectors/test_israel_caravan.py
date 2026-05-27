@@ -243,3 +243,163 @@ async def test_connector_registration():
 
     cls = get_connector("israel_caravan")
     assert cls is IsraelCaravanConnector
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_file_not_found(tmp_path: Path):
+    """When data_dir exists but file is missing, returns empty chunk."""
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:nonexistent",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_alt_column_name(tmp_path: Path):
+    """CSV with 'discharge' column instead of 'streamflow' is parsed."""
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(SAMPLE_CSV_ALT, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2015, 6, 1, tzinfo=UTC),
+            end=datetime(2015, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s == pytest.approx(3.2)
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_missing_headers(tmp_path: Path):
+    """CSV with no recognized date/value columns returns empty."""
+    csv_content = "col_a,col_b\nfoo,bar\n"
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_date_skipped(
+    tmp_path: Path,
+):
+    """Rows with unparseable dates are skipped."""
+    csv_content = (
+        "date,streamflow\n"
+        "not-a-date,8.5\n"
+        "2010-01-01,9.2\n"
+    )
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_value_missing(
+    tmp_path: Path,
+):
+    """Non-numeric streamflow values result in MISSING quality."""
+    csv_content = (
+        "date,streamflow\n"
+        "2010-01-01,abc\n"
+        "2010-01-02,9.2\n"
+    )
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_empty_date_skipped(tmp_path: Path):
+    """Rows with empty date are skipped."""
+    csv_content = (
+        "date,streamflow\n"
+        ",8.5\n"
+        "2010-01-01,9.2\n"
+    )
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+def test_safe_float_none():
+    """_safe_float returns None for None input."""
+    from csfs.connectors.israel_caravan import _safe_float
+
+    assert _safe_float(None) is None
+
+
+def test_safe_float_invalid():
+    """_safe_float returns None for non-numeric string."""
+    from csfs.connectors.israel_caravan import _safe_float
+
+    assert _safe_float("abc") is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_naive_datetime(tmp_path: Path):
+    """Naive start/end datetimes are treated as UTC."""
+    csv_file = tmp_path / "il_yarkon.csv"
+    csv_file.write_text(SAMPLE_CSV, encoding="utf-8")
+
+    async with IsraelCaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "israel_caravan:il_yarkon",
+            start=datetime(2010, 1, 1),  # naive
+            end=datetime(2010, 1, 5),  # naive
+        )
+
+    assert len(chunk.observations) == 5

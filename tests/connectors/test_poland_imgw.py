@@ -247,6 +247,178 @@ async def test_fetch_stations_no_river():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_hydro_data_http_error_raises_connector_error():
+    """ConnectorError is raised when the hydro endpoint fails."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with PolandImgwConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch hydro data"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_hydro_data_invalid_json_raises_data_format_error():
+    """DataFormatError is raised when the response is not valid JSON."""
+    from csfs.core.exceptions import DataFormatError
+
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, text="<html>Error</html>"),
+    )
+
+    async with PolandImgwConnector() as conn:
+        with pytest.raises(DataFormatError, match="not valid JSON"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_parse_exception_skipped():
+    """Stations that raise during parsing are skipped."""
+    # Station with empty id is skipped
+    data = [
+        {
+            "id_stacji": "",
+            "stacja": "Empty ID",
+            "rzeka": "TestRiver",
+            "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
+        },
+        MOCK_HYDRO_RESPONSE[0],
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "150190330"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_timestamp_fallback_field():
+    """Observation uses data_pomiaru when stan_wody_data_pomiaru is missing."""
+    data = [
+        {
+            "id_stacji": "150190330",
+            "stacja": "WARSZAWA",
+            "rzeka": "WISŁA",
+            "stan_wody": "210",
+            "stan_wody_data_pomiaru": None,
+            "data_pomiaru": "2024-06-01T10:00:00",
+            "przepływ": "450.5",
+        },
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "poland_imgw:150190330",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_no_timestamp_skipped():
+    """Observations without any timestamp field are skipped."""
+    data = [
+        {
+            "id_stacji": "150190330",
+            "stacja": "WARSZAWA",
+            "rzeka": "WISŁA",
+            "stan_wody": "210",
+            "stan_wody_data_pomiaru": None,
+            "data_pomiaru": None,
+            "przepływ": "450.5",
+        },
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "poland_imgw:150190330",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_invalid_timestamp_skipped():
+    """Observations with invalid timestamps are skipped."""
+    data = [
+        {
+            "id_stacji": "150190330",
+            "stacja": "WARSZAWA",
+            "rzeka": "WISŁA",
+            "stan_wody": "210",
+            "stan_wody_data_pomiaru": "not-a-date",
+            "przepływ": "450.5",
+        },
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "poland_imgw:150190330",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_non_numeric_discharge():
+    """Non-numeric discharge values are treated as MISSING."""
+    data = [
+        {
+            "id_stacji": "150190330",
+            "stacja": "WARSZAWA",
+            "rzeka": "WISŁA",
+            "stan_wody": "210",
+            "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
+            "przepływ": "abc",
+        },
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "poland_imgw:150190330",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_registry_slug():
     """Connector is registered under the correct slug."""
     from csfs.core.registry import get_connector

@@ -1,7 +1,7 @@
 """Tests for the Ireland OPW connector with mocked HTTP responses."""
 
 import gzip
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -258,3 +258,213 @@ async def test_fetch_observations_bom_encoded_csv():
 
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(99.9)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_geojson_value_error_falls_back_to_csv():
+    """ValueError in geojson parsing (e.g., bad float) falls back to CSV."""
+    bad_geojson = {
+        "features": [
+            {
+                "properties": {"name": "Test", "ref": "0000125001"},
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": ["not-a-float", 54.0],
+                },
+            },
+        ],
+    }
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(200, json=bad_geojson),
+    )
+    respx.get("https://waterlevel.ie/data/station_list.csv").mock(
+        return_value=httpx.Response(
+            200, text="name,label\n01041,Sandy Mills\n",
+        ),
+    )
+
+    async with IrelandOPWConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # bad geojson returns empty list -> falls back to CSV
+    assert len(stations) == 1
+    assert stations[0].native_id == "01041"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_csv_skips_name_header():
+    """Station CSV skips rows where native_id is 'name'."""
+    csv_text = "name,label\nname,Header Row\n01041,Sandy Mills\n02001,Ballina\n"
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(500),
+    )
+    respx.get("https://waterlevel.ie/data/station_list.csv").mock(
+        return_value=httpx.Response(200, text=csv_text),
+    )
+
+    async with IrelandOPWConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 2
+    native_ids = {s.native_id for s in stations}
+    assert "01041" in native_ids
+    assert "02001" in native_ids
+    assert "name" not in native_ids
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_csv_short_line_skipped():
+    """Station CSV lines with fewer than 2 parts are skipped."""
+    csv_text = "name,label\nshort_only\n01041,Sandy Mills\n"
+    respx.get("https://waterlevel.ie/geojson/").mock(
+        return_value=httpx.Response(500),
+    )
+    respx.get("https://waterlevel.ie/data/station_list.csv").mock(
+        return_value=httpx.Response(200, text=csv_text),
+    )
+
+    async with IrelandOPWConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "01041"
+
+
+def test_parse_epa_stations():
+    """EPA HydroNet JSON station index is parsed correctly."""
+    conn = IrelandOPWConnector.__new__(IrelandOPWConnector)
+    conn.slug = "ireland_opw"
+
+    epa_data = [
+        {
+            "L1_ts_name": "0001",
+            "metadata_station_name": "River Lee",
+            "metadata_station_latitude": "51.8985",
+            "metadata_station_longitude": "-8.4756",
+            "L1_DATA_AVAILABLE": True,
+        },
+        {
+            "L1_ts_name": "0002",
+            "metadata_station_name": "River Shannon",
+            "metadata_station_latitude": "52.6638",
+            "metadata_station_longitude": "-7.2555",
+            "L1_DATA_AVAILABLE": False,
+        },
+        {
+            "L1_ts_name": "",
+            "metadata_station_name": "Empty ID",
+            "metadata_station_latitude": "53.0",
+            "metadata_station_longitude": "-7.0",
+        },
+        {
+            "L1_ts_name": "0003",
+            "metadata_station_name": "Bad Coords",
+            "metadata_station_latitude": "not-a-number",
+            "metadata_station_longitude": "-7.0",
+        },
+    ]
+
+    stations = conn._parse_epa_stations(epa_data)
+
+    assert len(stations) == 2
+    assert stations[0].native_id == "0001"
+    assert stations[0].name == "River Lee"
+    assert stations[0].latitude == pytest.approx(51.8985)
+    assert stations[0].is_active is True
+    assert stations[1].native_id == "0002"
+    assert stations[1].is_active is False
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dailymean_csv_slash_date_format():
+    """Daily-mean CSV with slash date format (YYYY/MM/DD HH:MM:SS) is parsed."""
+    csv_text = "Date,Value,Quality\n2024/01/15 08:00:00,22.5,Good\n2024/01/16 08:00:00,23.0,\n"
+    compressed = _gzip_bytes(csv_text)
+    respx.get(
+        "https://waterlevel.ie"
+        "/data/dailymean/25001_dailymean.csv.gz"
+    ).mock(return_value=httpx.Response(200, content=compressed))
+
+    async with IrelandOPWConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "ireland_opw:25001",
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 31),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s == pytest.approx(22.5)
+    assert chunk.observations[0].quality.value == "good"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dailymean_csv_date_only_slash_format():
+    """Daily-mean CSV with YYYY/MM/DD format (no time) is parsed."""
+    csv_text = "Date,Value,Quality\n2024/01/15,22.5,Good\n"
+    compressed = _gzip_bytes(csv_text)
+    respx.get(
+        "https://waterlevel.ie"
+        "/data/dailymean/25001_dailymean.csv.gz"
+    ).mock(return_value=httpx.Response(200, content=compressed))
+
+    async with IrelandOPWConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "ireland_opw:25001",
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 31),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(22.5)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dailymean_csv_unparseable_date():
+    """Rows with completely unparseable dates are skipped."""
+    csv_text = "Date,Value,Quality\nnot-a-date,22.5,Good\n2024-01-01,10.0,Good\n"
+    compressed = _gzip_bytes(csv_text)
+    respx.get(
+        "https://waterlevel.ie"
+        "/data/dailymean/25001_dailymean.csv.gz"
+    ).mock(return_value=httpx.Response(200, content=compressed))
+
+    async with IrelandOPWConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "ireland_opw:25001",
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 12, 31),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_dailymean_csv_null_discharge_overrides_quality():
+    """When discharge is None, quality is forced to MISSING."""
+    csv_text = "Date,Value,Quality\n2024-01-01,,Good\n2024-01-02,abc,Suspect\n"
+    compressed = _gzip_bytes(csv_text)
+    respx.get(
+        "https://waterlevel.ie"
+        "/data/dailymean/25001_dailymean.csv.gz"
+    ).mock(return_value=httpx.Response(200, content=compressed))
+
+    async with IrelandOPWConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "ireland_opw:25001",
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 1, 31),
+        )
+
+    # Both rows: empty value -> None, unparseable value -> None
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+    assert chunk.observations[1].discharge_m3s is None
+    assert chunk.observations[1].quality.value == "missing"

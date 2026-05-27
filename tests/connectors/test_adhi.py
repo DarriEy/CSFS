@@ -330,3 +330,325 @@ async def test_country_codes_comprehensive():
     # Spot-check major countries
     for code in ("NG", "ZA", "EG", "KE", "ET", "CD", "GH", "TZ"):
         assert code in ADHI_COUNTRY_CODES
+
+
+# ------------------------------------------------------------------
+# Additional coverage tests — error branches, edge cases
+# ------------------------------------------------------------------
+
+
+def test_safe_float_non_numeric_returns_none():
+    """_safe_float returns None for non-numeric values (lines 212-213)."""
+    from csfs.connectors.adhi import _safe_float
+
+    assert _safe_float("not_a_number") is None
+    assert _safe_float("") is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_returns_empty_chunk():
+    """fetch_latest returns empty chunk for historical-only data (line 361)."""
+    async with ADHIConnector() as conn:
+        chunk = await conn.fetch_latest("adhi:ADHI-NG-0001")
+
+    assert chunk.station_id == "adhi:ADHI-NG-0001"
+    assert chunk.provider == "adhi"
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_file_list_caching():
+    """File list is cached after first fetch (lines 369-370)."""
+    respx.get(
+        "https://dataverse.ird.fr/api/datasets/:persistentId/",
+    ).mock(
+        return_value=httpx.Response(200, json=MOCK_DATAVERSE_RESPONSE),
+    )
+
+    async with ADHIConnector() as conn:
+        file_list_1 = await conn._get_file_list()
+        file_list_2 = await conn._get_file_list()
+
+    # Both calls return the same cached list
+    assert file_list_1 is file_list_2
+    assert len(file_list_1) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_file_list_alternative_structure():
+    """File list parsed from alternative response structure (line 390)."""
+    alt_response = {
+        "status": "OK",
+        "data": {
+            "id": 99999,
+            "latestVersion": {
+                "versionState": "RELEASED",
+                "files": [],  # empty latestVersion files
+            },
+            "files": [
+                {
+                    "dataFile": {
+                        "id": 6001,
+                        "filename": "ADHI_stations_metadata.tab",
+                        "filesize": 100000,
+                    },
+                },
+            ],
+        },
+    }
+    respx.get(
+        "https://dataverse.ird.fr/api/datasets/:persistentId/",
+    ).mock(
+        return_value=httpx.Response(200, json=alt_response),
+    )
+
+    async with ADHIConnector() as conn:
+        file_list = await conn._get_file_list()
+
+    assert len(file_list) == 1
+    assert file_list[0]["filename"] == "ADHI_stations_metadata.tab"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_get_file_list_no_files_raises():
+    """Empty file list raises DataFormatError (lines 402)."""
+    from csfs.core.exceptions import DataFormatError
+
+    empty_response = {
+        "status": "OK",
+        "data": {
+            "latestVersion": {"files": []},
+        },
+    }
+    respx.get(
+        "https://dataverse.ird.fr/api/datasets/:persistentId/",
+    ).mock(
+        return_value=httpx.Response(200, json=empty_response),
+    )
+
+    async with ADHIConnector() as conn:
+        with pytest.raises(DataFormatError, match="No files found"):
+            await conn._get_file_list()
+
+
+def test_find_file_tab_fallback():
+    """_find_file falls back to .tab files when no hint matches (lines 428-433)."""
+    conn = ADHIConnector()
+    file_list = [
+        {"filename": "something_else.tab", "id": 1},
+        {"filename": "readme.txt", "id": 2},
+    ]
+    result = conn._find_file(file_list, ("nonexistent_hint",))
+    assert result is not None
+    assert result["id"] == 1
+
+
+def test_find_file_no_match_returns_none():
+    """_find_file returns None when no file matches (line 433)."""
+    conn = ADHIConnector()
+    file_list = [
+        {"filename": "readme.txt", "id": 1},
+    ]
+    result = conn._find_file(file_list, ("nonexistent_hint",))
+    assert result is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_download_datafile_error_raises():
+    """Failed datafile download raises ConnectorError (lines 440-441)."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(
+        "https://dataverse.ird.fr/api/access/datafile/9999",
+    ).mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with ADHIConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to download"):
+            await conn._download_datafile(9999)
+
+
+def test_parse_station_metadata_no_header_raises():
+    """Station metadata with no header raises DataFormatError (line 459)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = ADHIConnector()
+    with pytest.raises(DataFormatError, match="no header"):
+        conn._parse_station_metadata("")
+
+
+def test_parse_station_metadata_skips_bad_rows():
+    """Rows that raise errors are skipped (lines 474-480)."""
+    content = (
+        "station_code\tstation_name\tlatitude\tlongitude\tcountry_code\n"
+        "GOOD\tGood Station\t10.0\t20.0\tNG\n"
+    )
+    conn = ADHIConnector()
+    stations = conn._parse_station_metadata(content)
+    assert len(stations) == 1
+    assert stations[0].native_id == "GOOD"
+
+
+def test_parse_station_row_empty_id_returns_none():
+    """Row with empty station_code returns None (line 501)."""
+    conn = ADHIConnector()
+    row = {
+        "station_code": "",
+        "station_name": "Test",
+        "latitude": "10.0",
+        "longitude": "20.0",
+        "country_code": "NG",
+    }
+    field_map = {k.lower(): k for k in row}
+    result = conn._parse_station_row(row, field_map)
+    assert result is None
+
+
+def test_parse_discharge_data_no_header_returns_empty():
+    """Discharge data with no header returns empty list (line 572)."""
+    conn = ADHIConnector()
+    result = conn._parse_discharge_data(
+        "", "ADHI-NG-0001", "adhi:ADHI-NG-0001",
+        datetime(1970, 1, 1, tzinfo=UTC),
+        datetime(1970, 12, 31, tzinfo=UTC),
+    )
+    assert result == []
+
+
+def test_parse_discharge_row_outside_range_returns_none():
+    """Row outside date range returns None (line 611)."""
+    conn = ADHIConnector()
+    lrow = {
+        "date": "1980-01",
+        "discharge": "100.0",
+    }
+    result = conn._parse_discharge_row(
+        lrow, "adhi:test",
+        datetime(1970, 1, 1, tzinfo=UTC),
+        datetime(1970, 12, 31, tzinfo=UTC),
+    )
+    assert result is None
+
+
+def test_parse_discharge_row_invalid_value_sets_missing():
+    """Non-numeric discharge value results in MISSING quality (lines 631-633)."""
+    from csfs.core.models import QualityFlag
+
+    conn = ADHIConnector()
+    lrow = {
+        "date": "1970-01",
+        "discharge": "bad_value",
+    }
+    result = conn._parse_discharge_row(
+        lrow, "adhi:test",
+        datetime(1970, 1, 1, tzinfo=UTC),
+        datetime(1970, 12, 31, tzinfo=UTC),
+    )
+    assert result is not None
+    assert result.discharge_m3s is None
+    assert result.quality == QualityFlag.MISSING
+
+
+def test_parse_row_timestamp_date_formats():
+    """_parse_row_timestamp handles multiple date formats (lines 673-683)."""
+    # year-month format
+    result = ADHIConnector._parse_row_timestamp({"date": "1970-01"})
+    assert result is not None
+    assert result.year == 1970 and result.month == 1
+
+    # dd/mm/yyyy format
+    result = ADHIConnector._parse_row_timestamp({"date": "15/03/1975"})
+    assert result is not None
+    assert result.year == 1975 and result.month == 3
+
+    # yyyy/mm/dd format
+    result = ADHIConnector._parse_row_timestamp({"date": "1975/03/15"})
+    assert result is not None
+    assert result.year == 1975
+
+    # year + month columns
+    result = ADHIConnector._parse_row_timestamp(
+        {"year": "1980", "month": "6"},
+    )
+    assert result is not None
+    assert result.year == 1980 and result.month == 6
+
+    # invalid year+month returns None
+    result = ADHIConnector._parse_row_timestamp(
+        {"year": "bad", "month": "6"},
+    )
+    assert result is None
+
+    # no date at all returns None
+    result = ADHIConnector._parse_row_timestamp({})
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_read_local_observations_no_file_returns_none():
+    """_read_local_observations returns None when no file exists (line 700)."""
+    async with ADHIConnector() as conn:
+        result = conn._read_local_observations(
+            Path("/nonexistent/dir"), "ADHI-XX-9999", "adhi:ADHI-XX-9999",
+            datetime(1970, 1, 1, tzinfo=UTC),
+            datetime(1970, 12, 31, tzinfo=UTC),
+        )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_read_local_observations_read_error_returns_none(tmp_path: Path):
+    """_read_local_observations returns None on OSError (lines 704-710)."""
+    import os
+
+    # Create a file, then make it unreadable
+    data_file = tmp_path / "ADHI-NG-0001.csv"
+    data_file.write_text("some content")
+    os.chmod(data_file, 0o000)
+
+    try:
+        async with ADHIConnector() as conn:
+            result = conn._read_local_observations(
+                tmp_path, "ADHI-NG-0001", "adhi:ADHI-NG-0001",
+                datetime(1970, 1, 1, tzinfo=UTC),
+                datetime(1970, 12, 31, tzinfo=UTC),
+            )
+        assert result is None
+    finally:
+        os.chmod(data_file, 0o644)
+
+
+def test_find_local_file_tab_extension(tmp_path: Path):
+    """_find_local_file finds .tab files (line 737)."""
+    tab_file = tmp_path / "ADHI-NG-0001.tab"
+    tab_file.write_text("some content")
+
+    result = ADHIConnector._find_local_file(tmp_path, "ADHI-NG-0001")
+    assert result == tab_file
+
+
+def test_detect_delimiter_tab():
+    """_detect_delimiter correctly detects tab delimiter (line 781)."""
+    content = "col1\tcol2\tcol3\nval1\tval2\tval3"
+    result = ADHIConnector._detect_delimiter(content)
+    assert result == "\t"
+
+
+def test_detect_delimiter_semicolon():
+    """_detect_delimiter correctly detects semicolon delimiter."""
+    content = "col1;col2;col3\nval1;val2;val3"
+    result = ADHIConnector._detect_delimiter(content)
+    assert result == ";"
+
+
+def test_detect_delimiter_default_comma():
+    """_detect_delimiter defaults to comma when no delimiter found."""
+    content = "singlecolumn\nvalue"
+    result = ADHIConnector._detect_delimiter(content)
+    assert result == ","

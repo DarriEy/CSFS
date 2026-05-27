@@ -58,38 +58,32 @@ _MONTH_COLUMNS = [
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
 
-# Regional file paths relative to v4.0/
+# Regional file paths under v4.0/AllData/
 _REGIONS: list[dict[str, str]] = [
     {
         "name": "Ob",
-        "attributes": "/v4.0/Ob/Ob_Attributes.txt",
-        "discharge": "/v4.0/Ob/Ob_Discharge.txt",
+        "attributes": "/v4.0/AllData/Ob_Attributes.txt",
+        "discharge": "/v4.0/AllData/Ob_Data_m3_s.txt",
     },
     {
         "name": "Yenisei",
-        "attributes": "/v4.0/Yenisei/Yenisei_Attributes.txt",
-        "discharge": "/v4.0/Yenisei/Yenisei_Discharge.txt",
+        "attributes": "/v4.0/AllData/Yenisei_Attributes.txt",
+        "discharge": "/v4.0/AllData/Yenisei_Data_m3_s.txt",
     },
     {
         "name": "Barents",
-        "attributes": "/v4.0/Barents/Barents_Attributes.txt",
-        "discharge": "/v4.0/Barents/Barents_Discharge.txt",
+        "attributes": "/v4.0/AllData/Barents_Sea_Attributes.txt",
+        "discharge": "/v4.0/AllData/Barents_Sea_Data_m3_s.txt",
     },
     {
         "name": "Lena",
-        "attributes": "/v4.0/Lena/Lena_Attributes.txt",
-        "discharge": "/v4.0/Lena/Lena_Discharge.txt",
+        "attributes": "/v4.0/AllData/Lena_Attributes.txt",
+        "discharge": "/v4.0/AllData/Lena_Data_m3_s.txt",
     },
     {
         "name": "PacificArcticCoast",
-        "attributes": (
-            "/v4.0/PacificArcticCoast"
-            "/PacificArcticCoast_Attributes.txt"
-        ),
-        "discharge": (
-            "/v4.0/PacificArcticCoast"
-            "/PacificArcticCoast_Discharge.txt"
-        ),
+        "attributes": "/v4.0/AllData/Anadyr_and_Kolyma_Attributes.txt",
+        "discharge": "/v4.0/AllData/Anadyr_and_Kolyma_Data_m3_s.txt",
     },
 ]
 
@@ -268,10 +262,11 @@ class RussiaArcticNETConnector(BaseConnector):
         if not lines:
             return stations
 
-        # First line is the header
+        # First line is the header (fields may be quoted)
         header = lines[0].split("\t")
         col_idx = {
-            col.strip(): i for i, col in enumerate(header)
+            col.strip().strip('"'): i
+            for i, col in enumerate(header)
         }
 
         required = {"PointID", "Lat", "Long"}
@@ -307,7 +302,7 @@ class RussiaArcticNETConnector(BaseConnector):
             idx = col_idx.get(col)
             if idx is None or idx >= len(fields):
                 return ""
-            return fields[idx].strip()
+            return fields[idx].strip().strip('"')
 
         point_id = _get("PointID")
         if not point_id:
@@ -413,7 +408,8 @@ class RussiaArcticNETConnector(BaseConnector):
 
         header = lines[0].split("\t")
         col_idx = {
-            col.strip(): i for i, col in enumerate(header)
+            col.strip().strip('"'): i
+            for i, col in enumerate(header)
         }
 
         if "PointID" not in col_idx or "Year" not in col_idx:

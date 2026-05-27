@@ -147,6 +147,100 @@ async def test_fetch_observations_all_in_range():
     assert len(chunk.observations) == 4
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_generic_exception_returns_empty():
+    """Generic exceptions return an empty chunk."""
+    respx.get(f"{BASE_URL}/latinica/HIDRO/api/podaci").mock(
+        side_effect=RuntimeError("connection failed"),
+    )
+
+    async with BosniaFhmzConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "bosnia_fhmz:1001",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+    assert chunk.provider == "bosnia_fhmz"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest calls fetch_observations for last 24h."""
+    respx.get(f"{BASE_URL}/latinica/HIDRO/api/podaci").mock(
+        return_value=httpx.Response(200, json=[]),
+    )
+
+    async with BosniaFhmzConnector() as conn:
+        chunk = await conn.fetch_latest("bosnia_fhmz:1001")
+
+    assert chunk.provider == "bosnia_fhmz"
+    assert chunk.station_id == "bosnia_fhmz:1001"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_unexpected_type_raises():
+    """Non-list/dict response raises DataFormatError."""
+    from csfs.core.exceptions import DataFormatError
+
+    respx.get(f"{BASE_URL}/latinica/HIDRO/api/podaci").mock(
+        return_value=httpx.Response(200, text='"just a string"'),
+    )
+
+    async with BosniaFhmzConnector() as conn:
+        with pytest.raises(DataFormatError, match="Unexpected response type"):
+            await conn.fetch_observations(
+                "bosnia_fhmz:1001",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_invalid_timestamp_raises():
+    """Invalid timestamp in observation raises DataFormatError."""
+    from csfs.core.exceptions import DataFormatError
+
+    bad_data = [
+        {"datum": "not-a-date", "protok": 15.3},
+    ]
+    respx.get(f"{BASE_URL}/latinica/HIDRO/api/podaci").mock(
+        return_value=httpx.Response(200, json=bad_data),
+    )
+
+    async with BosniaFhmzConnector() as conn:
+        with pytest.raises(DataFormatError, match="Invalid or missing timestamp"):
+            await conn.fetch_observations(
+                "bosnia_fhmz:1001",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_data_key_response():
+    """Observations wrapped in a 'data' key (not 'podaci') are parsed."""
+    wrapped = {"data": MOCK_OBSERVATIONS[:2]}
+    respx.get(f"{BASE_URL}/latinica/HIDRO/api/podaci").mock(
+        return_value=httpx.Response(200, json=wrapped),
+    )
+
+    async with BosniaFhmzConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "bosnia_fhmz:1001",
+            start=datetime(2024, 6, 1, 0, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 2, 0, 0, 0, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
 def test_connector_is_registered():
     """The connector is discoverable via the registry."""
     from csfs.core.registry import get_connector

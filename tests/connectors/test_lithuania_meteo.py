@@ -278,3 +278,155 @@ def test_connector_is_registered():
 
     cls = get_connector("lithuania_meteo")
     assert cls is LithuaniaMeteoConnector
+
+
+# ======================================================================
+# Additional coverage tests — error branches, edge cases
+# ======================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_http_error_raises_connector_error():
+    """HTTPStatusError on station listing raises ConnectorError (lines 66-67)."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{BASE_URL}/v1/hydro-stations").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch station list"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_non_list_returns_empty():
+    """Non-list response returns empty station list (line 75)."""
+    respx.get(f"{BASE_URL}/v1/hydro-stations").mock(
+        return_value=httpx.Response(200, json={"unexpected": "dict"}),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_day_non_404_error_raises():
+    """Non-404 HTTPStatusError on day fetch raises ConnectorError (lines 147)."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(
+        f"{BASE_URL}/v1/hydro-stations/nemunas-kaunas"
+        f"/observations/measured/2024-06-01",
+    ).mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch observations"):
+            await conn.fetch_observations(
+                "lithuania_meteo:nemunas-kaunas",
+                start=datetime(2024, 6, 1),
+                end=datetime(2024, 6, 1),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_invalid_coords_skipped():
+    """Stations with non-numeric coordinates are skipped (lines 183-190)."""
+    bad_stations = [
+        {
+            "code": "bad-station",
+            "name": "Bad Coords",
+            "coordinates": {"latitude": "not_a_number", "longitude": "bad"},
+        },
+        {
+            "code": "good-station",
+            "name": "Good Station",
+            "coordinates": {"latitude": 54.0, "longitude": 24.0},
+            "waterBody": "Nemunas",
+        },
+    ]
+    respx.get(f"{BASE_URL}/v1/hydro-stations").mock(
+        return_value=httpx.Response(200, json=bad_stations),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "good-station"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_missing_timestamp_skipped():
+    """Observations with None observationTimeUtc are skipped (line 219)."""
+    obs_data = {
+        "observations": [
+            {
+                "observationTimeUtc": None,
+                "waterLevel": 150.0,
+            },
+            {
+                "observationTimeUtc": "2024-06-01T06:00:00",
+                "waterLevel": 152.0,
+            },
+        ],
+    }
+    respx.get(
+        f"{BASE_URL}/v1/hydro-stations/nemunas-kaunas"
+        f"/observations/measured/2024-06-01",
+    ).mock(
+        return_value=httpx.Response(200, json=obs_data),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "lithuania_meteo:nemunas-kaunas",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 1),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(152.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_invalid_timestamp_skipped():
+    """Observations with invalid timestamp are skipped (lines 223-229)."""
+    obs_data = {
+        "observations": [
+            {
+                "observationTimeUtc": "not-a-date",
+                "waterLevel": 150.0,
+            },
+            {
+                "observationTimeUtc": "2024-06-01T06:00:00",
+                "waterLevel": 152.0,
+            },
+        ],
+    }
+    respx.get(
+        f"{BASE_URL}/v1/hydro-stations/nemunas-kaunas"
+        f"/observations/measured/2024-06-01",
+    ).mock(
+        return_value=httpx.Response(200, json=obs_data),
+    )
+
+    async with LithuaniaMeteoConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "lithuania_meteo:nemunas-kaunas",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 1),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(152.0)

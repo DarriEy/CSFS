@@ -19,11 +19,13 @@ structlog.configure(
 
 @click.group()
 @click.option("--db", default="csfs.duckdb", help="Path to DuckDB database file")
+@click.option("--config", "-c", default=None, type=click.Path(), help="Path to YAML config file")
 @click.pass_context
-def cli(ctx: click.Context, db: str) -> None:
+def cli(ctx: click.Context, db: str, config: str | None) -> None:
     """CSFS — Community Streamflow Service."""
     ctx.ensure_object(dict)
     ctx.obj["db_path"] = Path(db)
+    ctx.obj["config_path"] = config
 
 
 @cli.command()
@@ -59,6 +61,9 @@ def fetch(
         target_providers = None
 
     async def _run():
+        from csfs.core.config import load_config
+
+        configs = load_config(Path(ctx.obj["config_path"]) if ctx.obj.get("config_path") else None)
         async with DuckDBStore(ctx.obj["db_path"]) as store:
             results = await run_acquisition(
                 store,
@@ -66,6 +71,7 @@ def fetch(
                 lookback_hours=lookback,
                 max_stations=max_stations,
                 concurrency=concurrency,
+                provider_configs=configs,
             )
             total_stations = 0
             total_obs = 0
@@ -101,13 +107,16 @@ def fetch(
 @click.pass_context
 def daemon(ctx: click.Context, schedule: str, tier: str | None, max_stations: int | None) -> None:
     """Run as a long-lived daemon on a cron schedule."""
+    from csfs.core.config import load_config
     from csfs.scheduler.cron import run_daemon
 
+    configs = load_config(Path(ctx.obj["config_path"]) if ctx.obj.get("config_path") else None)
     asyncio.run(run_daemon(
         str(ctx.obj["db_path"]),
         schedule=schedule,
         tier=tier,
         max_stations=max_stations,
+        provider_configs=configs,
     ))
 
 
@@ -320,6 +329,66 @@ def status(ctx: click.Context, history: int) -> None:
                 )
 
     conn.close()
+
+
+@cli.command("download-data")
+@click.option("--dataset", "-d", multiple=True, help="Dataset slug(s) to download. Omit for all.")
+@click.option("--dest", default="data/datasets", help="Base directory (default: data/datasets)")
+@click.option("--list-datasets", "--list", "list_only", is_flag=True, help="List available datasets")
+@click.option("--dry-run", is_flag=True, help="Show what would be downloaded")
+def download_data(
+    dataset: tuple[str, ...],
+    dest: str,
+    list_only: bool,
+    dry_run: bool,
+) -> None:
+    """Download datasets for local-file connectors."""
+    from csfs.core.downloads import DATASETS, download_dataset
+
+    base = Path(dest)
+
+    if list_only:
+        click.echo(f"\n  {'DATASET':<20s}  {'MODE':<8s}  {'SIZE':<10s}  DESCRIPTION")
+        click.echo(f"  {'─' * 20}  {'─' * 8}  {'─' * 10}  {'─' * 40}")
+        for d in DATASETS:
+            mode = "AUTO" if d["auto"] else "MANUAL"
+            exists = (base / d["slug"]).is_dir() and any((base / d["slug"]).iterdir())
+            marker = " [downloaded]" if exists else ""
+            click.echo(f"  {d['slug']:<20s}  {mode:<8s}  {d['size']:<10s}  {d['name']}{marker}")
+            if not d["auto"]:
+                click.echo(f"  {'':20s}  {'':8s}  {'':10s}  -> {d['url']}")
+        return
+
+    targets = [d for d in DATASETS if d["slug"] in dataset] if dataset else DATASETS
+    if not targets:
+        click.echo(f"Unknown dataset(s): {', '.join(dataset)}. Use --list to see available.")
+        return
+
+    auto_targets = [d for d in targets if d["auto"]]
+    manual_targets = [d for d in targets if not d["auto"]]
+
+    if dry_run:
+        for d in auto_targets:
+            click.echo(f"  Would download: {d['slug']} ({d['size']}) from {d['url']}")
+        for d in manual_targets:
+            click.echo(f"  Manual: {d['slug']} — download from {d['url']}")
+        return
+
+    async def _run():
+        for d in auto_targets:
+            click.echo(f"  Downloading {d['slug']}...")
+            ok = await download_dataset(d["slug"], base)
+            click.echo(f"    {'OK' if ok else 'FAILED'}")
+
+    if auto_targets:
+        asyncio.run(_run())
+
+    if manual_targets:
+        click.echo("\n  Manual downloads needed:")
+        for d in manual_targets:
+            dest_dir = base / d["slug"]
+            click.echo(f"    {d['slug']}: download from {d['url']}")
+            click.echo(f"      place files in {dest_dir}/")
 
 
 @cli.command()

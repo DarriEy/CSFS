@@ -258,3 +258,193 @@ def test_connector_class_attributes():
     assert ThailandThaiWaterConnector.slug == "thailand_thaiwater"
     assert ThailandThaiWaterConnector.country_codes == ["TH"]
     assert "thaiwater.net" in ThailandThaiWaterConnector.base_url
+
+
+# ======================================================================
+# Additional coverage tests — error branches, edge cases
+# ======================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_waterlevel_records_not_list_returns_empty():
+    """When records extracted from dict is not a list, returns empty stations."""
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json={"data": "not_a_list"}),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_non_dict_station_obj():
+    """When station object is not a dict, falls back to rec keys (lines 123-128)."""
+    data = [
+        {
+            "station": "not_a_dict",
+            "name": "Flat Station",
+            "station_name": "Flat Station Alt",
+            "id": "FLAT01",
+            "lat": 14.0,
+            "long": 101.0,
+            "datetime": "2024-06-01T12:00:00",
+            "discharge": 50.0,
+        },
+    ]
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "FLAT01"
+    assert stations[0].name == "Flat Station"
+
+
+def test_parse_stations_exception_skips_entry():
+    """Entries that raise ValueError/TypeError/AttributeError are skipped (lines 154-161).
+
+    We call _parse_stations directly with data that triggers an error
+    in the try block (e.g., tele_station_name.get() on a non-dict).
+    """
+    conn = ThailandThaiWaterConnector()
+    # tele_station_name is a list (not dict, not str), causing AttributeError
+    # when .get("en") is called on it
+    records = [
+        {
+            "station": {
+                "id": "WL001",
+                "tele_station_name": {"en": "Good Station"},
+                "tele_station_lat": 15.0,
+                "tele_station_long": 100.0,
+            },
+        },
+        {
+            "station": {
+                "id": "WL_BAD",
+                "tele_station_name": [1, 2, 3],  # list, not dict — triggers AttributeError
+                "tele_station_lat": 15.0,
+                "tele_station_long": 100.0,
+            },
+        },
+    ]
+    stations = conn._parse_stations(records)
+
+    # Good station is kept; bad station is skipped due to AttributeError
+    assert len(stations) >= 1
+    assert any(s.native_id == "WL001" for s in stations)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_non_dict_station_obj():
+    """When station obj is not a dict in observations, uses rec keys (line 181)."""
+    data = [
+        {
+            "station": "not_a_dict",
+            "id": "FLAT01",
+            "datetime": "2024-06-01T12:00:00",
+            "discharge": 50.0,
+        },
+    ]
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "thailand_thaiwater:FLAT01",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(50.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_missing_datetime_skipped():
+    """Observations with no datetime/waterlevel_datetime/date are skipped (line 192)."""
+    data = {
+        "data": [
+            {
+                "station": {"id": "WL001"},
+                # no datetime key
+                "discharge": 100.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "thailand_thaiwater:WL001",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_invalid_datetime_raises():
+    """Invalid datetime raises DataFormatError (lines 196-197)."""
+    data = {
+        "data": [
+            {
+                "station": {"id": "WL001"},
+                "datetime": "not-a-date",
+                "discharge": 100.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        with pytest.raises(DataFormatError, match="Invalid timestamp"):
+            await conn.fetch_observations(
+                "thailand_thaiwater:WL001",
+                start=datetime(2024, 6, 1),
+                end=datetime(2024, 6, 2),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_non_numeric_discharge():
+    """Non-numeric discharge value results in None discharge (lines 210-211)."""
+    data = {
+        "data": [
+            {
+                "station": {"id": "WL001"},
+                "datetime": "2024-06-01T12:00:00",
+                "discharge": "not_a_number",
+            },
+        ],
+    }
+    respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ThailandThaiWaterConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "thailand_thaiwater:WL001",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality == QualityFlag.MISSING

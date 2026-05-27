@@ -59,7 +59,22 @@ class IrelandOPWConnector(BaseConnector):
         native_id = station_id.removeprefix(f"{self.slug}:")
         path = f"/data/dailymean/{native_id}_dailymean.csv.gz"
 
-        resp = await self._get(path)
+        try:
+            resp = await self._get(path)
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "dailymean_not_available",
+                provider=self.slug,
+                station=native_id,
+                status=exc.response.status_code,
+            )
+            return TimeSeriesChunk(
+                station_id=station_id,
+                provider=self.slug,
+                observations=[],
+                fetched_at=datetime.now(UTC),
+            )
+
         return self._parse_dailymean_csv(
             resp.content, station_id, start, end,
         )

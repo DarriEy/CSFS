@@ -65,84 +65,85 @@ _STRI_DOWNLOAD_URL = (
 
 _SEED_STATIONS: list[dict] = [
     {
-        "native_id": "CHA",
-        "name": "Chagres River at Chico",
-        "lat": 9.21,
-        "lon": -79.57,
-        "river": "Chagres",
-        "area": 414.0,
-    },
-    {
-        "native_id": "CHR",
-        "name": "Chagres River at Ciri Grande",
-        "lat": 9.25,
-        "lon": -79.63,
-        "river": "Chagres",
-        "area": 985.0,
-    },
-    {
-        "native_id": "GAT",
-        "name": "Gatun at Gatun Dam",
-        "lat": 9.28,
-        "lon": -79.92,
-        "river": "Gatun",
-        "area": 3338.0,
-    },
-    {
-        "native_id": "PEQ",
-        "name": "Pequeni River at Pueblo Viejo",
-        "lat": 9.27,
-        "lon": -79.55,
-        "river": "Pequeni",
-        "area": 135.0,
-    },
-    {
-        "native_id": "BOQ",
-        "name": "Boqueron River at Peluca",
-        "lat": 9.22,
-        "lon": -79.60,
-        "river": "Boqueron",
-        "area": 175.0,
-    },
-    {
-        "native_id": "CND",
-        "name": "Chilibre at Chilibrillo Dam",
-        "lat": 9.17,
-        "lon": -79.62,
-        "river": "Chilibre",
-        "area": 103.0,
-    },
-    {
-        "native_id": "ALH",
-        "name": "Alajuela at Madden Dam",
+        "native_id": "ALHAJUELA",
+        "name": "Alhajuela (Madden Dam)",
         "lat": 9.22,
         "lon": -79.62,
         "river": "Chagres",
         "area": 1026.0,
     },
     {
-        "native_id": "TRI",
-        "name": "Trinidad River at Gamboa",
-        "lat": 9.12,
-        "lon": -79.70,
-        "river": "Trinidad",
-        "area": 88.0,
+        "native_id": "CHICO",
+        "name": "Chagres at Chico",
+        "lat": 9.21,
+        "lon": -79.57,
+        "river": "Chagres",
+        "area": 414.0,
     },
     {
-        "native_id": "CRS",
-        "name": "Cirí Grande River at Los Cañones",
+        "native_id": "PELUCA",
+        "name": "Boqueron at Peluca",
+        "lat": 9.22,
+        "lon": -79.60,
+        "river": "Boqueron",
+        "area": 175.0,
+    },
+    {
+        "native_id": "CANDELARIA",
+        "name": "Candelaria",
+        "lat": 9.25,
+        "lon": -79.75,
+        "river": "Candelaria",
+    },
+    {
+        "native_id": "CANO",
+        "name": "Caño Quebrado",
+        "lat": 9.20,
+        "lon": -79.68,
+        "river": "Caño Quebrado",
+    },
+    {
+        "native_id": "CANONES",
+        "name": "Cirí Grande at Los Cañones",
         "lat": 9.10,
         "lon": -79.80,
         "river": "Cirí Grande",
         "area": 240.0,
     },
     {
-        "native_id": "GCQ",
-        "name": "Gatuncillo River at Nuevo Limón",
+        "native_id": "CHORRO",
+        "name": "Chorro",
+        "lat": 9.18,
+        "lon": -79.65,
+        "river": "Chorro",
+    },
+    {
+        "native_id": "CIENTO",
+        "name": "Ciento",
+        "lat": 9.15,
+        "lon": -79.72,
+        "river": "Ciento",
+    },
+    {
+        "native_id": "GUARUMAL",
+        "name": "Guarumal",
+        "lat": 9.28,
+        "lon": -79.70,
+        "river": "Guarumal",
+    },
+    {
+        "native_id": "INDIOESTE",
+        "name": "Indio Oeste",
         "lat": 9.30,
         "lon": -79.85,
-        "river": "Gatuncillo",
-        "area": 78.0,
+        "river": "Indio",
+    },
+    {
+        "native_id": "NUEVOSANJU",
+        "name": "Nuevo San Juan",
+        "lat": 9.26,
+        "lon": -79.78,
+        "river": "San Juan",
     },
 ]
 
@@ -433,20 +434,16 @@ class PanamaSTRIConnector(BaseConnector):
             f.lower().strip(): f for f in reader.fieldnames
         }
 
-        datetime_col = (
-            field_map.get("datetime")
-            or field_map.get("date")
-            or field_map.get("time")
-        )
-        station_col = field_map.get("station_id") or field_map.get(
-            "station",
-        )
-        value_col = (
-            field_map.get("discharge")
-            or field_map.get("discharge_m3s")
-            or field_map.get("streamflow")
-            or field_map.get("value")
-        )
+        datetime_col = None
+        station_col = None
+        value_col = None
+        for key, orig in field_map.items():
+            if "datetime" in key or key == "date" or key == "time":
+                datetime_col = datetime_col or orig
+            if key in ("site", "station_id", "station"):
+                station_col = station_col or orig
+            if "discharge" in key or key in ("streamflow", "value"):
+                value_col = value_col or orig
 
         if not datetime_col or not value_col:
             return observations
@@ -475,7 +472,7 @@ class PanamaSTRIConnector(BaseConnector):
         """Parse a single CSV row into an Observation."""
         # Filter by station if the CSV has a station column
         if station_col:
-            row_station = row.get(station_col, "").strip()
+            row_station = row.get(station_col, "").strip().strip('"')
             if row_station and row_station != native_id:
                 return None
 
@@ -513,6 +510,8 @@ class PanamaSTRIConnector(BaseConnector):
     def _parse_timestamp(date_str: str) -> datetime | None:
         """Parse a timestamp string, trying multiple formats."""
         formats = [
+            "%d/%m/%Y %H:%M:%S",
+            "%d/%m/%Y %H:%M",
             "%Y-%m-%d %H:%M:%S",
             "%Y-%m-%d %H:%M",
             "%Y-%m-%d",

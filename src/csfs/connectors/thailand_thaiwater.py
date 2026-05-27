@@ -68,22 +68,34 @@ class ThailandThaiWaterConnector(BaseConnector):
         )
         payload = resp.json()
 
-        if isinstance(payload, dict):
-            records = payload.get("data", payload.get("result", []))
-        elif isinstance(payload, list):
-            records = payload
-        else:
+        if isinstance(payload, list):
+            return payload
+
+        if not isinstance(payload, dict):
             raise DataFormatError(
                 self.slug,
                 f"Unexpected response type: {type(payload).__name__}",
             )
 
-        if not isinstance(records, list):
-            raise DataFormatError(
-                self.slug,
-                "Expected a list of records from waterlevel_load",
-            )
-        return records
+        # Current API nests records under waterlevel_data.data
+        wl = payload.get("waterlevel_data")
+        if isinstance(wl, dict):
+            records = wl.get("data", [])
+            if isinstance(records, list):
+                return records
+
+        # Legacy flat envelope
+        for key in ("data", "result"):
+            candidate = payload.get(key)
+            if isinstance(candidate, list):
+                return candidate
+
+        logger.warning(
+            "thaiwater_unexpected_payload",
+            provider=self.slug,
+            keys=list(payload.keys()),
+        )
+        return []
 
     def _parse_stations(self, records: list[dict]) -> list[Station]:
         """Parse station metadata from waterlevel_load records."""

@@ -1,12 +1,13 @@
 """Tests for the WRA (Taiwan) connector with mocked HTTP responses."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 import pytest
 import respx
 
 from csfs.connectors.taiwan_wra import TaiwanWRAConnector
+from csfs.core.exceptions import DataFormatError
 
 BASE = "https://opendata.wra.gov.tw/api/v1"
 
@@ -245,3 +246,312 @@ async def test_registry_slug():
 
     cls = get_connector("taiwan_wra")
     assert cls is TaiwanWRAConnector
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest():
+    """fetch_latest fetches the most recent 24 hours."""
+    respx.get(f"{BASE}/RiverFlowData").mock(
+        return_value=httpx.Response(200, json=MOCK_OBS_ENGLISH),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        chunk = await conn.fetch_latest("taiwan_wra:1140H055")
+
+    assert chunk.provider == "taiwan_wra"
+    assert len(chunk.observations) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_safe_json_error():
+    """Non-JSON response raises DataFormatError."""
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(
+            200, text="not json", headers={"content-type": "text/plain"},
+        ),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        with pytest.raises(DataFormatError, match="not valid JSON"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_items_bare_list():
+    """Payload that is a bare list is extracted directly."""
+    payload = [
+        {
+            "StationIdentifier": "1140H055",
+            "StationName": "Taipei Bridge",
+            "Latitude": 25.0330,
+            "Longitude": 121.5654,
+            "RiverName": "Tamsui",
+        },
+    ]
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "1140H055"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_items_response_data_nested():
+    """Payload with responseData.data nesting is extracted correctly."""
+    payload = {
+        "responseData": {
+            "data": [
+                {
+                    "StationIdentifier": "1140H055",
+                    "StationName": "Taipei Bridge",
+                    "Latitude": 25.0330,
+                    "Longitude": 121.5654,
+                },
+            ],
+        },
+    }
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_items_unknown_shape_logs_warning():
+    """Unknown payload shape returns empty list with warning."""
+    payload = {
+        "unknownKey": "unknownValue",
+    }
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_skip_no_native_id():
+    """Stations with empty native_id are skipped."""
+    payload = {
+        "data": [
+            {
+                "StationIdentifier": "",
+                "StationName": "No ID",
+                "Latitude": 25.0,
+                "Longitude": 121.0,
+            },
+            {
+                "StationIdentifier": None,
+                "StationName": "Null ID",
+                "Latitude": 25.0,
+                "Longitude": 121.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_station_parse_error_skipped():
+    """Station entries that raise ValueError during parsing are skipped."""
+    payload = {
+        "data": [
+            {
+                "StationIdentifier": "BAD001",
+                "StationName": "Bad",
+                "Latitude": "not-a-number",
+                "Longitude": 121.0,
+            },
+            {
+                "StationIdentifier": "1140H055",
+                "StationName": "Good",
+                "Latitude": 25.0,
+                "Longitude": 121.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowStation").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # BAD001 has bad latitude -> skipped at coord check
+    # Good station passes
+    assert len(stations) == 1
+    assert stations[0].native_id == "1140H055"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_no_date_skipped():
+    """Observation entries without a date are skipped."""
+    payload = {
+        "data": [
+            {
+                "RecordDate": "",
+                "Discharge": 100.0,
+            },
+            {
+                "RecordDate": "2024-06-01",
+                "Discharge": 200.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowData").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "taiwan_wra:1140H055",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(200.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_compact_date_format():
+    """Observation with compact date format (YYYYMMDD) is parsed."""
+    payload = {
+        "data": [
+            {
+                "RecordDate": "20240601",
+                "Discharge": 150.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowData").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "taiwan_wra:1140H055",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(150.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_iso_offset_date():
+    """Observation with ISO 8601 offset (e.g., +08:00) is parsed via fromisoformat."""
+    payload = {
+        "data": [
+            {
+                "RecordDate": "2024-06-01T12:00:00+08:00",
+                "Discharge": 175.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowData").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "taiwan_wra:1140H055",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(175.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_completely_bad_date():
+    """Observations with completely unparseable dates are skipped."""
+    payload = {
+        "data": [
+            {
+                "RecordDate": "not-a-date-at-all",
+                "Discharge": 100.0,
+            },
+            {
+                "RecordDate": "2024-06-01",
+                "Discharge": 200.0,
+            },
+        ],
+    }
+    respx.get(f"{BASE}/RiverFlowData").mock(
+        return_value=httpx.Response(200, json=payload),
+    )
+
+    async with TaiwanWRAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "taiwan_wra:1140H055",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+def test_parse_date_multiple_formats():
+    """_parse_date handles various date formats."""
+    # yyyy/mm/dd
+    result = TaiwanWRAConnector._parse_date("2024/06/01")
+    assert result is not None
+    assert result.year == 2024
+
+    # yyyymmdd
+    result = TaiwanWRAConnector._parse_date("20240601")
+    assert result is not None
+    assert result.year == 2024
+
+    # None
+    result = TaiwanWRAConnector._parse_date(None)
+    assert result is None
+
+    # Empty
+    result = TaiwanWRAConnector._parse_date("")
+    assert result is None
+
+    # Unparseable
+    result = TaiwanWRAConnector._parse_date("bad")
+    assert result is None
+
+
+def test_to_float_edge_cases():
+    """_to_float handles various edge cases."""
+    assert TaiwanWRAConnector._to_float(None) is None
+    assert TaiwanWRAConnector._to_float("") is None
+    assert TaiwanWRAConnector._to_float("abc") is None
+    assert TaiwanWRAConnector._to_float(42) == pytest.approx(42.0)
+    assert TaiwanWRAConnector._to_float("3.14") == pytest.approx(3.14)

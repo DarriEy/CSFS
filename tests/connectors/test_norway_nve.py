@@ -258,3 +258,92 @@ async def test_fetch_stations_skips_entries_without_station_id():
 
     assert len(stations) == 1
     assert stations[0].native_id == "5.1.0"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_correction_to_quality_none():
+    """correction=None maps to RAW quality."""
+    from csfs.connectors.norway_nve import _correction_to_quality
+    from csfs.core.models import QualityFlag
+
+    assert _correction_to_quality(None) == QualityFlag.RAW
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest calls fetch_observations for the last 24h."""
+    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
+    )
+
+    async with NorwayNVEConnector() as conn:
+        chunk = await conn.fetch_latest("norway_nve:2.32.0")
+
+    assert chunk.provider == "norway_nve"
+    assert chunk.station_id == "norway_nve:2.32.0"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_parse_error_skips():
+    """Entries that raise ValueError/KeyError during parsing are skipped."""
+    data = [
+        {
+            "stationId": "bad.station",
+            "stationName": "Bad Station",
+            "latitude": "not-a-number",
+            "longitude": 10.0,
+        },
+        {
+            "stationId": "5.1.0",
+            "stationName": "Good Station",
+            "latitude": 61.0,
+            "longitude": 11.0,
+        },
+    ]
+    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with NorwayNVEConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Bad station skipped, good station kept
+    assert len(stations) == 1
+    assert stations[0].native_id == "5.1.0"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_invalid_timestamp_raises():
+    """Invalid timestamp in observation raises DataFormatError."""
+    from csfs.core.exceptions import DataFormatError
+
+    bad_data = {
+        "data": [
+            {
+                "stationId": "2.32.0",
+                "parameter": "1001",
+                "observations": [
+                    {
+                        "time": "not-a-date",
+                        "value": 12.3,
+                        "correction": 1,
+                    },
+                ],
+            }
+        ]
+    }
+    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
+        return_value=httpx.Response(200, json=bad_data)
+    )
+
+    async with NorwayNVEConnector() as conn:
+        with pytest.raises(DataFormatError, match="Invalid timestamp"):
+            await conn.fetch_observations(
+                "norway_nve:2.32.0",
+                start=datetime(2024, 6, 1),
+                end=datetime(2024, 6, 7),
+            )

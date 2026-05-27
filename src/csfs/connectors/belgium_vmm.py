@@ -46,12 +46,14 @@ class BelgiumVmmConnector(BaseConnector):
 
     slug = "belgium_vmm"
     display_name = "VMM Waterinfo (Belgium)"
-    base_url = "https://download.waterinfo.be/tsmdownload/KiWIS/KiWIS"
+    base_url = "https://download.waterinfo.be"
     country_codes = ["BE"]
+
+    _KIWIS_PATH = "/tsmdownload/KiWIS/KiWIS"
 
     _STATION_FIELDS = (
         "station_no,station_name,station_latitude,"
-        "station_longitude,catchment_area,parametertype_name"
+        "station_longitude,parametertype_name"
     )
 
     def __init__(self, config: dict | None = None) -> None:
@@ -61,7 +63,7 @@ class BelgiumVmmConnector(BaseConnector):
     async def fetch_stations(self) -> list[Station]:
         """Return all stations from the VMM KiWIS service."""
         resp = await self._get(
-            "",
+            self._KIWIS_PATH,
             params={
                 "service": "kisters",
                 "type": "queryServices",
@@ -84,7 +86,7 @@ class BelgiumVmmConnector(BaseConnector):
         ts_id = await self._resolve_ts_id(native_id)
 
         resp = await self._get(
-            "",
+            self._KIWIS_PATH,
             params={
                 "type": "queryServices",
                 "service": "kisters",
@@ -129,7 +131,6 @@ class BelgiumVmmConnector(BaseConnector):
             idx_name = columns.index("station_name")
             idx_lat = columns.index("station_latitude")
             idx_lon = columns.index("station_longitude")
-            idx_catchment = columns.index("catchment_area")
         except ValueError as exc:
             raise DataFormatError(
                 self.slug,
@@ -153,12 +154,6 @@ class BelgiumVmmConnector(BaseConnector):
                     if row[idx_lon] is not None
                     else 0.0
                 )
-                catchment = (
-                    float(str(row[idx_catchment]))
-                    if row[idx_catchment] not in (None, "", "0")
-                    else None
-                )
-
                 stations.append(Station(
                     id=self._station_id(native_id),
                     provider=self.slug,
@@ -167,7 +162,6 @@ class BelgiumVmmConnector(BaseConnector):
                     latitude=lat,
                     longitude=lon,
                     country_code="BE",
-                    catchment_area_km2=catchment,
                 ))
             except (ValueError, IndexError, TypeError) as exc:
                 logger.warning(
@@ -249,7 +243,7 @@ class BelgiumVmmConnector(BaseConnector):
             return self._station_to_ts_id[native_id]
 
         resp = await self._get(
-            "",
+            self._KIWIS_PATH,
             params={
                 "service": "kisters",
                 "type": "queryServices",

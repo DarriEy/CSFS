@@ -903,9 +903,24 @@ class CaravanConnector(BaseConnector):
           {data_dir}/{basin_id}.csv
           {data_dir}/timeseries/csv/{basin_id}.csv
         """
+        # Caravan ZIP naming: camels_us_01013500 -> camels/camels_01013500.csv
+        # Map seed ID to Caravan directory and filename
+        parts = basin_id.split("_")
+        subset = "_".join(parts[:2]) if len(parts) >= 3 else ""
+        # Caravan dirs: camels (US), camelsgb, camelsaus, camelsbr, hysets, lamah
+        caravan_dir = parts[0] if parts[0] != "camels" else parts[0]
+        if len(parts) >= 3 and parts[0] == "camels" and parts[1] != "us":
+            caravan_dir = parts[0] + parts[1]  # camelsgb, camelsaus, camelsbr
+        caravan_file = f"{caravan_dir}_{'_'.join(parts[2:])}" if len(parts) >= 3 else basin_id
+        if len(parts) >= 3 and parts[0] == "camels" and parts[1] == "us":
+            caravan_file = f"camels_{'_'.join(parts[2:])}"
+
         candidates = [
             data_dir / f"{basin_id}.csv",
             data_dir / "timeseries" / "csv" / f"{basin_id}.csv",
+            data_dir / "timeseries" / "csv" / subset / f"{basin_id}.csv",
+            data_dir / "Caravan" / "timeseries" / "csv" / caravan_dir / f"{caravan_file}.csv",
+            data_dir / "Caravan" / "timeseries" / "csv" / subset / f"{basin_id}.csv",
         ]
         for candidate in candidates:
             if candidate.is_file():

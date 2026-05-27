@@ -255,3 +255,263 @@ async def test_fetch_observations_bad_zip_raises(tmp_path: Path):
                 start=datetime(2020, 1, 1, tzinfo=UTC),
                 end=datetime(2020, 1, 31, tzinfo=UTC),
             )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_verify_endpoint_failure():
+    """When verify_endpoint fails, stations are still returned."""
+    respx.get(
+        f"https://www.mapama.gob.es{MITECO_DOWNLOAD_PATH}",
+        params={"f": MITECO_STATION_KMZ},
+    ).mock(
+        return_value=httpx.Response(500),
+    )
+
+    config = {"verify_endpoint": True}
+    async with SpainMITECOConnector(config=config) as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == len(_SEED_STATIONS)
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_comma_delimited(tmp_path: Path):
+    """Parse comma-delimited CSV files."""
+    csv_file = tmp_path / "anuario_comma.csv"
+    csv_file.write_text(SAMPLE_CSV_COMMA_DELIMITED, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_no_header_returns_empty(tmp_path: Path):
+    """CSV with no recognizable headers returns empty observations."""
+    csv_file = tmp_path / "bad_header.csv"
+    csv_file.write_text(
+        "col_a;col_b;col_c\n1;2;3\n",
+        encoding="utf-8",
+    )
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_no_matching_station(tmp_path: Path):
+    """Station column filtering returns only matching station rows."""
+    csv_file = tmp_path / "anuario.csv"
+    csv_file.write_text(SAMPLE_CSV_SEMICOLON, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9999",  # station not in file
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_negative_discharge_is_missing(
+    tmp_path: Path,
+):
+    """Negative discharge values (sentinel) are treated as missing."""
+    csv_content = (
+        "estacion;fecha;caudal\n"
+        "9001;01/01/2020;-999.0\n"
+        "9001;02/01/2020;12.34\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    # -999.0 should be treated as None (negative sentinel)
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+    assert chunk.observations[1].discharge_m3s == pytest.approx(12.34)
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_date(tmp_path: Path):
+    """Rows with unparseable dates are skipped."""
+    csv_content = (
+        "estacion;fecha;caudal\n"
+        "9001;not-a-date;12.34\n"
+        "9001;01/01/2020;15.50\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unparseable_discharge(tmp_path: Path):
+    """Rows with unparseable discharge values have None discharge."""
+    csv_content = (
+        "estacion;fecha;caudal\n"
+        "9001;01/01/2020;abc\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_empty_date(tmp_path: Path):
+    """Rows with empty date string are skipped."""
+    csv_content = (
+        "estacion;fecha;caudal\n"
+        "9001;;12.34\n"
+        "9001;01/01/2020;15.50\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_quality_column_mapping(
+    tmp_path: Path,
+):
+    """Quality values 2 and 3 map to ESTIMATED and SUSPECT."""
+    csv_content = (
+        "estacion;fecha;caudal;calidad\n"
+        "9001;01/01/2020;12.34;2\n"
+        "9001;02/01/2020;15.50;3\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert chunk.observations[0].quality.value == "estimated"
+    assert chunk.observations[1].quality.value == "suspect"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_no_station_column(tmp_path: Path):
+    """CSV without station column includes all rows."""
+    csv_content = (
+        "fecha;caudal\n"
+        "01/01/2020;12.34\n"
+        "02/01/2020;15.50\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_zip_non_csv_skipped(tmp_path: Path):
+    """Non-CSV files inside ZIP archives are skipped."""
+    buf = __import__("io").BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("readme.txt", "Not a CSV file")
+        zf.writestr("data.csv", SAMPLE_CSV_SEMICOLON)
+    zip_path = tmp_path / "yearbook.zip"
+    zip_path.write_bytes(buf.getvalue())
+
+    config = {"data_dir": str(tmp_path)}
+    async with SpainMITECOConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "spain_miteco:9001",
+            start=datetime(2020, 1, 1, tzinfo=UTC),
+            end=datetime(2020, 1, 4, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 4
+
+
+@pytest.mark.asyncio
+async def test_find_column_returns_none_for_no_match():
+    """_find_column returns None when no candidates match."""
+    conn = SpainMITECOConnector()
+    result = SpainMITECOConnector._find_column(
+        {"foo": "Foo", "bar": "Bar"},
+        ("baz", "qux"),
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_parse_date_returns_none_for_bad_input():
+    """_parse_date returns None for unrecognized formats."""
+    result = SpainMITECOConnector._parse_date("not-a-date")
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_parse_discharge_empty_string():
+    """_parse_discharge returns None for empty string."""
+    result = SpainMITECOConnector._parse_discharge("")
+    assert result is None

@@ -282,3 +282,272 @@ async def test_registration():
 
     cls = get_connector("switzerland_bafu")
     assert cls is SwitzerlandBafuConnector
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_json_parse_error():
+    """Non-JSON station response raises DataFormatError."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, text="not json", headers={"content-type": "text/plain"})
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        with pytest.raises(DataFormatError, match="not valid JSON"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_http_error():
+    """A server error when fetching observations raises ConnectorError."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(500)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        with pytest.raises(ConnectorError):
+            await conn.fetch_observations(
+                "switzerland_bafu:2009",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_json_parse_error():
+    """Non-JSON observation response raises DataFormatError."""
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, text="not json", headers={"content-type": "text/plain"})
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        with pytest.raises(DataFormatError, match="not valid JSON"):
+            await conn.fetch_observations(
+                "switzerland_bafu:2009",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest():
+    """fetch_latest fetches the most recent 24 hours."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 100.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        chunk = await conn.fetch_latest("switzerland_bafu:2009")
+
+    assert chunk.provider == "switzerland_bafu"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_payload_not_list():
+    """Payload that is not a list returns empty station list."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": "not a list",
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_non_dict_entries_skipped():
+    """Non-dict payload entries are skipped."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            "not a dict",
+            42,
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 100.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "2009"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_value_error_skipped():
+    """Station entries with unparseable lat/lon are skipped."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {
+                "timestamp": _TS1_ISO,
+                "loc": "BAD1",
+                "par": "flow",
+                "val": 100.0,
+                "lat": "not-a-number",
+                "lon": 7.0,
+            },
+            {
+                "timestamp": _TS1_ISO,
+                "loc": "2009",
+                "par": "flow",
+                "val": 100.0,
+                "lat": 47.0,
+                "lon": 7.0,
+            },
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "2009"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_payload_not_list():
+    """Observation payload that is not a list raises DataFormatError."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": "not a list",
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        with pytest.raises(DataFormatError, match="Unexpected payload type"):
+            await conn.fetch_observations(
+                "switzerland_bafu:2009",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_missing_timestamp():
+    """Observations with no timestamp are skipped."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"loc": "2009", "par": "flow", "val": 100.0},
+            {"timestamp": None, "loc": "2009", "par": "flow", "val": 200.0},
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 300.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "switzerland_bafu:2009",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(300.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_bad_timestamp():
+    """Observations with unparseable timestamps are skipped."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": "not-a-date", "loc": "2009", "par": "flow", "val": 100.0},
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 200.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "switzerland_bafu:2009",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(200.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_bad_value():
+    """Observations with unparseable val are stored with None discharge."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": "bad-number"},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "switzerland_bafu:2009",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_non_dict_entries_skipped():
+    """Non-dict entries in observation payload are skipped."""
+    data = {
+        "source": "Swiss FOEN/BAFU",
+        "payload": [
+            "not a dict",
+            {"timestamp": _TS1_ISO, "loc": "2009", "par": "flow", "val": 100.0},
+        ],
+    }
+    respx.get(f"{EXISTENZ_BASE}/apiv1/hydro/latest").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with SwitzerlandBafuConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "switzerland_bafu:2009",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1

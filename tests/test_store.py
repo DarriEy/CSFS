@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from csfs.core.models import Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 from csfs.store.duckdb_store import DuckDBStore
 
 
@@ -91,3 +91,74 @@ async def test_acquisition_log_limit(store: DuckDBStore):
     if hasattr(newest, 'astimezone'):
         newest = newest.astimezone(UTC)
     assert newest.hour == 9
+
+
+@pytest.mark.asyncio
+async def test_conn_outside_context_raises():
+    store = DuckDBStore("nonexistent.duckdb")
+    with pytest.raises(RuntimeError, match="outside async context manager"):
+        _ = store.conn
+
+
+@pytest.mark.asyncio
+async def test_upsert_empty_stations(store: DuckDBStore):
+    n = await store.upsert_stations([])
+    assert n == 0
+
+
+@pytest.mark.asyncio
+async def test_append_empty_observations(store: DuckDBStore):
+    chunk = TimeSeriesChunk(
+        station_id="x:1", provider="x", observations=[], fetched_at=datetime(2024, 6, 1),
+    )
+    n = await store.append_observations(chunk)
+    assert n == 0
+
+
+@pytest.mark.asyncio
+async def test_get_stations_by_country(store: DuckDBStore, sample_station: Station):
+    await store.upsert_stations([sample_station])
+
+    results = await store.get_stations(country_code="US")
+    assert len(results) == 1
+
+    results = await store.get_stations(country_code="GB")
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_stations_by_bbox(store: DuckDBStore, sample_station: Station):
+    await store.upsert_stations([sample_station])
+
+    results = await store.get_stations(bbox=(-78.0, 38.0, -76.0, 40.0))
+    assert len(results) == 1
+
+    results = await store.get_stations(bbox=(0.0, 0.0, 1.0, 1.0))
+    assert len(results) == 0
+
+
+@pytest.mark.asyncio
+async def test_get_observations_with_time_range(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
+    await store.upsert_stations([sample_station])
+    await store.append_observations(sample_chunk)
+
+    obs = await store.get_observations(
+        "usgs:01646500",
+        start=datetime(2024, 6, 1, 12, 0),
+    )
+    assert len(obs) == 1
+
+    obs = await store.get_observations(
+        "usgs:01646500",
+        end=datetime(2024, 6, 1, 12, 0),
+    )
+    assert len(obs) == 1
+
+    obs = await store.get_observations(
+        "usgs:01646500",
+        start=datetime(2024, 6, 1, 0, 0),
+        end=datetime(2024, 6, 2, 0, 0),
+    )
+    assert len(obs) == 2

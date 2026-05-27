@@ -197,3 +197,180 @@ async def test_seed_station_ids_are_canonical():
         assert station.country_code in (
             "KG", "TJ", "KZ", "UZ", "AF",
         )
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — _safe_float edge cases
+# ------------------------------------------------------------------
+
+
+def test_safe_float_none():
+    """_safe_float returns None for None input."""
+    from csfs.connectors.ca_discharge import _safe_float
+
+    assert _safe_float(None) is None
+
+
+def test_safe_float_invalid_string():
+    """_safe_float returns None for non-numeric strings."""
+    from csfs.connectors.ca_discharge import _safe_float
+
+    assert _safe_float("abc") is None
+    assert _safe_float("") is None
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV read error
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_file_read_error(tmp_path: Path):
+    """OSError when reading CSV file raises ConnectorError."""
+    from csfs.core.exceptions import ConnectorError
+
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text(SAMPLE_CSV, encoding="utf-8")
+    csv_file.chmod(0o000)
+
+    try:
+        async with CADischargeConnector(
+            config={"data_dir": str(tmp_path)},
+        ) as conn:
+            with pytest.raises(ConnectorError, match="Cannot read file"):
+                await conn.fetch_observations(
+                    "ca_discharge:CA001",
+                    start=datetime(1960, 1, 1, tzinfo=UTC),
+                    end=datetime(1960, 1, 5, tzinfo=UTC),
+                )
+    finally:
+        csv_file.chmod(0o644)
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV with no fieldnames
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_empty_csv(tmp_path: Path):
+    """Empty CSV file (no fieldnames) returns zero observations."""
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text("", encoding="utf-8")
+
+    async with CADischargeConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "ca_discharge:CA001",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV with unrecognized columns
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_unrecognized_columns(tmp_path: Path):
+    """CSV with unrecognized column names returns zero observations."""
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text(
+        "timestamp,flow_rate\n1960-01-01,120.5\n",
+        encoding="utf-8",
+    )
+
+    async with CADischargeConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "ca_discharge:CA001",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV row with empty date
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_empty_date_row_skipped(tmp_path: Path):
+    """CSV rows with empty date are skipped."""
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text(
+        "date,discharge_m3s\n,120.5\n1960-01-01,135.2\n",
+        encoding="utf-8",
+    )
+
+    async with CADischargeConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "ca_discharge:CA001",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(135.2)
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV row with bad date format
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_bad_date_format_skipped(tmp_path: Path):
+    """CSV rows with unparseable dates are skipped."""
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text(
+        "date,discharge_m3s\nnot-a-date,120.5\n1960-01-01,135.2\n",
+        encoding="utf-8",
+    )
+
+    async with CADischargeConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "ca_discharge:CA001",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — CSV row with non-numeric value
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_non_numeric_value_missing(tmp_path: Path):
+    """Non-numeric discharge values result in MISSING quality."""
+    csv_file = tmp_path / "CA001.csv"
+    csv_file.write_text(
+        "date,discharge_m3s\n1960-01-01,abc\n",
+        encoding="utf-8",
+    )
+
+    async with CADischargeConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "ca_discharge:CA001",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].quality.value == "missing"

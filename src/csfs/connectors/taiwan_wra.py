@@ -115,7 +115,17 @@ class TaiwanWRAConnector(BaseConnector):
         if isinstance(payload, list):
             return payload
 
-        for key in ("data", "records", "items", "content"):
+        # Check for auth/error responses
+        if isinstance(payload, dict) and payload.get("success") is False:
+            logger.error(
+                "wra_api_error",
+                provider=self.slug,
+                code=payload.get("code"),
+                message=payload.get("s_message"),
+            )
+            return []
+
+        for key in ("payload", "data", "records", "items", "content"):
             candidate = payload.get(key)
             if isinstance(candidate, list):
                 return candidate

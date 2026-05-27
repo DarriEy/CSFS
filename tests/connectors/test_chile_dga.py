@@ -251,6 +251,179 @@ async def test_stations_with_attribute_coords():
 # ======================================================================
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_pagination():
+    """Connector paginates through all station pages when page is full."""
+    # Create a full page of 1000 features (will cause offset increment)
+    full_page = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": f"STA{i:04d}",
+                    "nombre_estacion": f"Station {i}",
+                },
+                "geometry": {"x": -70.0 + i * 0.001, "y": -33.0},
+            }
+            for i in range(1000)
+        ],
+    }
+    second_page = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": "LAST_STATION",
+                    "nombre_estacion": "Last One",
+                },
+                "geometry": {"x": -71.0, "y": -34.0},
+            },
+        ],
+    }
+
+    route = respx.get(f"{BASE_URL}{QUERY_PATH}")
+    route.side_effect = [
+        httpx.Response(200, json=full_page),
+        httpx.Response(200, json=second_page),
+    ]
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1001
+    native_ids = {s.native_id for s in stations}
+    assert "LAST_STATION" in native_ids
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_http_error_first_page_raises():
+    """HTTPStatusError on the first page raises ConnectorError."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{BASE_URL}{QUERY_PATH}").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with ChileDgaConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_http_error_second_page_returns_first():
+    """HTTPStatusError on the second page still returns first-page results."""
+    full_page = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": f"STA{i:04d}",
+                    "nombre_estacion": f"Station {i}",
+                },
+                "geometry": {"x": -70.0, "y": -33.0},
+            }
+            for i in range(1000)
+        ],
+    }
+
+    route = respx.get(f"{BASE_URL}{QUERY_PATH}")
+    route.side_effect = [
+        httpx.Response(200, json=full_page),
+        httpx.Response(500),
+    ]
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1000
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_arcgis_error_second_page_returns_first():
+    """An ArcGIS error on the second page still returns first-page results."""
+    full_page = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": f"STA{i:04d}",
+                    "nombre_estacion": f"Station {i}",
+                },
+                "geometry": {"x": -70.0, "y": -33.0},
+            }
+            for i in range(1000)
+        ],
+    }
+
+    route = respx.get(f"{BASE_URL}{QUERY_PATH}")
+    route.side_effect = [
+        httpx.Response(200, json=full_page),
+        httpx.Response(200, json=MOCK_ARCGIS_ERROR),
+    ]
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1000
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_coords_invalid_geometry_values():
+    """Invalid geometry values fall through to attribute coords."""
+    data = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": "BAD_GEOM",
+                    "nombre_estacion": "Bad Geom Station",
+                    "latitud": -35.5,
+                    "longitud": -72.1,
+                },
+                "geometry": {"x": "not_a_number", "y": "also_bad"},
+            },
+        ],
+    }
+    respx.get(f"{BASE_URL}{QUERY_PATH}").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].latitude == pytest.approx(-35.5)
+    assert stations[0].longitude == pytest.approx(-72.1)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_extract_coords_invalid_attr_coords_returns_none():
+    """Invalid attribute coordinate values result in skipping the station."""
+    data = {
+        "features": [
+            {
+                "attributes": {
+                    "codigo_estacion": "NO_COORDS",
+                    "nombre_estacion": "No Coords",
+                    "latitud": "bad",
+                    "longitud": "bad",
+                },
+                "geometry": {},
+            },
+        ],
+    }
+    respx.get(f"{BASE_URL}{QUERY_PATH}").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Station is skipped because coords are invalid
+    assert len(stations) == 0
+
+
 def test_connector_is_registered():
     """The connector is discoverable via the registry."""
     from csfs.core.registry import get_connector

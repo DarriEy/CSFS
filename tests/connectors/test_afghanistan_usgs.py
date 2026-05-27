@@ -205,3 +205,90 @@ async def test_fetch_observations_bad_json_raises():
                 start=datetime(2024, 6, 1),
                 end=datetime(2024, 6, 3),
             )
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — no RDB header found
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_no_rdb_header_falls_back():
+    """RDB response without header falls back to seed list."""
+    from csfs.core.exceptions import DataFormatError
+
+    respx.get("https://waterservices.usgs.gov/nwis/site/").mock(
+        return_value=httpx.Response(200, text="# No data here\n"),
+    )
+
+    async with AfghanistanUSGSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Falls back to seed stations
+    assert len(stations) == len(AfghanistanUSGSConnector._SEED_STATIONS)
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — short RDB row
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_short_row_skipped():
+    """RDB rows with fewer fields than the header are skipped."""
+    rdb_text = (
+        "# comment\n"
+        "agency_cd\tsite_no\tstation_nm\tdec_lat_va\tdec_long_va\tdrain_area_va\n"
+        "5s\t15s\t50s\t16s\t16s\t16s\n"
+        "USGS\t390831069120000\tKUNDUZ RIVER AT CHAR DARA\t36.81\t68.80\t9342\n"
+        "USGS\tSHORT\n"  # too short
+    )
+    respx.get("https://waterservices.usgs.gov/nwis/site/").mock(
+        return_value=httpx.Response(200, text=rdb_text),
+    )
+
+    async with AfghanistanUSGSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "390831069120000"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — station parse ValueError/KeyError
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_invalid_lat_lon_skipped():
+    """Rows with non-numeric lat/lon are skipped."""
+    rdb_text = (
+        "# comment\n"
+        "agency_cd\tsite_no\tstation_nm\tdec_lat_va\tdec_long_va\tdrain_area_va\n"
+        "5s\t15s\t50s\t16s\t16s\t16s\n"
+        "USGS\t390831069120000\tKUNDUZ\t36.81\t68.80\t9342\n"
+        "USGS\t999999999999999\tBAD STATION\tnot_a_number\tnot_a_number\t1000\n"
+    )
+    respx.get("https://waterservices.usgs.gov/nwis/site/").mock(
+        return_value=httpx.Response(200, text=rdb_text),
+    )
+
+    async with AfghanistanUSGSConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "390831069120000"
+
+
+# ---------------------------------------------------------------------------
+# Coverage gap tests — drainage area parse failure
+# ---------------------------------------------------------------------------
+
+
+def test_parse_drainage_area_invalid():
+    """Non-numeric drainage area returns None."""
+    assert AfghanistanUSGSConnector._parse_drainage_area("not_a_number") is None
+    assert AfghanistanUSGSConnector._parse_drainage_area("") is None

@@ -24,6 +24,7 @@ async def run_acquisition(
     lookback_hours: int = 48,
     max_stations: int | None = None,
     concurrency: int = DEFAULT_CONCURRENCY,
+    provider_configs: dict[str, dict] | None = None,
 ) -> dict[str, dict]:
     """Run one acquisition cycle across selected (or all) providers."""
     discover()
@@ -36,7 +37,8 @@ async def run_acquisition(
         started_at = datetime.now(UTC)
         try:
             connector_cls = get_connector(slug)
-            async with connector_cls() as conn:
+            config = (provider_configs or {}).get(slug, {})
+            async with connector_cls(config=config) as conn:
                 log.info("fetching_stations")
                 stations = await conn.fetch_stations()
                 if not stations:

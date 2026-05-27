@@ -8,6 +8,7 @@ build/
 *.duckdb
 *.duckdb.wal
 *.parquet
+data/datasets/
 
 .env
 .env.*

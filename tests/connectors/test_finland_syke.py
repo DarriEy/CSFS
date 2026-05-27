@@ -498,3 +498,170 @@ def test_connector_metadata():
     assert FinlandSYKEConnector.country_codes == ["FI"]
     assert "Hydrologiarajapinta" in FinlandSYKEConnector.base_url
     assert "odata" in FinlandSYKEConnector.base_url
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — DMS edge cases
+# ------------------------------------------------------------------
+
+
+def test_dms_to_decimal_value_error():
+    """Non-numeric DMS strings return 0.0."""
+    assert _dms_to_decimal("abcdef") == 0.0
+
+
+def test_dms_to_decimal_short_string():
+    """DMS strings shorter than 5 characters return 0.0."""
+    assert _dms_to_decimal("12") == 0.0
+    assert _dms_to_decimal("1234") == 0.0
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — fetch_latest
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_returns_recent_observations():
+    """fetch_latest fetches the last 24 h of observations."""
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json={"value": []})
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        chunk = await conn.fetch_latest("finland_syke:1001")
+
+    assert chunk.provider == "finland_syke"
+    assert chunk.station_id == "finland_syke:1001"
+    assert len(chunk.observations) == 0
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — _parse_stations non-list raises DataFormatError
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_non_list_value_raises():
+    """When 'value' is a string instead of list, DataFormatError is raised."""
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
+        return_value=httpx.Response(200, json={"value": "not_a_list"})
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        with pytest.raises(DataFormatError, match="Expected OData"):
+            await conn.fetch_stations()
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — station parse failure
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_stations_invalid_entry_skipped():
+    """Station entries that cause ValueError/KeyError during creation are skipped."""
+    data = {
+        "value": [
+            {
+                "Paikka_Id": 1001,
+                "Nimi": "Valid Station",
+                "KoordLat": "673900",
+                "KoordLong": "245436",
+            },
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Paikka").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # The valid station should still parse
+    assert len(stations) == 1
+    assert stations[0].native_id == "1001"
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — _parse_observations non-list entries
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_non_list_value_raises():
+    """When observations 'value' is not a list, DataFormatError is raised."""
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json={"value": "string"})
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        with pytest.raises(DataFormatError, match="Expected OData"):
+            await conn.fetch_observations(
+                "finland_syke:1001",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
+            )
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — observation missing Aika field
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_missing_aika_skipped():
+    """Observation entries without 'Aika' field are skipped."""
+    data = {
+        "value": [
+            {"Arvo": 100.0, "Laatu": "good"},  # no Aika
+            {"Aika": "2024-06-01T00:00:00Z", "Arvo": 120.5, "Laatu": "good"},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "finland_syke:1001",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(120.5)
+
+
+# ------------------------------------------------------------------
+# Coverage gap tests — timestamp without timezone info
+# ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_parse_observations_naive_timestamp_gets_utc():
+    """Observation timestamps without timezone get UTC assigned."""
+    data = {
+        "value": [
+            {"Aika": "2024-06-01T00:00:00", "Arvo": 100.0, "Laatu": "good"},
+        ]
+    }
+    respx.get(f"{SYKE_BASE}/Virtaama").mock(
+        return_value=httpx.Response(200, json=data)
+    )
+
+    async with FinlandSYKEConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "finland_syke:1001",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].timestamp.tzinfo is not None

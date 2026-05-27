@@ -244,3 +244,260 @@ async def test_seed_station_ids_are_canonical():
         assert station.id == f"pakistan_wapda:{station.native_id}"
         assert station.provider == "pakistan_wapda"
         assert station.country_code == "PK"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_wapda_endpoint():
+    """WAPDA endpoint is used when IRSA returns no data."""
+    # IRSA returns page with no matching rows
+    respx.get(url__startswith="http://pakirsa.gov.pk").mock(
+        return_value=httpx.Response(200, text="<html><body>No data</body></html>"),
+    )
+    # WAPDA returns data
+    html_body = (
+        "<html><body><table>\n"
+        "<tr><td>01/06/2024</td><td>50000</td></tr>\n"
+        "</table></body></html>"
+    )
+    respx.get(
+        url__startswith="https://www.wapda.gov.pk/index.php/river-flow-data",
+    ).mock(
+        return_value=httpx.Response(200, text=html_body),
+    )
+
+    async with PakistanWAPDAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert chunk.provider == "pakistan_wapda"
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_nonexistent_dir():
+    """Non-existent data_dir returns empty chunk."""
+    async with PakistanWAPDAConnector(
+        config={"data_dir": "/nonexistent/path"},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_empty_dir(tmp_path: Path):
+    """Empty data directory returns empty chunk."""
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_no_matching_station(
+    tmp_path: Path,
+):
+    """CSV with no matching station columns returns empty chunk."""
+    csv_content = "Date,Unknown_Column\n2024-06-01,50000\n"
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_no_date_column(
+    tmp_path: Path,
+):
+    """CSV with no Date column returns empty observations."""
+    csv_content = "timestamp,Tarbela_Inflow\n2024-06-01,50000\n"
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_unparseable_date(
+    tmp_path: Path,
+):
+    """Rows with unparseable dates are skipped."""
+    csv_content = (
+        "Date,Tarbela_Inflow\n"
+        "not-a-date,50000\n"
+        "2024-06-01,52000\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_value_error_continues(
+    tmp_path: Path,
+):
+    """Non-numeric values in discharge column produce MISSING."""
+    csv_content = (
+        "Date,Tarbela_Inflow\n"
+        "2024-06-01,abc\n"
+        "2024-06-02,50000\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"
+    assert chunk.observations[1].discharge_m3s is not None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_irsa_parse_no_date_pattern():
+    """HTML lines without date pattern are skipped."""
+    html_body = (
+        "<html><body><table>\n"
+        "<tr><td>No date here</td><td>50000</td></tr>\n"
+        "</table></body></html>"
+    )
+    # Mock all endpoints to prevent hangs from retries
+    respx.get(url__startswith="http://pakirsa.gov.pk").mock(
+        return_value=httpx.Response(200, text=html_body),
+    )
+    respx.get(url__startswith="https://www.wapda.gov.pk").mock(
+        return_value=httpx.Response(200, text="<html>No data</html>"),
+    )
+
+    async with PakistanWAPDAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    # No matching lines -> IRSA returns None -> WAPDA also None -> empty
+    assert chunk.provider == "pakistan_wapda"
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_irsa_parse_date_out_of_range():
+    """Dates outside [start, end] are skipped."""
+    html_body = (
+        "<html><body><table>\n"
+        "<tr><td>01/01/2020</td><td>50000</td></tr>\n"
+        "</table></body></html>"
+    )
+    # Mock all endpoints to prevent hangs from retries
+    respx.get(url__startswith="http://pakirsa.gov.pk").mock(
+        return_value=httpx.Response(200, text=html_body),
+    )
+    respx.get(url__startswith="https://www.wapda.gov.pk").mock(
+        return_value=httpx.Response(200, text="<html>No data</html>"),
+    )
+
+    async with PakistanWAPDAConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    # Date is out of range -> no observations from either endpoint
+    assert chunk.provider == "pakistan_wapda"
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_short_rows_skipped(
+    tmp_path: Path,
+):
+    """CSV rows shorter than expected are skipped."""
+    csv_content = (
+        "Date,Tarbela_Inflow\n"
+        "2024-06-01\n"
+        "2024-06-02,50000\n"
+    )
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text(csv_content, encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_csv_empty_file(tmp_path: Path):
+    """Empty CSV file returns empty observations."""
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text("", encoding="utf-8")
+
+    async with PakistanWAPDAConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "pakistan_wapda:tarbela",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0

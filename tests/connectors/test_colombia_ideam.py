@@ -259,3 +259,243 @@ def test_connector_metadata():
     assert ColombiaIDEAMConnector.slug == "colombia_ideam"
     assert ColombiaIDEAMConnector.country_codes == ["CO"]
     assert "datos.gov.co" in ColombiaIDEAMConnector.base_url
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_http_error_raises_connector_error():
+    """ConnectorError is raised when the stations endpoint fails."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{IDEAM_BASE}/hp9r-jxuu.json").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch station catalog"):
+            await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_non_list_response_breaks():
+    """Non-list response from Socrata causes early break."""
+    respx.get(f"{IDEAM_BASE}/hp9r-jxuu.json").mock(
+        return_value=httpx.Response(200, json={"error": "not a list"}),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_pagination():
+    """Multi-page station fetching triggers offset incrementing."""
+    from csfs.connectors.colombia_ideam import _SODA_PAGE_SIZE
+
+    # First page: full page (triggers pagination)
+    page1 = [
+        {
+            "codigoestacion": f"STA{i:05d}",
+            "nombreestacion": f"Station {i}",
+            "latitud": "5.0",
+            "longitud": "-74.0",
+        }
+        for i in range(_SODA_PAGE_SIZE)
+    ]
+    # Second page: partial (final)
+    page2 = [
+        {
+            "codigoestacion": "STA99999",
+            "nombreestacion": "Last Station",
+            "latitud": "5.0",
+            "longitud": "-74.0",
+        },
+    ]
+    respx.get(url__startswith=f"{IDEAM_BASE}/hp9r-jxuu.json").mock(
+        side_effect=[
+            httpx.Response(200, json=page1),
+            httpx.Response(200, json=page2),
+        ],
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == _SODA_PAGE_SIZE + 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_http_error_raises_connector_error():
+    """ConnectorError is raised when the observations endpoint fails."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(f"{IDEAM_BASE}/sbwg-7ju4.json").mock(
+        return_value=httpx.Response(500),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        with pytest.raises(ConnectorError, match="Failed to fetch observations"):
+            await conn.fetch_observations(
+                "colombia_ideam:21017010",
+                start=datetime(2024, 6, 1),
+                end=datetime(2024, 6, 2),
+            )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_non_list_response_breaks():
+    """Non-list response causes early break."""
+    respx.get(f"{IDEAM_BASE}/sbwg-7ju4.json").mock(
+        return_value=httpx.Response(200, json={"error": "not a list"}),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "colombia_ideam:21017010",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_pagination():
+    """Multi-page observation fetching triggers offset incrementing."""
+    from csfs.connectors.colombia_ideam import _SODA_PAGE_SIZE
+
+    page1 = [
+        {
+            "codigoestacion": "21017010",
+            "fechaobservacion": (
+                f"2024-{(i // (28 * 24) % 12) + 1:02d}-"
+                f"{(i // 24 % 28) + 1:02d}T{i % 24:02d}:00:00"
+            ),
+            "valorobservado": str(100.0 + i),
+        }
+        for i in range(_SODA_PAGE_SIZE)
+    ]
+    page2 = [
+        {
+            "codigoestacion": "21017010",
+            "fechaobservacion": "2024-12-31T00:00:00",
+            "valorobservado": "999.0",
+        },
+    ]
+    respx.get(url__startswith=f"{IDEAM_BASE}/sbwg-7ju4.json").mock(
+        side_effect=[
+            httpx.Response(200, json=page1),
+            httpx.Response(200, json=page2),
+        ],
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "colombia_ideam:21017010",
+            start=datetime(2024, 1, 1),
+            end=datetime(2024, 12, 31),
+        )
+
+    assert len(chunk.observations) == _SODA_PAGE_SIZE + 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest():
+    """fetch_latest fetches the most recent 7 days."""
+    respx.get(f"{IDEAM_BASE}/sbwg-7ju4.json").mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        chunk = await conn.fetch_latest("colombia_ideam:21017010")
+
+    assert chunk.station_id == "colombia_ideam:21017010"
+    assert len(chunk.observations) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_bad_coords_skipped():
+    """Stations with non-numeric coords are skipped."""
+    data = [
+        {
+            "codigoestacion": "BADCOORD",
+            "nombreestacion": "Bad Coords",
+            "latitud": "abc",
+            "longitud": "def",
+        },
+        {
+            "codigoestacion": "GOOD",
+            "nombreestacion": "Good",
+            "latitud": "5.0",
+            "longitud": "-74.0",
+        },
+    ]
+    respx.get(f"{IDEAM_BASE}/hp9r-jxuu.json").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].native_id == "GOOD"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_catchment_non_numeric():
+    """Non-numeric catchment area is set to None."""
+    data = [
+        {
+            "codigoestacion": "99999",
+            "nombreestacion": "Test",
+            "latitud": "5.0",
+            "longitud": "-74.0",
+            "areacuenca": "invalid",
+        },
+    ]
+    respx.get(f"{IDEAM_BASE}/hp9r-jxuu.json").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].catchment_area_km2 is None
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_unparseable_discharge():
+    """Observations with non-numeric discharge get None."""
+    data = [
+        {
+            "codigoestacion": "21017010",
+            "fechaobservacion": "2024-06-01T06:00:00",
+            "valorobservado": "not-a-number",
+        },
+    ]
+    respx.get(f"{IDEAM_BASE}/sbwg-7ju4.json").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with ColombiaIDEAMConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "colombia_ideam:21017010",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality.value == "missing"

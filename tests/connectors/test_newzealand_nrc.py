@@ -230,3 +230,140 @@ def test_connector_class_attributes():
     assert NewZealandNrcConnector.slug == "newzealand_nrc"
     assert NewZealandNrcConnector.country_codes == ["NZ"]
     assert "hilltop.nrc.govt.nz" in NewZealandNrcConnector.base_url
+
+
+# ======================================================================
+# Additional coverage tests — error branches, edge cases
+# ======================================================================
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_delegates():
+    """fetch_latest imports timedelta and delegates to fetch_observations (lines 97-100)."""
+    respx.get(f"{BASE}/data.hts").mock(
+        return_value=httpx.Response(200, text=MOCK_DATA_XML),
+    )
+
+    async with NewZealandNrcConnector() as conn:
+        chunk = await conn.fetch_latest("newzealand_nrc:Mangakahia_at_Titoki")
+
+    assert chunk.provider == "newzealand_nrc"
+    # The call should work — observations may or may not match the last-24h range
+
+
+def test_parse_station_xml_invalid_xml_raises():
+    """Malformed XML raises DataFormatError (lines 124-125)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = NewZealandNrcConnector()
+    with pytest.raises(DataFormatError, match="Failed to parse station list XML"):
+        conn._parse_station_xml("<not valid xml<<<<")
+
+
+def test_parse_station_xml_empty_name_skipped():
+    """Sites with empty Name attribute are skipped (line 135)."""
+    xml_text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<HilltopServer>
+  <Site Name="">
+    <Latitude>-35.83</Latitude>
+    <Longitude>174.18</Longitude>
+  </Site>
+  <Site Name="Good Site">
+    <Latitude>-35.73</Latitude>
+    <Longitude>174.22</Longitude>
+  </Site>
+</HilltopServer>
+"""
+    conn = NewZealandNrcConnector()
+    stations = conn._parse_station_xml(xml_text)
+    assert len(stations) == 1
+    assert stations[0].name == "Good Site"
+
+
+def test_parse_station_xml_value_error_skipped():
+    """Sites with invalid lat/lon values log warning and skip (lines 161-168)."""
+    xml_text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<HilltopServer>
+  <Site Name="Bad Lat Site">
+    <Latitude>not_a_number</Latitude>
+    <Longitude>174.18</Longitude>
+  </Site>
+  <Site Name="Good Site">
+    <Latitude>-35.73</Latitude>
+    <Longitude>174.22</Longitude>
+  </Site>
+</HilltopServer>
+"""
+    conn = NewZealandNrcConnector()
+    stations = conn._parse_station_xml(xml_text)
+    assert len(stations) == 1
+    assert stations[0].name == "Good Site"
+
+
+def test_parse_data_xml_invalid_xml_raises():
+    """Malformed data XML raises DataFormatError (lines 188-189)."""
+    from csfs.core.exceptions import DataFormatError
+
+    conn = NewZealandNrcConnector()
+    with pytest.raises(DataFormatError, match="Failed to parse data XML"):
+        conn._parse_data_xml("<invalid<xml", "newzealand_nrc:test")
+
+
+def test_parse_data_xml_missing_t_element_skipped():
+    """Entries without T element are skipped (line 200)."""
+    xml_text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<Hilltop>
+  <Measurement SiteName="Test">
+    <Data>
+      <E><I1>5.23</I1></E>
+      <E><T>2024-06-01T00:00:00</T><I1>5.31</I1></E>
+    </Data>
+  </Measurement>
+</Hilltop>
+"""
+    conn = NewZealandNrcConnector()
+    chunk = conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s == pytest.approx(5.31)
+
+
+def test_parse_data_xml_invalid_timestamp_raises():
+    """Invalid timestamp in data XML raises DataFormatError (lines 204-205)."""
+    from csfs.core.exceptions import DataFormatError
+
+    xml_text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<Hilltop>
+  <Measurement SiteName="Test">
+    <Data>
+      <E><T>not-a-date</T><I1>5.23</I1></E>
+    </Data>
+  </Measurement>
+</Hilltop>
+"""
+    conn = NewZealandNrcConnector()
+    with pytest.raises(DataFormatError, match="Invalid timestamp"):
+        conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+
+
+def test_parse_data_xml_non_numeric_i1_is_missing():
+    """Non-numeric I1 value results in None discharge and MISSING quality (lines 215-216)."""
+    xml_text = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<Hilltop>
+  <Measurement SiteName="Test">
+    <Data>
+      <E><T>2024-06-01T00:00:00</T><I1>bad_value</I1></E>
+    </Data>
+  </Measurement>
+</Hilltop>
+"""
+    conn = NewZealandNrcConnector()
+    chunk = conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].discharge_m3s is None
+    assert chunk.observations[0].quality == QualityFlag.MISSING

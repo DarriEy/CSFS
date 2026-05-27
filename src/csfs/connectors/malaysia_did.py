@@ -349,6 +349,7 @@ class MalaysiaDIDConnector(BaseConnector):
                 ConnectorError,
                 httpx.HTTPStatusError,
                 httpx.HTTPError,
+                ValueError,
             ) as exc:
                 logger.debug(
                     "station_endpoint_failed",
@@ -397,6 +398,7 @@ class MalaysiaDIDConnector(BaseConnector):
                 ConnectorError,
                 httpx.HTTPStatusError,
                 httpx.HTTPError,
+                ValueError,
             ) as exc:
                 logger.debug(
                     "observation_endpoint_failed",
