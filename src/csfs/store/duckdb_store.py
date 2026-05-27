@@ -124,7 +124,8 @@ class DuckDBStore(BaseStore):
                   AND o.timestamp = s.timestamp
             )
         """)
-        return result.fetchone()[0] if result.description else len(rows)
+        row = result.fetchone()
+        return row[0] if row is not None else len(rows)
 
     async def get_stations(
         self,

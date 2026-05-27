@@ -191,7 +191,9 @@ def status(ctx: click.Context, history: int) -> None:
 
     click.echo(f"\n  {'PROVIDER':<25s}  {'STATIONS':>8s}  {'OBS':>10s}  {'LATEST':>20s}  {'STATUS'}")
     click.echo(f"  {'─' * 25}  {'─' * 8}  {'─' * 10}  {'─' * 20}  {'─' * 8}")
-    now = conn.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'").fetchone()[0]
+    now_row = conn.execute("SELECT CURRENT_TIMESTAMP AT TIME ZONE 'UTC'").fetchone()
+    assert now_row is not None
+    now = now_row[0]
     for row in conn.execute("""
         SELECT s.provider, COUNT(DISTINCT s.id), COUNT(o.station_id),
                MAX(o.fetched_at)
@@ -219,15 +221,17 @@ def status(ctx: click.Context, history: int) -> None:
     countries = r[0] if r else 0
     click.echo(f"\n  {countries} countries represented")
 
-    has_acq_log = conn.execute(
+    acq_row = conn.execute(
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_name = 'acquisition_log'"
-    ).fetchone()[0]
+    ).fetchone()
+    has_acq_log = acq_row[0] if acq_row else 0
     if not has_acq_log:
         conn.close()
         return
 
-    acq_count = conn.execute("SELECT COUNT(*) FROM acquisition_log").fetchone()[0]
+    acq_count_row = conn.execute("SELECT COUNT(*) FROM acquisition_log").fetchone()
+    acq_count = acq_count_row[0] if acq_count_row else 0
     if acq_count == 0:
         conn.close()
         return
