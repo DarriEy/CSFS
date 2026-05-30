@@ -63,21 +63,20 @@ async def populated_db(tmp_path):
 @pytest.fixture
 async def client(populated_db):
     """Create an AsyncClient bound to the FastAPI app with a populated DB."""
-    import csfs.api.app as app_module
-
     app = create_app(populated_db)
 
-    # Manually run the lifespan so the global _store is set
-    store = DuckDBStore(populated_db)
+    # ASGITransport doesn't run lifespan events, so bind the store to app.state
+    # manually (read-only, matching production).
+    store = DuckDBStore(populated_db, read_only=True)
     await store.__aenter__()
-    app_module._store = store
+    app.state.store = store
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
 
     await store.__aexit__(None, None, None)
-    app_module._store = None
+    app.state.store = None
 
 
 # ---- /health endpoint ----

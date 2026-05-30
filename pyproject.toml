@@ -46,6 +46,8 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
     "pre-commit>=3.0",
+    "types-PyYAML",
+    "types-croniter",
 ]
 
 [project.scripts]
@@ -93,3 +95,8 @@ python_version = "3.11"
 warn_return_any = true
 disallow_untyped_defs = false
 check_untyped_defs = true
+
+# pyarrow ships no type stubs (no py.typed, no published types package).
+[[tool.mypy.overrides]]
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true

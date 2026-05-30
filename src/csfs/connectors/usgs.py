@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import structlog
+
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
 from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 from csfs.core.registry import register
+
+logger = structlog.get_logger()
 
 USGS_QUALITY_MAP = {
     "A": QualityFlag.GOOD,       # Approved
@@ -50,7 +54,11 @@ class USGSConnector(BaseConnector):
                     "stateCd": state,
                 })
                 all_stations.extend(self._parse_site_rdb(resp.text))
-            except Exception:
+            except Exception as exc:
+                logger.warning(
+                    "state_fetch_failed", provider=self.slug, state=state,
+                    error_type=type(exc).__name__, error=str(exc)[:120],
+                )
                 continue
         return all_stations
 
@@ -134,10 +142,9 @@ class USGSConnector(BaseConnector):
             raise DataFormatError(self.slug, f"Unexpected JSON structure: {e}") from e
 
         for v in values:
-            q_flag = USGS_QUALITY_MAP.get(
-                v.get("qualifiers", [{}])[0] if isinstance(v.get("qualifiers"), list) else "",
-                QualityFlag.RAW,
-            )
+            qualifiers = v.get("qualifiers")
+            first_qualifier = qualifiers[0] if isinstance(qualifiers, list) and qualifiers else ""
+            q_flag = USGS_QUALITY_MAP.get(first_qualifier, QualityFlag.RAW)
             raw = v.get("value")
             discharge = float(raw) * self.CFS_TO_M3S if raw and raw != "-999999" else None
             observations.append(Observation(

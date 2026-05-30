@@ -60,13 +60,17 @@ CREATE INDEX IF NOT EXISTS idx_acqlog_provider ON acquisition_log (provider, sta
 
 
 class DuckDBStore(BaseStore):
-    def __init__(self, db_path: str | Path = "csfs.duckdb") -> None:
+    def __init__(self, db_path: str | Path = "csfs.duckdb", read_only: bool = False) -> None:
         self._db_path = str(db_path)
+        self._read_only = read_only
         self._conn: duckdb.DuckDBPyConnection | None = None
 
     async def __aenter__(self) -> DuckDBStore:
-        self._conn = duckdb.connect(self._db_path)
-        self._conn.execute(_INIT_SQL)
+        self._conn = duckdb.connect(self._db_path, read_only=self._read_only)
+        # Schema creation is DDL, which a read-only connection cannot run; a
+        # read-only store (e.g. the API) serves an already-initialised database.
+        if not self._read_only:
+            self._conn.execute(_INIT_SQL)
         return self
 
     async def __aexit__(self, *exc) -> None:
@@ -132,6 +136,8 @@ class DuckDBStore(BaseStore):
         provider: str | None = None,
         country_code: str | None = None,
         bbox: tuple[float, float, float, float] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Station]:
         query = "SELECT * FROM stations WHERE 1=1"
         params: list = []
@@ -145,6 +151,10 @@ class DuckDBStore(BaseStore):
             min_lon, min_lat, max_lon, max_lat = bbox
             query += " AND longitude BETWEEN ? AND ? AND latitude BETWEEN ? AND ?"
             params.extend([min_lon, max_lon, min_lat, max_lat])
+        query += " ORDER BY id"
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]
@@ -158,6 +168,8 @@ class DuckDBStore(BaseStore):
         station_id: str,
         start: datetime | None = None,
         end: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict]:
         query = "SELECT station_id, timestamp, discharge_m3s, quality FROM observations WHERE station_id = ?"
         params: list = [station_id]
@@ -168,6 +180,9 @@ class DuckDBStore(BaseStore):
             query += " AND timestamp <= ?"
             params.append(end)
         query += " ORDER BY timestamp"
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
 
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import structlog
@@ -43,7 +43,7 @@ class BaseConnector(ABC):
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(60.0, connect=10.0),
-            headers={"User-Agent": "CSFS/0.1 (https://github.com/csfs)"},
+            headers={"User-Agent": "CSFS/0.1 (https://github.com/DarriEy/CSFS)"},
             follow_redirects=True,
         )
         return self
@@ -74,9 +74,7 @@ class BaseConnector(ABC):
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
         """Fetch the most recent observations. Override if provider has a dedicated endpoint."""
-        now = datetime.utcnow()
-        from datetime import timedelta
-
+        now = datetime.now(UTC)
         return await self.fetch_observations(
             station_id,
             start=now - timedelta(hours=24),

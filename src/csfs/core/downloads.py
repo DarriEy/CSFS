@@ -71,6 +71,16 @@ DATASETS: list[dict] = [
 ]
 
 
+def _safe_extractall(zf: zipfile.ZipFile, dest: Path) -> None:
+    """Extract all members, rejecting any whose path escapes ``dest`` (zip-slip)."""
+    dest = dest.resolve()
+    for member in zf.namelist():
+        target = (dest / member).resolve()
+        if target != dest and dest not in target.parents:
+            raise ValueError(f"Unsafe path in archive escapes destination: {member!r}")
+    zf.extractall(dest)
+
+
 async def download_dataset(slug: str, base_dir: Path) -> bool:
     """Download a single dataset. Returns True on success."""
     entry = next((d for d in DATASETS if d["slug"] == slug), None)
@@ -117,7 +127,7 @@ async def _download_and_extract_zip(slug: str, dest: Path, url: str) -> bool:
                 logger.info("download_complete", slug=slug, size_mb=round(total / 1e6, 1))
 
         with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(dest)
+            _safe_extractall(zf, dest)
         logger.info("dataset_extracted", slug=slug, files=len(list(dest.iterdir())))
         return True
     except Exception as exc:
