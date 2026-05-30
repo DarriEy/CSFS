@@ -27,8 +27,10 @@ class BaseStore(ABC):
         provider: str | None = None,
         country_code: str | None = None,
         bbox: tuple[float, float, float, float] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[Station]:
-        """Query stations with optional filters."""
+        """Query stations with optional filters and pagination."""
 
     @abstractmethod
     async def get_observations(
@@ -36,6 +38,8 @@ class BaseStore(ABC):
         station_id: str,
         start: datetime | None = None,
         end: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict]:
         """Return observations as list of dicts (for JSON serialization)."""
 
