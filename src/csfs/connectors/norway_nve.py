@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import structlog
 
@@ -15,6 +16,42 @@ logger = structlog.get_logger()
 
 # NVE parameter code for discharge (Vannforing)
 _PARAM_DISCHARGE = "1001"
+
+# Default location for the NVE HydAPI key when not supplied in config. The file
+# holds the raw key on a single line (the key is base64 and ends in "==", so it
+# is read verbatim — no key=value parsing). Register free at https://hydapi.nve.no/
+_KEY_FILE = Path.home() / ".hydapi"
+
+
+def _read_hydapi_key() -> str:
+    """Return the NVE HydAPI key from ``~/.hydapi`` (first non-comment line)."""
+    try:
+        text = _KEY_FILE.read_text()
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return ""
+
+
+def _has_discharge_series(entry: dict) -> bool:
+    """Whether a station's series list includes a discharge (1001) series."""
+    return any(
+        str(series.get("parameter")) == _PARAM_DISCHARGE
+        for series in entry.get("seriesList", [])
+    )
+
+
+def _to_float(value: object) -> float | None:
+    """Parse a float, returning None for missing/non-numeric values."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return None
 
 # Resolution codes: 60 = hourly, 1440 = daily
 _RESOLUTION_DAILY = "1440"
@@ -43,9 +80,17 @@ class NorwayNVEConnector(BaseConnector):
 
     async def __aenter__(self) -> NorwayNVEConnector:
         await super().__aenter__()
-        api_key = self.config.get("api_key", "")
+        api_key = self.config.get("api_key") or _read_hydapi_key()
         if api_key:
             self.client.headers["X-API-Key"] = api_key
+        else:
+            logger.warning(
+                "norway_nve_missing_api_key",
+                hint=(
+                    f"NVE HydAPI requires a key. Put it on one line in {_KEY_FILE} "
+                    "or set config['api_key']; register free at https://hydapi.nve.no/"
+                ),
+            )
         return self
 
     async def fetch_stations(self) -> list[Station]:
@@ -58,7 +103,8 @@ class NorwayNVEConnector(BaseConnector):
                 "Parameter": _PARAM_DISCHARGE,
             },
         )
-        return self._parse_stations(resp.json())
+        payload = resp.json()
+        return self._parse_stations(payload.get("data", []))
 
     async def fetch_observations(
         self,
@@ -105,6 +151,12 @@ class NorwayNVEConnector(BaseConnector):
             if not native_id:
                 continue
 
+            # The /Stations Parameter filter does not actually restrict the
+            # result, so keep only stations whose series list includes a
+            # discharge (1001) series.
+            if not _has_discharge_series(entry):
+                continue
+
             try:
                 stations.append(Station(
                     id=self._station_id(native_id),
@@ -114,8 +166,9 @@ class NorwayNVEConnector(BaseConnector):
                     latitude=float(entry.get("latitude", 0.0)),
                     longitude=float(entry.get("longitude", 0.0)),
                     country_code="NO",
-                    river=entry.get("riverName"),
-                    catchment_area_km2=entry.get("drainageBasinArea_km2"),
+                    river=entry.get("riverName") or None,
+                    catchment_area_km2=_to_float(entry.get("drainageBasinArea")),
+                    elevation_m=_to_float(entry.get("masl")),
                 ))
             except (ValueError, KeyError) as exc:
                 logger.warning(

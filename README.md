@@ -18,6 +18,15 @@ pip install -e ".[api]"
 csfs serve
 ```
 
+## API keys
+
+Most connectors need no credentials. A few require a free key:
+
+- **Norway (`norway_nve`)** — needs a free [NVE HydAPI](https://hydapi.nve.no/) key.
+  Save the raw key on a single line in `~/.hydapi` (the default the connector
+  reads), or set `providers.norway_nve.api_key` in `csfs.yaml`. Keep keys out of
+  the tracked `csfs.yaml`.
+
 ## Architecture
 
 ```
