@@ -28,6 +28,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "usgs", "uk_ea", "france_hubeau", "germany_pegelonline",
         "environment_canada", "poland_imgw",
         "belgium_vmm", "netherlands_rws", "thailand_thaiwater",
+        "slovenia_arso",
     ],
     "hourly": [
         "norway_nve", "sweden_smhi", "switzerland_bafu",
@@ -49,7 +50,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "weekly": [
         "grdc", "estreams", "ca_discharge", "caravan", "gsim",
         "lamah_ce", "sierem", "adhi", "russia_arcticnet",
-        "spain_miteco",
+        "spain_miteco", "brazil_ana",
     ],
 }
 
