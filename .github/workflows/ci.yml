@@ -31,4 +31,7 @@ jobs:
         run: mypy src/csfs/
 
       - name: Test
-        run: pytest tests/ -v --tb=short
+        # Tests are hermetic: tests/conftest.py blocks real network access, so
+        # connectors must mock their HTTP. `-m "not network"` skips any test
+        # explicitly opted into reaching a real upstream.
+        run: pytest tests/ -v --tb=short -m "not network"

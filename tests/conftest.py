@@ -2,11 +2,41 @@
 
 from __future__ import annotations
 
+import socket
 from datetime import datetime
 
 import pytest
 
 from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+
+# ---------------------------------------------------------------------------
+# Hermetic network guard
+#
+# Connector tests must mock their HTTP (respx); none should touch a real
+# upstream, or the suite becomes slow and flaky. This autouse guard blocks DNS
+# resolution for any non-local host, so an unmocked call fails fast and
+# deterministically instead of hanging until a socket timeout. Opt a test out
+# with @pytest.mark.network (those are deselected in CI via `-m "not network"`).
+# ---------------------------------------------------------------------------
+
+_ALLOWED_HOSTS = {"127.0.0.1", "::1", "localhost", "", None}
+_real_getaddrinfo = socket.getaddrinfo
+
+
+def _guarded_getaddrinfo(host, *args, **kwargs):
+    if host not in _ALLOWED_HOSTS:
+        raise RuntimeError(
+            f"Blocked network access to {host!r} during tests. Mock the HTTP "
+            "call with respx, or mark the test with @pytest.mark.network."
+        )
+    return _real_getaddrinfo(host, *args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def _block_network(request, monkeypatch):
+    if request.node.get_closest_marker("network"):
+        return  # explicitly allowed to reach the real upstream
+    monkeypatch.setattr(socket, "getaddrinfo", _guarded_getaddrinfo)
 
 
 @pytest.fixture
