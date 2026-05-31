@@ -203,6 +203,58 @@ def test_status_trend_calculation(runner, test_db):
     assert len(usgs_acq_lines) >= 1, "Expected usgs to have a computed trend"
 
 
+# ---- health command ----
+
+def test_health_shows_summary_and_table(runner, test_db):
+    """health prints the bucket summary and a per-connector table."""
+    result = runner.invoke(cli, ["--db", str(test_db), "health"])
+    assert result.exit_code == 0
+    assert "Connector health" in result.output
+    assert "PROVIDER" in result.output
+    # Registered roster padding means we see far more than the 2 seeded providers.
+    assert "ok=" in result.output
+
+
+def test_health_provider_filter(runner, test_db):
+    """--provider narrows to one connector; usgs has fresh obs so it's 'ok'."""
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "-p", "usgs"])
+    assert result.exit_code == 0
+    assert "usgs" in result.output
+    assert "uk_ea" not in result.output
+
+
+def test_health_unknown_provider_exits_nonzero(runner, test_db):
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "-p", "nope"])
+    assert result.exit_code == 2
+
+
+def test_health_json_output(runner, test_db):
+    """--json emits a parseable payload with summary + connectors."""
+    import json
+
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "--json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert "summary" in payload
+    assert "connectors" in payload
+    assert "degraded" in payload
+
+
+def test_health_fail_on_triggers_exit_code(runner, test_db):
+    """--fail-on returns 1 when any connector matches the flagged buckets."""
+    # The registered roster is full of 'none' connectors, so this must trip.
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "--fail-on", "none"])
+    assert result.exit_code == 1
+
+
+def test_health_fail_on_clean_when_no_match(runner, test_db):
+    """A fresh 'ok' connector does not trip --fail-on stale."""
+    result = runner.invoke(
+        cli, ["--db", str(test_db), "health", "-p", "usgs", "--fail-on", "stale"]
+    )
+    assert result.exit_code == 0
+
+
 # ---- fetch command ----
 
 def test_fetch_calls_run_acquisition(runner, tmp_path):

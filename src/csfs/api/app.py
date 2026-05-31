@@ -97,39 +97,15 @@ def create_app(db_path: Path | str = "csfs.duckdb") -> FastAPI:
         stale_hours: float = Query(168.0, gt=0),
         include_registered: bool = True,
     ):
+        from csfs.core.health import gather_connector_health, summarize_health
+
         store: DuckDBStore = request.app.state.store
-        rows = await store.get_connector_health(stale_after_hours=stale_hours)
-
-        if include_registered:
-            # Surface registered connectors that have never produced data or a
-            # logged run, so the health view reflects the full connector roster.
-            from csfs.core.registry import discover
-            from csfs.core.registry import list_providers as _lp
-            discover()
-            seen = {r["provider"] for r in rows}
-            for slug in _lp():
-                if slug not in seen:
-                    rows.append({
-                        "provider": slug,
-                        "stations": 0,
-                        "observations": 0,
-                        "latest_observation": None,
-                        "last_fetch_at": None,
-                        "staleness_hours": None,
-                        "data_health": "none",
-                        "last_run": None,
-                        "last_status": None,
-                        "last_error": None,
-                        "last_ok_at": None,
-                        "total_runs": 0,
-                        "ok_runs": 0,
-                        "success_rate": None,
-                    })
-            rows.sort(key=lambda r: r["provider"])
-
-        summary: dict[str, int] = {}
-        for r in rows:
-            summary[r["data_health"]] = summary.get(r["data_health"], 0) + 1
+        rows = await gather_connector_health(
+            store,
+            stale_after_hours=stale_hours,
+            include_registered=include_registered,
+        )
+        summary = summarize_health(rows)
 
         return {
             "count": len(rows),
