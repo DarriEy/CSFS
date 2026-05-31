@@ -31,6 +31,7 @@ from pathlib import Path
 import structlog
 
 from csfs.connectors.base import BaseConnector
+from csfs.core.downloads import ensure_dataset
 from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
@@ -145,22 +146,23 @@ class IsraelCaravanConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Read observations from local Caravan-Israel CSV files.
 
-        Standard Caravan format: ``date, streamflow`` columns.
-        If no local data directory is configured or the file does
-        not exist, logs Zenodo download instructions and returns
-        an empty chunk.
+        Standard Caravan format: ``date, streamflow`` columns. The
+        Caravan-Israel extension is auto-downloaded and cached on first use
+        (see :func:`csfs.core.downloads.ensure_dataset`); set
+        ``config['data_dir']`` to use a pre-downloaded copy, or
+        ``config['auto_download'] = False`` to disable. If the data is
+        unavailable, returns an empty chunk.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
-        data_dir = self.config.get("data_dir")
+        data_dir = await ensure_dataset(self.slug, self.config)
 
-        if not data_dir:
+        if data_dir is None:
             logger.info(
                 "israel_caravan_no_data_dir",
                 station=native_id,
                 hint=(
-                    "Set config['data_dir'] to a directory containing "
-                    "Caravan-Israel CSV files. Download from "
-                    f"{_ZENODO_DOWNLOAD_URL}"
+                    "Caravan-Israel data unavailable (auto-download disabled "
+                    f"or failed). Download from {_ZENODO_DOWNLOAD_URL}"
                 ),
             )
             return self._empty_chunk(station_id)
@@ -291,7 +293,13 @@ class IsraelCaravanConnector(BaseConnector):
         for candidate in candidates:
             if candidate.is_file():
                 return candidate
-        return None
+        # The auto-downloaded extension extracts to a nested Caravan tree
+        # (timeseries/csv/il/<id>.csv); search recursively as a fallback.
+        match = next(
+            (p for p in data_dir.rglob(f"{basin_id}.csv") if p.is_file()),
+            None,
+        )
+        return match
 
     def _parse_csv_file(
         self,

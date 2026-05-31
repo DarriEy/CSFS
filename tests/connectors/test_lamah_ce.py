@@ -96,8 +96,8 @@ async def test_fetch_stations_zenodo_failure_still_returns_seed():
 
 @pytest.mark.asyncio
 async def test_fetch_observations_no_data_dir():
-    """Without data_dir configured, returns empty chunk with guidance."""
-    async with LamaHCEConnector() as conn:
+    """Without data_dir and auto-download disabled, returns empty chunk."""
+    async with LamaHCEConnector(config={"auto_download": False}) as conn:
         chunk = await conn.fetch_observations(
             "lamah_ce:1",
             start=datetime(1990, 1, 1, tzinfo=UTC),

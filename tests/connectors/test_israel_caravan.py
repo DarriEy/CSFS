@@ -150,8 +150,8 @@ async def test_fetch_stations_zenodo_empty_files_falls_back():
 
 @pytest.mark.asyncio
 async def test_fetch_observations_no_data_dir():
-    """Without data_dir, returns empty chunk."""
-    async with IsraelCaravanConnector() as conn:
+    """Without data_dir and auto-download disabled, returns empty chunk."""
+    async with IsraelCaravanConnector(config={"auto_download": False}) as conn:
         chunk = await conn.fetch_observations(
             "israel_caravan:il_yarkon",
             start=datetime(2010, 1, 1, tzinfo=UTC),
