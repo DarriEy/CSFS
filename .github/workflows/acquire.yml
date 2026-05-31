@@ -1,0 +1,131 @@
+name: Acquire
+
+# Scheduled streamflow acquisition on GitHub Actions.
+#
+# The canonical DuckDB store is kept as an asset on a single "db-snapshot"
+# GitHub Release. Each run downloads it, fetches one tier, re-uploads it, then
+# checks health for that tier and alerts (via a GitHub issue) on failure.
+#
+# NOTE: only the daily and weekly tiers run on schedule here. The realtime
+# (15-min) and hourly tiers would re-upload the ~700 MB DB dozens of times a
+# day — impractical on Actions; run those on a long-lived host instead. You can
+# still trigger any tier manually via "Run workflow".
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # daily  02:30 UTC
+    - cron: "0 3 * * 0"    # weekly Sun 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Tier to fetch"
+        type: choice
+        default: daily
+        options: [realtime, hourly, daily, weekly]
+
+# One acquisition at a time — concurrent runs would race the shared DB asset.
+concurrency:
+  group: csfs-acquire
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # upload the DB asset to the release
+  issues: write     # open/update the health-alert issue
+
+env:
+  DB_TAG: db-snapshot
+  DB_FILE: csfs.duckdb
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -e ".[api]"
+
+      - name: Select tier
+        id: tier
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tier=${{ inputs.tier }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 3 * * 0" ]; then
+            echo "tier=weekly" >> "$GITHUB_OUTPUT"
+          else
+            echo "tier=daily" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore DB snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release download "$DB_TAG" --pattern "$DB_FILE" --clobber 2>/dev/null; then
+            echo "Restored $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
+          else
+            echo "No existing snapshot — starting a fresh DB."
+          fi
+
+      - name: Fetch tier ${{ steps.tier.outputs.tier }}
+        run: csfs fetch --tier "${{ steps.tier.outputs.tier }}"
+
+      - name: Save DB snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$DB_TAG" >/dev/null 2>&1 \
+            || gh release create "$DB_TAG" --title "DB snapshot" \
+                 --notes "Rolling canonical CSFS DuckDB store (updated by Acquire)."
+          gh release upload "$DB_TAG" "$DB_FILE" --clobber
+
+      - name: Health report
+        id: health
+        run: |
+          csfs health --tier "${{ steps.tier.outputs.tier }}" | tee health.txt
+          csfs health --tier "${{ steps.tier.outputs.tier }}" --json > health.json
+          # Alert only on acquisition runs that errored/degraded this cycle.
+          if csfs health --tier "${{ steps.tier.outputs.tier }}" \
+               --degraded-only --fail-on error,degraded; then
+            echo "degraded=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "degraded=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload health artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-${{ steps.tier.outputs.tier }}
+          path: |
+            health.txt
+            health.json
+
+      - name: Alert on degraded connectors
+        if: steps.health.outputs.degraded == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIER: ${{ steps.tier.outputs.tier }}
+        run: |
+          title="CSFS health alert: ${TIER} tier"
+          body="One or more connectors in the **${TIER}** tier errored or degraded in the latest run ($(date -u +%Y-%m-%dT%H:%MZ)).
+
+          \`\`\`
+          $(cat health.txt)
+          \`\`\`
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --label "health" --body "$body" \
+              || gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Fail if degraded
+        if: steps.health.outputs.degraded == 'true'
+        run: exit 1

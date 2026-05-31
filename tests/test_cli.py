@@ -247,6 +247,20 @@ def test_health_fail_on_triggers_exit_code(runner, test_db):
     assert result.exit_code == 1
 
 
+def test_health_tier_scopes_to_tier_providers(runner, test_db):
+    """--tier limits the roster to that tier's providers."""
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "--tier", "weekly"])
+    assert result.exit_code == 0
+    # 'grdc' is a weekly-tier provider; 'usgs' is realtime — it must be absent.
+    assert "grdc" in result.output
+    assert "usgs" not in result.output
+
+
+def test_health_unknown_tier_exits_nonzero(runner, test_db):
+    result = runner.invoke(cli, ["--db", str(test_db), "health", "--tier", "nope"])
+    assert result.exit_code == 2
+
+
 def test_health_fail_on_clean_when_no_match(runner, test_db):
     """A fresh 'ok' connector does not trip --fail-on stale."""
     result = runner.invoke(

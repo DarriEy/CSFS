@@ -339,6 +339,8 @@ def status(ctx: click.Context, history: int) -> None:
 @click.option("--stale-hours", default=168.0, type=float,
               help="Observations older than this (hours) count as STALE (default: 168)")
 @click.option("--provider", "-p", default=None, help="Show only this provider")
+@click.option("--tier", "-t", default=None,
+              help="Scope to one tier's providers (realtime/hourly/daily/weekly)")
 @click.option("--degraded-only", is_flag=True, help="Show only connectors that are degraded")
 @click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
 @click.option("--fail-on", default=None,
@@ -349,6 +351,7 @@ def health(
     ctx: click.Context,
     stale_hours: float,
     provider: str | None,
+    tier: str | None,
     degraded_only: bool,
     as_json: bool,
     fail_on: str | None,
@@ -373,6 +376,14 @@ def health(
     async def _run() -> int:
         async with DuckDBStore(ctx.obj["db_path"]) as store:
             rows = await gather_connector_health(store, stale_after_hours=stale_hours)
+
+        if tier:
+            from csfs.scheduler.cron import PROVIDER_TIERS
+            tier_slugs = set(PROVIDER_TIERS.get(tier, []))
+            if not tier_slugs:
+                click.echo(f"Unknown tier '{tier}'", err=True)
+                return 2
+            rows = [r for r in rows if r["provider"] in tier_slugs]
 
         if provider:
             rows = [r for r in rows if r["provider"] == provider]
