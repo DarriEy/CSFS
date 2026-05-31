@@ -72,7 +72,17 @@ jobs:
           fi
 
       - name: Fetch tier ${{ steps.tier.outputs.tier }}
-        run: csfs fetch --tier "${{ steps.tier.outputs.tier }}"
+        # Bound each cycle: some connectors have thousands of stations (e.g.
+        # Brazil ANA ~17.6k), and an unbounded run iterates them all every time,
+        # taking far too long. MAX_STATIONS caps stations per connector per
+        # cycle. (Today the runner takes the first N; rotating coverage across
+        # runs is a future improvement.)
+        env:
+          MAX_STATIONS: "500"
+          CONCURRENCY: "12"
+        run: |
+          csfs fetch --tier "${{ steps.tier.outputs.tier }}" \
+            --max-stations "$MAX_STATIONS" --concurrency "$CONCURRENCY"
 
       - name: Save DB snapshot
         env:
