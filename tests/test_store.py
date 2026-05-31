@@ -1,10 +1,10 @@
 """Tests for DuckDB store."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from csfs.core.models import Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 from csfs.store.duckdb_store import DuckDBStore
 
 
@@ -94,6 +94,86 @@ async def test_acquisition_log_limit(store: DuckDBStore):
     if hasattr(newest, 'astimezone'):
         newest = newest.astimezone(UTC)
     assert newest.hour == 9
+
+
+@pytest.mark.asyncio
+async def test_connector_health_stale(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
+    """A provider whose newest observation is old is flagged 'stale'."""
+    await store.upsert_stations([sample_station])
+    await store.append_observations(sample_chunk)  # obs from 2024
+
+    health = await store.get_connector_health()
+    assert len(health) == 1
+    row = health[0]
+    assert row["provider"] == "usgs"
+    assert row["stations"] == 1
+    assert row["observations"] == 2
+    assert row["data_health"] == "stale"
+    assert row["staleness_hours"] > 168
+
+
+@pytest.mark.asyncio
+async def test_connector_health_empty(store: DuckDBStore, sample_station: Station):
+    """A provider with stations but no observations is flagged 'empty'."""
+    await store.upsert_stations([sample_station])
+
+    health = await store.get_connector_health()
+    assert len(health) == 1
+    assert health[0]["data_health"] == "empty"
+    assert health[0]["observations"] == 0
+    assert health[0]["latest_observation"] is None
+
+
+@pytest.mark.asyncio
+async def test_connector_health_fresh(store: DuckDBStore, sample_station: Station):
+    """Recent observations yield 'ok' health."""
+    await store.upsert_stations([sample_station])
+    recent = datetime.now(UTC) - timedelta(hours=2)
+    chunk = TimeSeriesChunk(
+        station_id="usgs:01646500", provider="usgs",
+        observations=[
+            Observation(
+                station_id="usgs:01646500", timestamp=recent,
+                discharge_m3s=100.0, quality=QualityFlag.GOOD,
+            ),
+        ],
+        fetched_at=recent,
+    )
+    await store.append_observations(chunk)
+
+    health = await store.get_connector_health()
+    assert health[0]["data_health"] == "ok"
+    assert health[0]["staleness_hours"] < 168
+
+
+@pytest.mark.asyncio
+async def test_connector_health_merges_acquisition_log(
+    store: DuckDBStore, sample_station: Station,
+):
+    """Acquisition-log outcomes are merged in, and log-only providers appear."""
+    await store.upsert_stations([sample_station])
+    t1 = datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
+    t2 = datetime(2024, 6, 2, 12, 0, tzinfo=UTC)
+    await store.record_acquisition("usgs", t1, 45.0, "ok", stations=1, observations=10, fetched=1)
+    await store.record_acquisition("usgs", t2, 50.0, "degraded", stations=1, fetched=1, failed=1)
+    # A provider that only ever failed station discovery — no stations stored.
+    await store.record_acquisition("uk_ea", t2, 5.0, "error", error_message="boom")
+
+    health = {r["provider"]: r for r in await store.get_connector_health()}
+
+    assert health["usgs"]["last_status"] == "degraded"  # most recent run
+    assert health["usgs"]["total_runs"] == 2
+    assert health["usgs"]["ok_runs"] == 1
+    assert health["usgs"]["success_rate"] == 0.5
+    assert health["usgs"]["last_ok_at"].astimezone(UTC) == t1
+
+    # Log-only provider with no stored data shows up with 'none' data health.
+    assert health["uk_ea"]["data_health"] == "none"
+    assert health["uk_ea"]["last_status"] == "error"
+    assert health["uk_ea"]["last_error"] == "boom"
+    assert health["uk_ea"]["stations"] == 0
 
 
 @pytest.mark.asyncio

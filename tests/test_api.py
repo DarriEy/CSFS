@@ -191,3 +191,46 @@ async def test_list_providers(client):
     assert "providers" in data
     assert isinstance(data["providers"], list)
     assert len(data["providers"]) > 0
+
+
+# ---- /api/v1/health/connectors endpoint ----
+
+async def test_connector_health(client):
+    """Without registry padding, only providers with stored data appear."""
+    resp = await client.get(
+        "/api/v1/health/connectors", params={"include_registered": "false"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] == 2
+    by_provider = {c["provider"]: c for c in data["connectors"]}
+    # usgs has only 2024 observations → stale; uk_ea has a station but no obs.
+    assert by_provider["usgs"]["data_health"] == "stale"
+    assert by_provider["uk_ea"]["data_health"] == "empty"
+    assert data["summary"]["stale"] == 1
+    assert data["summary"]["empty"] == 1
+
+
+async def test_connector_health_includes_registered(client):
+    """By default, registered-but-untouched connectors appear as 'none'."""
+    resp = await client.get("/api/v1/health/connectors")
+    assert resp.status_code == 200
+    data = resp.json()
+    # The full connector roster is much larger than the 2 with stored data.
+    assert data["count"] > 2
+    assert data["summary"].get("none", 0) > 0
+
+
+async def test_connector_health_detail(client):
+    resp = await client.get("/api/v1/health/connectors/usgs")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["provider"] == "usgs"
+    assert data["observations"] == 2
+    assert "recent_runs" in data
+    assert data["recent_runs"] == []  # no acquisition log entries in fixture
+
+
+async def test_connector_health_detail_unknown(client):
+    resp = await client.get("/api/v1/health/connectors/does_not_exist")
+    assert resp.status_code == 404
