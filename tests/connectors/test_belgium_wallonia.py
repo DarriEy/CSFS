@@ -62,10 +62,8 @@ def _route(ts_list=MOCK_TS_LIST, station_list=MOCK_STATION_LIST,
 
 @pytest.fixture(autouse=True)
 def _no_sleep(monkeypatch):
-    """Skip the transient-retry backoff sleeps in tests."""
-    monkeypatch.setattr(
-        "csfs.connectors.belgium_wallonia.asyncio.sleep", AsyncMock(),
-    )
+    """Skip the transient-retry backoff sleeps in tests (now in the KiWIS base)."""
+    monkeypatch.setattr("csfs.connectors._kiwis.asyncio.sleep", AsyncMock())
 
 
 @respx.mock
