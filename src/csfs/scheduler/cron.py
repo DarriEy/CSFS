@@ -50,7 +50,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "weekly": [
         "grdc", "estreams", "ca_discharge", "caravan", "gsim",
         "lamah_ce", "sierem", "adhi", "russia_arcticnet",
-        "spain_miteco",
+        "spain_miteco", "brazil_ana",
     ],
 }
 
