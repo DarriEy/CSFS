@@ -28,6 +28,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "usgs", "uk_ea", "france_hubeau", "germany_pegelonline",
         "environment_canada", "poland_imgw",
         "belgium_vmm", "netherlands_rws", "thailand_thaiwater",
+        "slovenia_arso",
     ],
     "hourly": [
         "norway_nve", "sweden_smhi", "switzerland_bafu",
