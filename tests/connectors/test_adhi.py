@@ -1,5 +1,7 @@
 """Tests for the ADHI (African Database of Hydrometric Indices) connector."""
 
+import io
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -8,6 +10,20 @@ import pytest
 import respx
 
 from csfs.connectors.adhi import _SEED_STATIONS, ADHI_COUNTRY_CODES, ADHIConnector
+
+
+def _make_monthly_zip(series_by_station: dict[str, str]) -> bytes:
+    """Build an in-memory ADHI MonthlySeries.zip.
+
+    ``series_by_station`` maps a native_id to the headerless text content of
+    its ``monthly_{native_id}.txt`` file (columns: year, month, mean, max,
+    min, num_missing_days).
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for native_id, content in series_by_station.items():
+            zf.writestr(f"MonthlySeries/monthly_{native_id}.txt", content)
+    return buf.getvalue()
 
 # ------------------------------------------------------------------
 # Mock DataVerse API responses
@@ -30,9 +46,18 @@ MOCK_DATAVERSE_RESPONSE = {
                 },
                 {
                     "dataFile": {
+                        # Decoy: matches the old "discharge" hint but is a
+                        # 35 MB archive of PNG plots, not data.
                         "id": 5002,
-                        "filename": "ADHI_monthly_discharge.tab",
-                        "filesize": 12000000,
+                        "filename": "ADHI_Discharge_plots.zip",
+                        "filesize": 35000000,
+                    },
+                },
+                {
+                    "dataFile": {
+                        "id": 5004,
+                        "filename": "ADHI_MonthlySeries.zip",
+                        "filesize": 6452188,
                     },
                 },
                 {
@@ -60,16 +85,6 @@ MOCK_STATION_METADATA_MISSING_COORDS = (
     "station_code\tstation_name\tlatitude\tlongitude\tcountry_code\n"
     "ADHI-BAD\tNo Coords\t\t\tXX\n"
     "ADHI-OK\tGood Station\t10.0\t20.0\tNG\n"
-)
-
-MOCK_DISCHARGE_DATA_TAB = (
-    "station_code\tdate\tdischarge\tquality\n"
-    "ADHI-NG-0001\t1970-01\t1250.5\t0\n"
-    "ADHI-NG-0001\t1970-02\t980.0\t0\n"
-    "ADHI-NG-0001\t1970-03\t-999.0\t3\n"
-    "ADHI-NG-0001\t1970-04\t1100.2\t1\n"
-    "ADHI-KE-0001\t1970-01\t55.3\t0\n"
-    "ADHI-KE-0001\t1970-02\t48.1\t0\n"
 )
 
 MOCK_DISCHARGE_LOCAL_CSV = (
@@ -195,21 +210,36 @@ async def test_fetch_stations_api_error_falls_back_to_seed():
 # ------------------------------------------------------------------
 
 
+# Headerless monthly series: year, month, mean, max, min, num_missing_days.
+MOCK_MONTHLY_NG = (
+    "1970,1,1250.5,1300.0,1200.0,0\n"
+    "1970,2,980.0,1010.0,950.0,0\n"
+    "1970,3,NaN,NaN,NaN,31\n"
+    "1970,4,1100.2,1150.0,1050.0,2\n"
+)
+MOCK_MONTHLY_KE = (
+    "1970,1,55.3,60.0,50.0,0\n"
+    "1970,2,48.1,52.0,44.0,0\n"
+)
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_from_api():
-    """Discharge data is fetched and parsed from DataVerse."""
+    """Monthly discharge is fetched and parsed from the MonthlySeries ZIP."""
     respx.get(
         "https://dataverse.ird.fr/api/datasets/:persistentId/",
     ).mock(
         return_value=httpx.Response(200, json=MOCK_DATAVERSE_RESPONSE),
     )
+    zip_bytes = _make_monthly_zip({
+        "ADHI-NG-0001": MOCK_MONTHLY_NG,
+        "ADHI-KE-0001": MOCK_MONTHLY_KE,
+    })
     respx.get(
-        "https://dataverse.ird.fr/api/access/datafile/5002",
+        "https://dataverse.ird.fr/api/access/datafile/5004",
     ).mock(
-        return_value=httpx.Response(
-            200, text=MOCK_DISCHARGE_DATA_TAB,
-        ),
+        return_value=httpx.Response(200, content=zip_bytes),
     )
 
     async with ADHIConnector() as conn:
@@ -223,34 +253,37 @@ async def test_fetch_observations_from_api():
     assert chunk.provider == "adhi"
     assert len(chunk.observations) == 4
 
-    # First obs: good quality
+    # First obs: valid mean monthly runoff
     assert chunk.observations[0].discharge_m3s == pytest.approx(1250.5)
     assert chunk.observations[0].quality.value == "good"
+    assert chunk.observations[0].timestamp == datetime(1970, 1, 1, tzinfo=UTC)
 
-    # Third obs: missing value (-999)
+    # Third obs: NaN value -> missing
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
 
-    # Fourth obs: estimated
+    # Fourth obs: valid again
     assert chunk.observations[3].discharge_m3s == pytest.approx(1100.2)
-    assert chunk.observations[3].quality.value == "estimated"
+    assert chunk.observations[3].quality.value == "good"
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_filters_by_station():
-    """Only observations for the requested station are returned."""
+    """Each station reads only its own file from the ZIP archive."""
     respx.get(
         "https://dataverse.ird.fr/api/datasets/:persistentId/",
     ).mock(
         return_value=httpx.Response(200, json=MOCK_DATAVERSE_RESPONSE),
     )
+    zip_bytes = _make_monthly_zip({
+        "ADHI-NG-0001": MOCK_MONTHLY_NG,
+        "ADHI-KE-0001": MOCK_MONTHLY_KE,
+    })
     respx.get(
-        "https://dataverse.ird.fr/api/access/datafile/5002",
+        "https://dataverse.ird.fr/api/access/datafile/5004",
     ).mock(
-        return_value=httpx.Response(
-            200, text=MOCK_DISCHARGE_DATA_TAB,
-        ),
+        return_value=httpx.Response(200, content=zip_bytes),
     )
 
     async with ADHIConnector() as conn:
@@ -263,6 +296,60 @@ async def test_fetch_observations_filters_by_station():
     assert chunk.station_id == "adhi:ADHI-KE-0001"
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(55.3)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_selects_monthly_series_not_plots():
+    """The plots ZIP decoy is ignored; MonthlySeries.zip (id 5004) is used."""
+    respx.get(
+        "https://dataverse.ird.fr/api/datasets/:persistentId/",
+    ).mock(
+        return_value=httpx.Response(200, json=MOCK_DATAVERSE_RESPONSE),
+    )
+    plots_route = respx.get(
+        "https://dataverse.ird.fr/api/access/datafile/5002",
+    ).mock(return_value=httpx.Response(200, content=b"PNG-NOT-DATA"))
+    respx.get(
+        "https://dataverse.ird.fr/api/access/datafile/5004",
+    ).mock(
+        return_value=httpx.Response(
+            200, content=_make_monthly_zip({"ADHI-NG-0001": MOCK_MONTHLY_NG}),
+        ),
+    )
+
+    async with ADHIConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "adhi:ADHI-NG-0001",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 4
+    assert not plots_route.called
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_bad_zip_returns_empty():
+    """A corrupt MonthlySeries download is handled gracefully."""
+    respx.get(
+        "https://dataverse.ird.fr/api/datasets/:persistentId/",
+    ).mock(
+        return_value=httpx.Response(200, json=MOCK_DATAVERSE_RESPONSE),
+    )
+    respx.get(
+        "https://dataverse.ird.fr/api/access/datafile/5004",
+    ).mock(return_value=httpx.Response(200, content=b"not-a-zip"))
+
+    async with ADHIConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "adhi:ADHI-NG-0001",
+            start=datetime(1970, 1, 1, tzinfo=UTC),
+            end=datetime(1970, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
 
 
 @pytest.mark.asyncio
@@ -373,7 +460,7 @@ async def test_get_file_list_caching():
 
     # Both calls return the same cached list
     assert file_list_1 is file_list_2
-    assert len(file_list_1) == 3
+    assert len(file_list_1) == 4
 
 
 @pytest.mark.asyncio
