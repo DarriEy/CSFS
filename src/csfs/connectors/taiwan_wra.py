@@ -1,8 +1,25 @@
-"""WRA connector — Taiwan Water Resources Agency open-data API."""
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
+"""WRA connector — Taiwan Water Resources Agency open-data API (v2, keyless).
+
+Taiwan's WRA moved to a keyless v2 open-data platform
+(https://opendata.wra.gov.tw/api/v2). That platform exposes the river-flow
+gauge network only as *station status* (metadata, no values); the actual
+gauge discharge remains on the old v1 API, which now requires an undocumented
+key. The only discharge **values** available keyless are reservoir/weir inflow
+from the "Reservoir hydrological data" dataset — and several of those points
+are run-of-river weirs (Shigang Dam, Jiji Weir, Jiaxian Weir) whose inflow is
+river discharge.
+
+This connector therefore serves reservoir/weir **inflow discharge** for the
+major mainland reservoirs. The dataset has no coordinates, so a curated seed of
+WGS84 locations is used (the reservoirs are large, well-known features).
+Timestamps are Taiwan local time (UTC+8).
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import structlog
 
@@ -13,53 +30,60 @@ from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
-# Field-name mappings: English → Chinese fallback
-_STATION_FIELDS = {
-    "id": ("StationIdentifier", "測站代碼"),
-    "name": ("StationName", "測站名稱"),
-    "lat": ("Latitude", "緯度"),
-    "lon": ("Longitude", "經度"),
-    "river": ("RiverName", "河川名稱"),
-    "basin": ("BasinName", "流域名稱"),
-    "catchment_area": ("CatchmentArea", "集水區面積"),
-    "obs_start": ("ObservationStartDate", "觀測開始日期"),
+_TAIPEI = timezone(timedelta(hours=8))
+
+# Reservoir hydrological data (inflow discharge, hourly, last ~24 h).
+_RESERVOIR_DATASET = "2be9044c-6e44-4856-aad5-dd108c2e6679"
+
+# Curated WGS84 seed for the major reservoirs/weirs that publish inflow
+# discharge (the API carries no coordinates). reservoiridentifier -> (name,
+# river, lat, lon). Weirs are run-of-river structures (inflow == river flow).
+_RESERVOIR_SEED: dict[str, tuple[str, str | None, float, float]] = {
+    "10201": ("Shimen Reservoir", "Dahan River", 24.812, 121.243),
+    "10205": ("Feitsui Reservoir", "Beishi River", 24.910, 121.572),
+    "10501": ("Yongheshan Reservoir", "Zhonggang River", 24.620, 120.920),
+    "20101": ("Liyutan Reservoir", "Jing River", 24.323, 120.778),
+    "20201": ("Deji Reservoir", "Dajia River", 24.252, 121.165),
+    "20202": ("Shigang Dam", "Dajia River", 24.255, 120.770),
+    "20503": ("Jiji Weir", "Zhuoshui River", 23.847, 120.783),
+    "20509": ("Hushan Reservoir", "Qingshui River", 23.667, 120.560),
+    "30301": ("Renyitan Reservoir", "Bazhang River", 23.517, 120.430),
+    "30302": ("Lantan Reservoir", "Bazhang River", 23.475, 120.490),
+    "30502": ("Zengwen Reservoir", "Zengwen River", 23.230, 120.530),
+    "30802": ("Agongdian Reservoir", "Agongdian River", 22.781, 120.397),
+    "31002": ("Jiaxian Weir", "Qishan River", 23.077, 120.591),
+    "31201": ("Mudan Reservoir", "Sichongxi River", 22.203, 120.781),
 }
-
-_OBS_FIELDS = {
-    "date": ("RecordDate", "日期"),
-    "discharge": ("Discharge", "流量"),
-    "water_level": ("WaterLevel", "水位"),
-}
-
-
-def _get(entry: dict, *keys: str):
-    """Return the first non-None value for the given keys."""
-    for k in keys:
-        val = entry.get(k)
-        if val is not None:
-            return val
-    return None
 
 
 @register("taiwan_wra")
 class TaiwanWRAConnector(BaseConnector):
+    """Connector for Taiwan WRA reservoir/weir inflow discharge (keyless v2)."""
+
     slug = "taiwan_wra"
     display_name = "WRA (Taiwan)"
-    base_url = "https://opendata.wra.gov.tw/api/v1"
+    base_url = "https://opendata.wra.gov.tw/api/v2"
     country_codes = ["TW"]
+
+    def __init__(self, config: dict | None = None) -> None:
+        super().__init__(config)
+        self._records: list[dict] | None = None
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all river-flow stations from the WRA API."""
-        resp = await self._get(
-            "/RiverFlowStation", params={"format": "json"},
-        )
-        payload = self._safe_json(resp)
-        items = self._extract_items(payload)
-        return self._parse_stations(items)
+        """Return the seeded reservoirs/weirs that are present in the feed."""
+        records = await self._load_records()
+        present = {str(r.get("reservoiridentifier", "")) for r in records}
+        stations = [
+            self._to_station(rid, *meta)
+            for rid, meta in _RESERVOIR_SEED.items()
+            if rid in present
+        ]
+        logger.info("stations_fetched", provider=self.slug, count=len(stations))
+        return stations
 
     async def fetch_observations(
         self,
@@ -67,186 +91,28 @@ class TaiwanWRAConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Fetch discharge / water-level observations for one station."""
+        """Fetch inflow-discharge observations for one reservoir/weir."""
         native_id = station_id.removeprefix(f"{self.slug}:")
+        records = await self._load_records()
 
-        params: dict[str, str] = {
-            "StationIdentifier": native_id,
-            "StartDate": start.strftime("%Y-%m-%d"),
-            "EndDate": end.strftime("%Y-%m-%d"),
-            "format": "json",
-        }
-
-        resp = await self._get("/RiverFlowData", params=params)
-        payload = self._safe_json(resp)
-        items = self._extract_items(payload)
-        return self._parse_observations(items, station_id)
-
-    async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
-        """Fetch the most recent observations (last 24 h)."""
-        now = datetime.now(UTC)
-        return await self.fetch_observations(
-            station_id,
-            start=now - timedelta(hours=24),
-            end=now,
-        )
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _safe_json(self, resp) -> dict:
-        """Decode JSON from a response, wrapping errors."""
-        try:
-            result: dict = resp.json()
-            return result
-        except Exception as exc:
-            raise DataFormatError(
-                self.slug, f"Response is not valid JSON: {exc}"
-            ) from exc
-
-    def _extract_items(self, payload) -> list[dict]:
-        """Navigate the WRA envelope to reach the records list.
-
-        The API may return the data in several shapes: a bare list,
-        ``{"data": [...]}``, ``{"records": [...]}``, or an object with
-        top-level ``RecordCount`` alongside a list field.
-        """
-        if isinstance(payload, list):
-            return payload
-
-        # Check for auth/error responses
-        if isinstance(payload, dict) and payload.get("success") is False:
-            logger.error(
-                "wra_api_error",
-                provider=self.slug,
-                code=payload.get("code"),
-                message=payload.get("s_message"),
-            )
-            return []
-
-        for key in ("payload", "data", "records", "items", "content"):
-            candidate = payload.get(key)
-            if isinstance(candidate, list):
-                return candidate
-
-        # Some WRA endpoints nest inside "responseData"
-        inner = payload.get("responseData")
-        if isinstance(inner, dict):
-            for key in ("data", "records", "items"):
-                candidate = inner.get(key)
-                if isinstance(candidate, list):
-                    return candidate
-            if isinstance(inner, list):
-                return inner
-
-        logger.warning(
-            "wra_unexpected_payload",
-            provider=self.slug,
-            keys=(
-                list(payload.keys())
-                if isinstance(payload, dict)
-                else type(payload).__name__
-            ),
-        )
-        return []
-
-    def _parse_stations(self, items: list[dict]) -> list[Station]:
-        """Parse station records into Station models."""
-        stations: list[Station] = []
-        for entry in items:
-            en, zh = _STATION_FIELDS["id"]
-            native_id = str(_get(entry, en, zh) or "").strip()
-            if not native_id:
-                continue
-
-            en_lat, zh_lat = _STATION_FIELDS["lat"]
-            en_lon, zh_lon = _STATION_FIELDS["lon"]
-            lat = self._to_float(_get(entry, en_lat, zh_lat))
-            lon = self._to_float(_get(entry, en_lon, zh_lon))
-            if lat is None or lon is None:
-                logger.warning(
-                    "station_missing_coords",
-                    provider=self.slug,
-                    station=native_id,
-                )
-                continue
-
-            en_name, zh_name = _STATION_FIELDS["name"]
-            en_river, zh_river = _STATION_FIELDS["river"]
-            en_area, zh_area = _STATION_FIELDS["catchment_area"]
-            en_start, zh_start = _STATION_FIELDS["obs_start"]
-
-            name = _get(entry, en_name, zh_name) or native_id
-            river = _get(entry, en_river, zh_river)
-            catchment = self._to_float(
-                _get(entry, en_area, zh_area)
-            )
-            obs_start = self._parse_date(
-                _get(entry, en_start, zh_start)
-            )
-
-            try:
-                stations.append(
-                    Station(
-                        id=self._station_id(native_id),
-                        provider=self.slug,
-                        native_id=native_id,
-                        name=name,
-                        latitude=lat,
-                        longitude=lon,
-                        country_code="TW",
-                        river=river,
-                        catchment_area_km2=catchment,
-                        record_start=obs_start,
-                    )
-                )
-            except (ValueError, KeyError) as exc:
-                logger.warning(
-                    "station_parse_failed",
-                    provider=self.slug,
-                    station=native_id,
-                    error=str(exc),
-                )
-                continue
-        return stations
-
-    def _parse_observations(
-        self, items: list[dict], station_id: str,
-    ) -> TimeSeriesChunk:
-        """Parse observation records into a TimeSeriesChunk."""
         observations: list[Observation] = []
-        en_date, zh_date = _OBS_FIELDS["date"]
-        en_q, zh_q = _OBS_FIELDS["discharge"]
-        en_wl, zh_wl = _OBS_FIELDS["water_level"]
-
-        for entry in items:
-            ts = self._parse_obs_datetime(
-                _get(entry, en_date, zh_date) or ""
-            )
-            if ts is None:
+        for rec in records:
+            if str(rec.get("reservoiridentifier", "")) != native_id:
                 continue
+            ts = _parse_local(rec.get("observationtime"))
+            if ts is None or not (start <= ts <= end):
+                continue
+            discharge = _to_float(rec.get("inflowdischarge"))
+            if discharge is None:
+                continue
+            observations.append(Observation(
+                station_id=station_id,
+                timestamp=ts,
+                discharge_m3s=discharge,
+                quality=QualityFlag.RAW,
+            ))
 
-            discharge = self._to_float(_get(entry, en_q, zh_q))
-            water_level = self._to_float(_get(entry, en_wl, zh_wl))
-            value = (
-                discharge if discharge is not None else water_level
-            )
-            quality = (
-                QualityFlag.RAW
-                if value is not None
-                else QualityFlag.MISSING
-            )
-
-            observations.append(
-                Observation(
-                    station_id=station_id,
-                    timestamp=ts,
-                    discharge_m3s=value,
-                    quality=quality,
-                )
-            )
-
+        observations.sort(key=lambda o: o.timestamp)
         return TimeSeriesChunk(
             station_id=station_id,
             provider=self.slug,
@@ -254,58 +120,65 @@ class TaiwanWRAConnector(BaseConnector):
             fetched_at=datetime.now(UTC),
         )
 
+    async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
+        """Fetch the most recent inflow observations (last 24 h)."""
+        now = datetime.now(UTC)
+        return await self.fetch_observations(
+            station_id, start=now - timedelta(hours=24), end=now,
+        )
+
     # ------------------------------------------------------------------
-    # Parsing utilities
+    # Internal helpers
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_obs_datetime(raw: str) -> datetime | None:
-        """Parse WRA observation timestamps.
-
-        Handles ISO-8601 dates (``YYYY-MM-DD``), compact dates
-        (``YYYYMMDD``), and datetime with time component.
-        """
-        raw = str(raw).strip()
-        if not raw:
-            return None
-
-        for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y%m%d"):
-            try:
-                return datetime.strptime(raw, fmt).replace(
-                    tzinfo=UTC,
+    async def _load_records(self) -> list[dict]:
+        """Fetch and cache the reservoir hydrological dataset."""
+        if self._records is None:
+            resp = await self._get(f"/{_RESERVOIR_DATASET}")
+            data = resp.json()
+            if not isinstance(data, list):
+                raise DataFormatError(
+                    self.slug, "Reservoir dataset did not return a list",
                 )
-            except ValueError:
-                continue
+            self._records = data
+        return self._records
 
-        # Last resort: fromisoformat (handles e.g. +08:00 offsets)
-        try:
-            return datetime.fromisoformat(raw).replace(tzinfo=UTC)
-        except ValueError:
-            return None
+    def _to_station(
+        self, rid: str, name: str, river: str | None, lat: float, lon: float,
+    ) -> Station:
+        return Station(
+            id=self._station_id(rid),
+            provider=self.slug,
+            native_id=rid,
+            name=name,
+            latitude=lat,
+            longitude=lon,
+            country_code="TW",
+            river=river,
+        )
 
-    @staticmethod
-    def _parse_date(raw) -> datetime | None:
-        """Parse a date string into a datetime, or return None."""
-        if raw is None:
-            return None
-        raw = str(raw).strip()
-        if not raw:
-            return None
-        for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
-            try:
-                return datetime.strptime(raw, fmt).replace(
-                    tzinfo=UTC,
-                )
-            except ValueError:
-                continue
+
+def _to_float(value: object) -> float | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text in ("", "-", "--"):
+        return None
+    try:
+        return float(text)
+    except ValueError:
         return None
 
-    @staticmethod
-    def _to_float(val) -> float | None:
-        """Convert a value to float, returning None on failure."""
-        if val is None or val == "":
-            return None
+
+def _parse_local(value: object) -> datetime | None:
+    """Parse a WRA local timestamp (UTC+8) into a UTC datetime."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
         try:
-            return float(val)
-        except (ValueError, TypeError):
-            return None
+            naive = datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+        return naive.replace(tzinfo=_TAIPEI).astimezone(UTC)
+    return None
