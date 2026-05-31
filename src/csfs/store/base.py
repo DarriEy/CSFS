@@ -71,3 +71,14 @@ class BaseStore(ABC):
         limit: int = 20,
     ) -> list[dict]:
         """Return recent acquisition log entries, newest first."""
+
+    @abstractmethod
+    async def get_connector_health(
+        self,
+        stale_after_hours: float = 168.0,
+    ) -> list[dict]:
+        """Return one health summary row per provider.
+
+        Combines stored-data coverage (station/observation counts, freshness)
+        with acquisition-log outcomes (last run, status, error, success rate).
+        """

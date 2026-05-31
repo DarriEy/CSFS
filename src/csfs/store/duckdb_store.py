@@ -233,3 +233,112 @@ class DuckDBStore(BaseStore):
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]
         return [dict(zip(columns, row)) for row in rows]
+
+    async def get_connector_health(
+        self,
+        stale_after_hours: float = 168.0,
+    ) -> list[dict]:
+        """Per-provider health derived from stored data and the acquisition log.
+
+        Consolidates the data-coverage view (station/observation counts and
+        freshness) with the acquisition-log view (last run, status, error,
+        success rate) into one row per provider. Providers that appear in
+        either the stations table or the acquisition log are included.
+
+        ``data_health`` classifies the *stored data*:
+        - ``none``  — no stations on record
+        - ``empty`` — stations exist but no observations
+        - ``stale`` — newest observation older than ``stale_after_hours``
+        - ``ok``    — fresh observations present
+        """
+        now_row = self.conn.execute("SELECT CURRENT_TIMESTAMP").fetchone()
+        now = now_row[0] if now_row else None
+
+        coverage = self.conn.execute("""
+            SELECT s.provider,
+                   COUNT(DISTINCT s.id)        AS stations,
+                   COUNT(o.station_id)         AS observations,
+                   MAX(o.timestamp)            AS latest_observation,
+                   MAX(o.fetched_at)           AS last_fetch_at
+            FROM stations s
+            LEFT JOIN observations o ON o.station_id = s.id
+            GROUP BY s.provider
+        """).fetchall()
+
+        # Latest run per provider, plus all-time run/ok counts and last-ok time.
+        acq = self.conn.execute("""
+            WITH ranked AS (
+                SELECT provider, status, started_at, error_message,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY provider ORDER BY started_at DESC
+                       ) AS rn
+                FROM acquisition_log
+            ),
+            agg AS (
+                SELECT provider,
+                       COUNT(*)                                  AS total_runs,
+                       COUNT(*) FILTER (WHERE status = 'ok')     AS ok_runs,
+                       MAX(started_at) FILTER (WHERE status = 'ok') AS last_ok_at
+                FROM acquisition_log
+                GROUP BY provider
+            )
+            SELECT r.provider, r.status, r.started_at, r.error_message,
+                   a.total_runs, a.ok_runs, a.last_ok_at
+            FROM ranked r
+            JOIN agg a USING (provider)
+            WHERE r.rn = 1
+        """).fetchall()
+
+        merged: dict[str, dict] = {}
+        for provider, stations, observations, latest_obs, last_fetch in coverage:
+            staleness_hours: float | None = None
+            if latest_obs is not None and now is not None:
+                staleness_hours = (now - latest_obs).total_seconds() / 3600.0
+
+            if stations == 0:
+                data_health = "none"
+            elif observations == 0:
+                data_health = "empty"
+            elif staleness_hours is not None and staleness_hours > stale_after_hours:
+                data_health = "stale"
+            else:
+                data_health = "ok"
+
+            merged[provider] = {
+                "provider": provider,
+                "stations": stations,
+                "observations": observations,
+                "latest_observation": latest_obs,
+                "last_fetch_at": last_fetch,
+                "staleness_hours": staleness_hours,
+                "data_health": data_health,
+                "last_run": None,
+                "last_status": None,
+                "last_error": None,
+                "last_ok_at": None,
+                "total_runs": 0,
+                "ok_runs": 0,
+                "success_rate": None,
+            }
+
+        for provider, status, started_at, error, total_runs, ok_runs, last_ok in acq:
+            row = merged.setdefault(provider, {
+                "provider": provider,
+                "stations": 0,
+                "observations": 0,
+                "latest_observation": None,
+                "last_fetch_at": None,
+                "staleness_hours": None,
+                "data_health": "none",
+            })
+            row.update({
+                "last_run": started_at,
+                "last_status": status,
+                "last_error": error,
+                "last_ok_at": last_ok,
+                "total_runs": total_runs,
+                "ok_runs": ok_runs,
+                "success_rate": (ok_runs / total_runs) if total_runs else None,
+            })
+
+        return [merged[p] for p in sorted(merged)]
