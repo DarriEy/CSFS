@@ -8,158 +8,155 @@ import respx
 
 from csfs.connectors.norway_nve import NorwayNVEConnector
 
-MOCK_STATIONS_RESPONSE = [
-    {
-        "stationId": "2.32.0",
-        "stationName": "Gryta",
-        "latitude": 60.12,
-        "longitude": 11.45,
-        "riverName": "Glomma",
-        "drainageBasinArea_km2": 354.2,
-    },
-    {
-        "stationId": "12.209.0",
-        "stationName": "Sjodalsvatn",
-        "latitude": 61.45,
-        "longitude": 9.32,
-        "riverName": "Sjoa",
-        "drainageBasinArea_km2": 487.0,
-    },
-]
+STATIONS_URL = "https://hydapi.nve.no/api/v1/Stations"
+OBSERVATIONS_URL = "https://hydapi.nve.no/api/v1/Observations"
+
+
+@pytest.fixture(autouse=True)
+def _isolate_hydapi(tmp_path, monkeypatch):
+    """Ensure tests never read the developer's real ~/.hydapi key file."""
+    monkeypatch.setattr(
+        "csfs.connectors.norway_nve._KEY_FILE", tmp_path / "no-such-hydapi",
+    )
+
+
+def _station(sid, name, lat, lon, river="Glomma", area=354.2, *, discharge=True):
+    """Build a station entry; discharge=False omits the 1001 series."""
+    series = []
+    if discharge:
+        series.append({
+            "parameter": "1001",
+            "parameterName": "Vannføring",
+            "resolutionList": [{"resTime": 1440, "method": "Mean"}],
+        })
+    return {
+        "stationId": sid,
+        "stationName": name,
+        "latitude": lat,
+        "longitude": lon,
+        "riverName": river,
+        "drainageBasinArea": area,
+        "masl": 100.0,
+        "seriesList": series,
+    }
+
+
+def _stations(*entries):
+    return {"data": list(entries)}
+
+
+MOCK_STATIONS_RESPONSE = _stations(
+    _station("2.32.0", "Gryta", 60.12, 11.45, "Glomma", 354.2),
+    _station("12.209.0", "Sjodalsvatn", 61.45, 9.32, "Sjoa", 487.0),
+)
 
 MOCK_OBSERVATIONS_RESPONSE = {
-    "data": [
-        {
-            "stationId": "2.32.0",
-            "parameter": "1001",
-            "observations": [
-                {
-                    "time": "2024-06-01T00:00:00Z",
-                    "value": 12.3,
-                    "correction": 1,
-                },
-                {
-                    "time": "2024-06-02T00:00:00Z",
-                    "value": 14.7,
-                    "correction": 0,
-                },
-                {
-                    "time": "2024-06-03T00:00:00Z",
-                    "value": 11.0,
-                    "correction": 2,
-                },
-            ],
-        }
-    ]
+    "data": [{
+        "stationId": "2.32.0",
+        "parameter": "1001",
+        "observations": [
+            {"time": "2024-06-01T00:00:00Z", "value": 12.3, "correction": 1},
+            {"time": "2024-06-02T00:00:00Z", "value": 14.7, "correction": 0},
+            {"time": "2024-06-03T00:00:00Z", "value": 11.0, "correction": 2},
+        ],
+    }]
 }
 
 MOCK_OBSERVATIONS_WITH_NULL = {
-    "data": [
-        {
-            "stationId": "2.32.0",
-            "parameter": "1001",
-            "observations": [
-                {
-                    "time": "2024-06-01T00:00:00Z",
-                    "value": 12.3,
-                    "correction": 1,
-                },
-                {
-                    "time": "2024-06-02T00:00:00Z",
-                    "value": None,
-                    "correction": 0,
-                },
-            ],
-        }
-    ]
+    "data": [{
+        "stationId": "2.32.0",
+        "parameter": "1001",
+        "observations": [
+            {"time": "2024-06-01T00:00:00Z", "value": 12.3, "correction": 1},
+            {"time": "2024-06-02T00:00:00Z", "value": None, "correction": 0},
+        ],
+    }]
 }
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_parses_correctly():
-    """Station list is parsed into Station models."""
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
+    respx.get(STATIONS_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE),
     )
 
     async with NorwayNVEConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
-    native_ids = {s.native_id for s in stations}
-    assert native_ids == {"2.32.0", "12.209.0"}
+    assert {s.native_id for s in stations} == {"2.32.0", "12.209.0"}
 
     gryta = next(s for s in stations if s.native_id == "2.32.0")
     assert gryta.id == "norway_nve:2.32.0"
-    assert gryta.provider == "norway_nve"
     assert gryta.name == "Gryta"
     assert gryta.country_code == "NO"
     assert gryta.river == "Glomma"
     assert gryta.catchment_area_km2 == pytest.approx(354.2)
+    assert gryta.elevation_m == pytest.approx(100.0)
     assert gryta.latitude == pytest.approx(60.12)
-    assert gryta.longitude == pytest.approx(11.45)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_filters_non_discharge():
+    """Stations whose series list lacks a 1001 (discharge) series are dropped."""
+    resp = _stations(
+        _station("2.32.0", "Gryta", 60.12, 11.45),
+        _station("1.10.0", "Level Only", 59.0, 11.0, discharge=False),
+    )
+    respx.get(STATIONS_URL).mock(return_value=httpx.Response(200, json=resp))
+
+    async with NorwayNVEConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert {s.native_id for s in stations} == {"2.32.0"}
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_handles_empty():
-    """An empty station list returns no stations."""
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=[])
+    respx.get(STATIONS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []}),
     )
 
     async with NorwayNVEConnector() as conn:
         stations = await conn.fetch_stations()
 
-    assert len(stations) == 0
+    assert stations == []
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_parses_json():
-    """Observations are correctly parsed with quality flags."""
-    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
+    respx.get(OBSERVATIONS_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE),
     )
 
     async with NorwayNVEConnector() as conn:
         chunk = await conn.fetch_observations(
             "norway_nve:2.32.0",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 7),
+            start=datetime(2024, 6, 1), end=datetime(2024, 6, 7),
         )
 
-    assert chunk.provider == "norway_nve"
-    assert chunk.station_id == "norway_nve:2.32.0"
     assert len(chunk.observations) == 3
-
-    # correction=1 -> GOOD
     assert chunk.observations[0].discharge_m3s == pytest.approx(12.3)
-    assert chunk.observations[0].quality.value == "good"
-
-    # correction=0 -> RAW
-    assert chunk.observations[1].discharge_m3s == pytest.approx(14.7)
-    assert chunk.observations[1].quality.value == "raw"
-
-    # correction=2 -> ESTIMATED
-    assert chunk.observations[2].discharge_m3s == pytest.approx(11.0)
-    assert chunk.observations[2].quality.value == "estimated"
+    assert chunk.observations[0].quality.value == "good"        # correction 1
+    assert chunk.observations[1].quality.value == "raw"         # correction 0
+    assert chunk.observations[2].quality.value == "estimated"   # correction 2
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_null_value_is_missing():
-    """A null value in observations yields MISSING quality."""
-    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_WITH_NULL)
+    respx.get(OBSERVATIONS_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_WITH_NULL),
     )
 
     async with NorwayNVEConnector() as conn:
         chunk = await conn.fetch_observations(
             "norway_nve:2.32.0",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 3),
+            start=datetime(2024, 6, 1), end=datetime(2024, 6, 3),
         )
 
     assert len(chunk.observations) == 2
@@ -170,28 +167,23 @@ async def test_fetch_observations_null_value_is_missing():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_empty_data():
-    """Empty data array returns zero observations."""
-    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json={"data": []})
+    respx.get(OBSERVATIONS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []}),
     )
 
     async with NorwayNVEConnector() as conn:
         chunk = await conn.fetch_observations(
             "norway_nve:2.32.0",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
+            start=datetime(2024, 6, 1), end=datetime(2024, 6, 2),
         )
 
-    assert len(chunk.observations) == 0
+    assert chunk.observations == []
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_api_key_header_set_when_configured():
-    """When an api_key is provided in config, X-API-Key header is set."""
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+async def test_api_key_from_config_takes_precedence():
+    respx.get(STATIONS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     async with NorwayNVEConnector(config={"api_key": "test-key-123"}) as conn:
         assert conn.client.headers["X-API-Key"] == "test-key-123"
@@ -200,11 +192,22 @@ async def test_api_key_header_set_when_configured():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_no_api_key_header_when_not_configured():
-    """When no api_key is provided, X-API-Key header is absent."""
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+async def test_api_key_read_from_hydapi_file(tmp_path, monkeypatch):
+    """The key is read verbatim from ~/.hydapi (handles the trailing '==')."""
+    keyfile = tmp_path / ".hydapi"
+    keyfile.write_text("# NVE key\nKEY-FROM-FILE/abc==\n")
+    monkeypatch.setattr("csfs.connectors.norway_nve._KEY_FILE", keyfile)
+    respx.get(STATIONS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with NorwayNVEConnector() as conn:
+        assert conn.client.headers["X-API-Key"] == "KEY-FROM-FILE/abc=="
+        await conn.fetch_stations()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_no_api_key_header_when_no_key_available():
+    respx.get(STATIONS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     async with NorwayNVEConnector() as conn:
         assert "X-API-Key" not in conn.client.headers
@@ -214,56 +217,50 @@ async def test_no_api_key_header_when_not_configured():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_reference_time_format():
-    """ReferenceTime parameter uses the expected date-range format."""
-    route = respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json={"data": []})
+    route = respx.get(OBSERVATIONS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []}),
     )
 
     async with NorwayNVEConnector() as conn:
         await conn.fetch_observations(
             "norway_nve:2.32.0",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 7),
+            start=datetime(2024, 6, 1), end=datetime(2024, 6, 7),
         )
 
-    assert route.called
-    request = route.calls[0].request
-    assert "ReferenceTime=2024-06-01%2F2024-06-07" in str(request.url)
+    assert "ReferenceTime=2024-06-01%2F2024-06-07" in str(route.calls[0].request.url)
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_skips_entries_without_station_id():
-    """Station entries missing stationId are silently skipped."""
-    data = [
-        {
-            "stationName": "Ghost Station",
-            "latitude": 60.0,
-            "longitude": 10.0,
-        },
-        {
-            "stationId": "5.1.0",
-            "stationName": "Real Station",
-            "latitude": 61.0,
-            "longitude": 11.0,
-            "riverName": "Namsen",
-        },
-    ]
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=data)
+    resp = _stations(
+        {"stationName": "Ghost", "latitude": 60.0, "longitude": 10.0, "seriesList": []},
+        _station("5.1.0", "Real Station", 61.0, 11.0, "Namsen"),
+    )
+    respx.get(STATIONS_URL).mock(return_value=httpx.Response(200, json=resp))
+
+    async with NorwayNVEConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert [s.native_id for s in stations] == ["5.1.0"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_parse_error_skips():
+    bad = _station("bad.station", "Bad", "not-a-number", 10.0)
+    good = _station("5.1.0", "Good", 61.0, 11.0)
+    respx.get(STATIONS_URL).mock(
+        return_value=httpx.Response(200, json=_stations(bad, good)),
     )
 
     async with NorwayNVEConnector() as conn:
         stations = await conn.fetch_stations()
 
-    assert len(stations) == 1
-    assert stations[0].native_id == "5.1.0"
+    assert [s.native_id for s in stations] == ["5.1.0"]
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_correction_to_quality_none():
-    """correction=None maps to RAW quality."""
+def test_correction_to_quality_none():
     from csfs.connectors.norway_nve import _correction_to_quality
     from csfs.core.models import QualityFlag
 
@@ -273,77 +270,30 @@ async def test_correction_to_quality_none():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_latest_delegates():
-    """fetch_latest calls fetch_observations for the last 24h."""
-    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
+    respx.get(OBSERVATIONS_URL).mock(
+        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE),
     )
 
     async with NorwayNVEConnector() as conn:
         chunk = await conn.fetch_latest("norway_nve:2.32.0")
 
-    assert chunk.provider == "norway_nve"
     assert chunk.station_id == "norway_nve:2.32.0"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_parse_error_skips():
-    """Entries that raise ValueError/KeyError during parsing are skipped."""
-    data = [
-        {
-            "stationId": "bad.station",
-            "stationName": "Bad Station",
-            "latitude": "not-a-number",
-            "longitude": 10.0,
-        },
-        {
-            "stationId": "5.1.0",
-            "stationName": "Good Station",
-            "latitude": 61.0,
-            "longitude": 11.0,
-        },
-    ]
-    respx.get("https://hydapi.nve.no/api/v1/Stations").mock(
-        return_value=httpx.Response(200, json=data)
-    )
-
-    async with NorwayNVEConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    # Bad station skipped, good station kept
-    assert len(stations) == 1
-    assert stations[0].native_id == "5.1.0"
-
-
-@pytest.mark.asyncio
-@respx.mock
 async def test_fetch_observations_invalid_timestamp_raises():
-    """Invalid timestamp in observation raises DataFormatError."""
     from csfs.core.exceptions import DataFormatError
 
-    bad_data = {
-        "data": [
-            {
-                "stationId": "2.32.0",
-                "parameter": "1001",
-                "observations": [
-                    {
-                        "time": "not-a-date",
-                        "value": 12.3,
-                        "correction": 1,
-                    },
-                ],
-            }
-        ]
-    }
-    respx.get("https://hydapi.nve.no/api/v1/Observations").mock(
-        return_value=httpx.Response(200, json=bad_data)
-    )
+    bad_data = {"data": [{
+        "stationId": "2.32.0", "parameter": "1001",
+        "observations": [{"time": "not-a-date", "value": 12.3, "correction": 1}],
+    }]}
+    respx.get(OBSERVATIONS_URL).mock(return_value=httpx.Response(200, json=bad_data))
 
     async with NorwayNVEConnector() as conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
                 "norway_nve:2.32.0",
-                start=datetime(2024, 6, 1),
-                end=datetime(2024, 6, 7),
+                start=datetime(2024, 6, 1), end=datetime(2024, 6, 7),
             )

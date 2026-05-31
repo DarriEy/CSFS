@@ -51,8 +51,11 @@ providers:
     data_dir: data/datasets/pakistan_wapda
 
   # -- API keys --
+  # norway_nve: requires a free NVE HydAPI key (register at https://hydapi.nve.no/).
+  #   By default the connector reads the key from ~/.hydapi (the raw key on a
+  #   single line — keep it out of this tracked file). To override, uncomment:
   # norway_nve:
-  #   api_key: ""  # Register at https://hydapi.nve.no/
+  #   api_key: ""
 
   # danube_his:
   #   api_token: ""  # Register at https://www.danubehis.org
