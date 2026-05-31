@@ -33,7 +33,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "hourly": [
         "norway_nve", "sweden_smhi", "switzerland_bafu",
         "australia_bom", "finland_syke", "greece_openhi",
-        "colombia_ideam", "taiwan_wra", "newzealand_nrc",
+        "colombia_ideam", "newzealand_nrc",
         "lithuania_meteo",
     ],
     "daily": [
@@ -46,7 +46,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "panama_stri", "vietnam_mekong", "afghanistan_usgs",
         "bolivia_ine", "bulgaria_nimh", "danube_his",
         "israel_caravan", "chile_dga", "czechia_chmi",
-        "scotland_sepa", "belgium_wallonia",
+        "scotland_sepa", "belgium_wallonia", "taiwan_wra",
     ],
     "weekly": [
         "grdc", "estreams", "ca_discharge", "caravan", "gsim",
