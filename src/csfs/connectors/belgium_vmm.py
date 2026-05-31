@@ -51,17 +51,31 @@ class BelgiumVmmConnector(BaseConnector):
 
     _KIWIS_PATH = "/tsmdownload/KiWIS/KiWIS"
 
+    # Station metadata only — do NOT request parametertype_name here: it
+    # explodes the response to one row per (station x parameter) and floods
+    # it with non-discharge series (rainfall, conductivity, drought indices).
     _STATION_FIELDS = (
-        "station_no,station_name,station_latitude,"
-        "station_longitude,parametertype_name"
+        "station_no,station_name,station_latitude,station_longitude"
     )
+
+    # Discharge timeseries selection. VMM publishes many cadences per station
+    # under the canonical Q parameter; pick the best available in this order:
+    #   P.15      validated ("Productie") real-time 15-minute discharge
+    #   DagGem    daily mean discharge
+    #   Basis.15  base 15-minute series
+    #   Basis     base series
+    #   O.15      raw ("Origineel") 15-minute series
+    _TS_PREFERENCE = ("P.15", "DagGem", "Basis.15", "Basis", "O.15")
 
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
-        self._station_to_ts_id: dict[str, str] = {}
+        # station_no -> {ts_name: ts_id} for canonical discharge (Q) series.
+        self._q_series: dict[str, dict[str, str]] | None = None
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all stations from the VMM KiWIS service."""
+        """Return VMM stations that have a canonical discharge (Q) timeseries."""
+        q_series = await self._load_q_series()
+
         resp = await self._get(
             self._KIWIS_PATH,
             params={
@@ -73,7 +87,7 @@ class BelgiumVmmConnector(BaseConnector):
                 "returnFields": self._STATION_FIELDS,
             },
         )
-        return self._parse_stations(resp.json())
+        return self._parse_stations(resp.json(), q_series)
 
     async def fetch_observations(
         self,
@@ -93,7 +107,7 @@ class BelgiumVmmConnector(BaseConnector):
                 "request": "getTimeseriesvalues",
                 "ts_id": ts_id,
                 "format": "json",
-                "datasource": "1",
+                "datasource": "0",
                 "returnfields": "Timestamp,Value,Quality Code",
                 "from": start.isoformat(),
                 "to": end.isoformat(),
@@ -116,11 +130,15 @@ class BelgiumVmmConnector(BaseConnector):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _parse_stations(self, data: list) -> list[Station]:
+    def _parse_stations(
+        self, data: list, q_series: dict[str, dict[str, str]],
+    ) -> list[Station]:
         """Parse the KiWIS station list response.
 
         The response is a list where the first element is a column-header
         array and subsequent elements are data rows (positional arrays).
+        Only stations that have a canonical discharge (Q) timeseries are
+        returned — VMM hosts ~1,872 stations but only ~195 measure discharge.
         """
         if not data or len(data) < 2:
             return []
@@ -141,17 +159,17 @@ class BelgiumVmmConnector(BaseConnector):
         for row in data[1:]:
             try:
                 native_id = str(row[idx_no])
-                if not native_id:
+                if not native_id or native_id not in q_series:
                     continue
 
                 lat = (
                     float(str(row[idx_lat]))
-                    if row[idx_lat] is not None
+                    if row[idx_lat] not in (None, "")
                     else 0.0
                 )
                 lon = (
                     float(str(row[idx_lon]))
-                    if row[idx_lon] is not None
+                    if row[idx_lon] not in (None, "")
                     else 0.0
                 )
                 stations.append(Station(
@@ -233,14 +251,18 @@ class BelgiumVmmConnector(BaseConnector):
             fetched_at=datetime.now(UTC),
         )
 
-    async def _resolve_ts_id(self, native_id: str) -> str:
-        """Return the KiWIS ts_id for a station's discharge timeseries.
+    async def _load_q_series(self) -> dict[str, dict[str, str]]:
+        """Load and cache the map of discharge (Q) timeseries per station.
 
-        Uses the cached mapping first; falls back to querying
-        getTimeseriesList for the station.
+        A single filtered ``getTimeseriesList`` call (``stationparameter_name=Q``)
+        returns every canonical discharge series across all stations — far
+        cheaper than per-station queries and avoids selecting a non-discharge
+        series by accident. Uses an extended timeout: this response is large
+        (~9k rows). The ``coverage`` field is deliberately omitted because it
+        forces an expensive server-side span computation that times out.
         """
-        if native_id in self._station_to_ts_id:
-            return self._station_to_ts_id[native_id]
+        if self._q_series is not None:
+            return self._q_series
 
         resp = await self._get(
             self._KIWIS_PATH,
@@ -250,28 +272,25 @@ class BelgiumVmmConnector(BaseConnector):
                 "request": "getTimeseriesList",
                 "datasource": "0",
                 "format": "json",
-                "station_no": native_id,
+                "stationparameter_name": "Q",
+                "returnFields": "station_no,ts_id,ts_name",
             },
+            timeout=180.0,
         )
-        ts_list = resp.json()
-        self._parse_ts_list(ts_list, native_id)
+        self._q_series = self._parse_q_series(resp.json())
+        return self._q_series
 
-        if native_id not in self._station_to_ts_id:
-            raise ConnectorError(
-                self.slug,
-                f"No discharge timeseries found for station '{native_id}'",
-            )
-        return self._station_to_ts_id[native_id]
-
-    def _parse_ts_list(self, data: list, native_id: str) -> None:
-        """Parse getTimeseriesList response and cache the first ts_id."""
+    def _parse_q_series(self, data: list) -> dict[str, dict[str, str]]:
+        """Parse the filtered getTimeseriesList response into station->series."""
+        result: dict[str, dict[str, str]] = {}
         if not data or len(data) < 2:
-            return
+            return result
 
         columns: list[str] = data[0]
         try:
+            idx_no = columns.index("station_no")
             idx_ts_id = columns.index("ts_id")
-            idx_station_no = columns.index("station_no")
+            idx_name = columns.index("ts_name")
         except ValueError as exc:
             raise DataFormatError(
                 self.slug,
@@ -280,14 +299,11 @@ class BelgiumVmmConnector(BaseConnector):
 
         for row in data[1:]:
             try:
-                station_no = str(row[idx_station_no])
+                station_no = str(row[idx_no])
                 ts_id = str(row[idx_ts_id])
-                if (
-                    station_no
-                    and ts_id
-                    and station_no not in self._station_to_ts_id
-                ):
-                    self._station_to_ts_id[station_no] = ts_id
+                ts_name = str(row[idx_name])
+                if station_no and ts_id:
+                    result.setdefault(station_no, {})[ts_name] = ts_id
             except (IndexError, TypeError) as exc:
                 logger.warning(
                     "ts_list_parse_failed",
@@ -296,3 +312,20 @@ class BelgiumVmmConnector(BaseConnector):
                     error=str(exc),
                 )
                 continue
+        return result
+
+    async def _resolve_ts_id(self, native_id: str) -> str:
+        """Return the KiWIS ts_id for a station's preferred discharge series."""
+        q_series = await self._load_q_series()
+        series = q_series.get(native_id)
+        if series:
+            for ts_name in self._TS_PREFERENCE:
+                if ts_name in series:
+                    return series[ts_name]
+            # No preferred cadence matched; fall back to any discharge series.
+            return next(iter(series.values()))
+
+        raise ConnectorError(
+            self.slug,
+            f"No discharge (Q) timeseries found for station '{native_id}'",
+        )

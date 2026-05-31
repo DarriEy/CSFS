@@ -116,9 +116,14 @@ class BaseConnector(ABC):
         wait=wait_exponential(multiplier=1, min=2, max=60),
         stop=stop_after_attempt(5),
     )
-    async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+    async def _get(
+        self, path: str, params: dict | None = None, timeout: float | None = None,
+    ) -> httpx.Response:
         """HTTP GET with automatic retry on rate limits and connection errors."""
-        resp = await self.client.get(path, params=params)
+        kwargs: dict = {"params": params}
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        resp = await self.client.get(path, **kwargs)
         if resp.status_code == 429:
             raise RateLimitError(self.slug, "Rate limited")
         if resp.status_code not in (200, 206):

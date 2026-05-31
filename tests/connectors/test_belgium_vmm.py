@@ -12,27 +12,32 @@ from csfs.core.models import QualityFlag
 
 # -- Mock response data ------------------------------------------------
 
+# Station metadata list (no parametertype_name — see connector docstring).
 MOCK_STATION_LIST_RESPONSE = [
     [
         "station_no",
         "station_name",
         "station_latitude",
         "station_longitude",
-        "parametertype_name",
     ],
     [
         "L04_00A",
         "Dender te Denderleeuw",
         50.88,
         4.07,
-        "Discharge",
     ],
     [
         "L06_42A",
         "Schelde te Merelbeke",
         51.0,
         3.74,
-        "Discharge",
+    ],
+    [
+        # A station with no Q series — must be filtered out.
+        "L99_NOQ",
+        "Rainfall only",
+        50.5,
+        4.5,
     ],
 ]
 
@@ -42,13 +47,21 @@ MOCK_STATION_LIST_EMPTY = [
         "station_name",
         "station_latitude",
         "station_longitude",
-        "parametertype_name",
     ],
 ]
 
-MOCK_TS_LIST_RESPONSE = [
-    ["ts_id", "ts_name", "station_no"],
-    ["78123", "Discharge.Master", "L04_00A"],
+# Filtered getTimeseriesList (stationparameter_name=Q): one row per
+# (station, cadence) discharge series. L04_00A has both P.15 and DagGem;
+# L06_42A only DagGem. L99_NOQ is absent (no discharge).
+MOCK_Q_SERIES_RESPONSE = [
+    ["station_no", "ts_id", "ts_name"],
+    ["L04_00A", "78100", "DagGem"],
+    ["L04_00A", "78123", "P.15"],
+    ["L06_42A", "79200", "DagGem"],
+]
+
+MOCK_Q_SERIES_EMPTY = [
+    ["station_no", "ts_id", "ts_name"],
 ]
 
 MOCK_TS_VALUES_RESPONSE = [
@@ -70,20 +83,43 @@ MOCK_TS_VALUES_EMPTY = [
 KIWIS_URL = "https://download.waterinfo.be/tsmdownload/KiWIS/KiWIS"
 
 
+def _route_by_request(q_series, station_list):
+    """Return a respx side_effect that dispatches on the KiWIS `request` param.
+
+    fetch_stations issues two calls — getTimeseriesList (Q map) and
+    getStationList — so tests must answer both based on the request type.
+    """
+    def _handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=q_series)
+        if req == "getStationList":
+            return httpx.Response(200, json=station_list)
+        if req == "getTimeseriesvalues":
+            return httpx.Response(200, json=MOCK_TS_VALUES_RESPONSE)
+        return httpx.Response(404)
+
+    return _handler
+
+
 # -- Tests: fetch_stations ---------------------------------------------
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_parses_kiwis_response():
-    """Station list is correctly parsed from the KiWIS positional array format."""
+    """Station list is parsed and filtered to stations that have a Q series."""
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=MOCK_STATION_LIST_RESPONSE),
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_RESPONSE,
+        ),
     )
 
     async with BelgiumVmmConnector() as conn:
         stations = await conn.fetch_stations()
 
+    # L99_NOQ has no discharge series and must be dropped.
     assert len(stations) == 2
+    assert {s.native_id for s in stations} == {"L04_00A", "L06_42A"}
 
     dender = next(s for s in stations if s.native_id == "L04_00A")
     assert dender.id == "belgium_vmm:L04_00A"
@@ -102,7 +138,9 @@ async def test_fetch_stations_parses_kiwis_response():
 async def test_fetch_stations_handles_empty():
     """An empty station list (headers only) returns no stations."""
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=MOCK_STATION_LIST_EMPTY),
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_EMPTY,
+        ),
     )
 
     async with BelgiumVmmConnector() as conn:
@@ -114,9 +152,9 @@ async def test_fetch_stations_handles_empty():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_handles_completely_empty():
-    """A completely empty response returns no stations."""
+    """A completely empty station response returns no stations."""
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=[]),
+        side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, []),
     )
 
     async with BelgiumVmmConnector() as conn:
@@ -128,10 +166,10 @@ async def test_fetch_stations_handles_completely_empty():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_bad_columns_raises():
-    """Unexpected column layout raises DataFormatError."""
-    bad_response = [["wrong_col1", "wrong_col2"], ["val1", "val2"]]
+    """Unexpected column layout in the station list raises DataFormatError."""
+    bad_station_list = [["wrong_col1", "wrong_col2"], ["val1", "val2"]]
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=bad_response),
+        side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, bad_station_list),
     )
 
     async with BelgiumVmmConnector() as conn:
@@ -143,19 +181,13 @@ async def test_fetch_stations_bad_columns_raises():
 @respx.mock
 async def test_fetch_stations_skips_malformed_rows():
     """Rows with missing or invalid data are skipped, not fatal."""
-    response = [
-        [
-            "station_no",
-            "station_name",
-            "station_latitude",
-            "station_longitude",
-            "parametertype_name",
-        ],
-        ["L04_00A", "Dender te Denderleeuw", 50.88, 4.07, "Discharge"],
+    station_list = [
+        ["station_no", "station_name", "station_latitude", "station_longitude"],
+        ["L04_00A", "Dender te Denderleeuw", 50.88, 4.07],
         ["BAD"],
     ]
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=response),
+        side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, station_list),
     )
 
     async with BelgiumVmmConnector() as conn:
@@ -165,20 +197,68 @@ async def test_fetch_stations_skips_malformed_rows():
     assert stations[0].native_id == "L04_00A"
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_bad_q_series_columns_raises():
+    """Unexpected column layout in the Q timeseries list raises DataFormatError."""
+    bad_q_series = [["wrong_col"], ["val1"]]
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(bad_q_series, MOCK_STATION_LIST_RESPONSE),
+    )
+
+    async with BelgiumVmmConnector() as conn:
+        with pytest.raises(DataFormatError, match="Unexpected column layout"):
+            await conn.fetch_stations()
+
+
+# -- Tests: discharge series selection ---------------------------------
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_resolve_ts_id_prefers_realtime_cadence():
+    """P.15 (validated real-time) is preferred over DagGem (daily mean)."""
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_RESPONSE,
+        ),
+    )
+
+    async with BelgiumVmmConnector() as conn:
+        # L04_00A has both DagGem (78100) and P.15 (78123); prefer P.15.
+        assert await conn._resolve_ts_id("L04_00A") == "78123"
+        # L06_42A only has DagGem.
+        assert await conn._resolve_ts_id("L06_42A") == "79200"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_resolve_ts_id_falls_back_to_any_series():
+    """When no preferred cadence matches, any discharge series is used."""
+    q_series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["L04_00A", "55555", "SomeOtherCadence"],
+    ]
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(q_series, MOCK_STATION_LIST_RESPONSE),
+    )
+
+    async with BelgiumVmmConnector() as conn:
+        assert await conn._resolve_ts_id("L04_00A") == "55555"
+
+
 # -- Tests: fetch_observations ----------------------------------------
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_parses_values():
     """Timeseries values are correctly parsed into observations."""
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
-
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=MOCK_TS_VALUES_RESPONSE),
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_RESPONSE,
+        ),
     )
 
-    async with conn:
+    async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_observations(
             "belgium_vmm:L04_00A",
             start=datetime(2024, 6, 1),
@@ -203,14 +283,15 @@ async def test_fetch_observations_parses_values():
 @respx.mock
 async def test_fetch_observations_handles_empty():
     """An empty data array returns zero observations."""
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
+    def handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=MOCK_Q_SERIES_RESPONSE)
+        return httpx.Response(200, json=MOCK_TS_VALUES_EMPTY)
 
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=MOCK_TS_VALUES_EMPTY),
-    )
+    respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with conn:
+    async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_observations(
             "belgium_vmm:L04_00A",
             start=datetime(2024, 6, 1),
@@ -222,38 +303,16 @@ async def test_fetch_observations_handles_empty():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_resolves_ts_id_when_not_cached():
-    """When ts_id is not cached, fetch_observations queries getTimeseriesList first."""
-    route = respx.get(KIWIS_URL)
-    route.side_effect = [
-        httpx.Response(200, json=MOCK_TS_LIST_RESPONSE),
-        httpx.Response(200, json=MOCK_TS_VALUES_RESPONSE),
-    ]
-
-    async with BelgiumVmmConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert len(chunk.observations) == 3
-    assert conn._station_to_ts_id["L04_00A"] == "78123"
-
-
-@pytest.mark.asyncio
-@respx.mock
 async def test_fetch_observations_no_ts_id_found_raises():
     """When no discharge timeseries exists for the station, raises ConnectorError."""
-    empty_ts_list = [
-        ["ts_id", "ts_name", "station_no"],
-    ]
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=empty_ts_list),
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_RESPONSE,
+        ),
     )
 
     async with BelgiumVmmConnector() as conn:
-        with pytest.raises(ConnectorError, match="No discharge timeseries found"):
+        with pytest.raises(ConnectorError, match="No discharge .Q. timeseries"):
             await conn.fetch_observations(
                 "belgium_vmm:UNKNOWN",
                 start=datetime(2024, 6, 1),
@@ -266,14 +325,16 @@ async def test_fetch_observations_no_ts_id_found_raises():
 async def test_fetch_observations_invalid_timestamp_raises():
     """Invalid timestamp in timeseries data raises DataFormatError."""
     bad_ts_response = [{"data": [["NOT-A-TIMESTAMP", "100.0", "1"]]}]
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
 
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=bad_ts_response),
-    )
+    def handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=MOCK_Q_SERIES_RESPONSE)
+        return httpx.Response(200, json=bad_ts_response)
 
-    async with conn:
+    respx.get(KIWIS_URL).mock(side_effect=handler)
+
+    async with BelgiumVmmConnector() as conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
                 "belgium_vmm:L04_00A",
@@ -324,22 +385,21 @@ def test_connector_class_attributes():
     assert "waterinfo.be" in BelgiumVmmConnector.base_url
 
 
-# -- Tests: null/missing catchment area --------------------------------
-
 # -- Tests: fetch_latest -----------------------------------------------
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_latest_delegates_to_observations():
     """fetch_latest fetches last 24 hours via fetch_observations."""
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
+    def handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=MOCK_Q_SERIES_RESPONSE)
+        return httpx.Response(200, json=MOCK_TS_VALUES_EMPTY)
 
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=MOCK_TS_VALUES_EMPTY),
-    )
+    respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with conn:
+    async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_latest("belgium_vmm:L04_00A")
 
     assert chunk.provider == "belgium_vmm"
@@ -353,19 +413,13 @@ async def test_fetch_latest_delegates_to_observations():
 @respx.mock
 async def test_fetch_stations_empty_native_id_skipped():
     """Rows with an empty native_id string are skipped."""
-    response = [
-        [
-            "station_no",
-            "station_name",
-            "station_latitude",
-            "station_longitude",
-            "parametertype_name",
-        ],
-        ["", "Empty ID Station", 50.0, 4.0, "Discharge"],
-        ["L04_00A", "Valid Station", 50.88, 4.07, "Discharge"],
+    station_list = [
+        ["station_no", "station_name", "station_latitude", "station_longitude"],
+        ["", "Empty ID Station", 50.0, 4.0],
+        ["L04_00A", "Valid Station", 50.88, 4.07],
     ]
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=response),
+        side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, station_list),
     )
 
     async with BelgiumVmmConnector() as conn:
@@ -381,14 +435,15 @@ async def test_fetch_stations_empty_native_id_skipped():
 @respx.mock
 async def test_fetch_observations_non_dict_first_element():
     """Non-dict first element in timeseries response returns empty observations."""
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
+    def handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=MOCK_Q_SERIES_RESPONSE)
+        return httpx.Response(200, json=["not_a_dict"])
 
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=["not_a_dict"]),
-    )
+    respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with conn:
+    async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_observations(
             "belgium_vmm:L04_00A",
             start=datetime(2024, 6, 1),
@@ -405,14 +460,16 @@ async def test_fetch_observations_unparseable_discharge_value():
     ts_response = [{"data": [
         ["2024-06-01T00:00:00.000+02:00", "not_a_number", "1"],
     ]}]
-    conn = BelgiumVmmConnector()
-    conn._station_to_ts_id["L04_00A"] = "78123"
 
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=ts_response),
-    )
+    def handler(request):
+        req = request.url.params.get("request")
+        if req == "getTimeseriesList":
+            return httpx.Response(200, json=MOCK_Q_SERIES_RESPONSE)
+        return httpx.Response(200, json=ts_response)
 
-    async with conn:
+    respx.get(KIWIS_URL).mock(side_effect=handler)
+
+    async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_observations(
             "belgium_vmm:L04_00A",
             start=datetime(2024, 6, 1),
@@ -424,38 +481,18 @@ async def test_fetch_observations_unparseable_discharge_value():
     assert chunk.observations[0].quality == QualityFlag.MISSING
 
 
-# -- Tests: _parse_ts_list edge cases ----------------------------------
-
 @pytest.mark.asyncio
 @respx.mock
-async def test_resolve_ts_id_bad_ts_list_columns_raises():
-    """Unexpected column layout in timeseries list raises DataFormatError."""
-    bad_ts_list = [["wrong_col"], ["val1"]]
-    respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=bad_ts_list),
-    )
-
-    async with BelgiumVmmConnector() as conn:
-        with pytest.raises(DataFormatError, match="Unexpected column layout"):
-            await conn._resolve_ts_id("L04_00A")
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_parse_ts_list_malformed_row_skipped():
-    """Malformed rows in timeseries list are skipped without crashing."""
-    ts_list = [
-        ["ts_id", "ts_name", "station_no"],
-        ["78123", "Discharge.Master", "L04_00A"],
+async def test_parse_q_series_malformed_row_skipped():
+    """Malformed rows in the Q timeseries list are skipped without crashing."""
+    q_series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["L04_00A", "78123", "P.15"],
         [],  # malformed row
     ]
-    ts_values = MOCK_TS_VALUES_RESPONSE
-
-    route = respx.get(KIWIS_URL)
-    route.side_effect = [
-        httpx.Response(200, json=ts_list),
-        httpx.Response(200, json=ts_values),
-    ]
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(q_series, MOCK_STATION_LIST_RESPONSE),
+    )
 
     async with BelgiumVmmConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -465,33 +502,56 @@ async def test_parse_ts_list_malformed_row_skipped():
         )
 
     assert len(chunk.observations) == 3
-    assert conn._station_to_ts_id["L04_00A"] == "78123"
 
 
-# -- Tests: null/missing catchment area --------------------------------
+# -- Tests: null/empty coordinates -------------------------------------
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_null_coords_default_to_zero():
-    """Stations with null coordinates default lat/lon to 0.0."""
-    response = [
-        [
-            "station_no",
-            "station_name",
-            "station_latitude",
-            "station_longitude",
-            "parametertype_name",
-        ],
-        ["L04_00A", "Test Station", 50.88, 4.07, "Discharge"],
-        ["L06_42A", "Test Station 2", None, None, "Discharge"],
+    """Stations with null or empty-string coordinates default lat/lon to 0.0."""
+    station_list = [
+        ["station_no", "station_name", "station_latitude", "station_longitude"],
+        ["L04_00A", "Test Station", 50.88, 4.07],
+        ["L06_42A", "Null Coords", None, None],
+    ]
+    q_series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["L04_00A", "78123", "P.15"],
+        ["L06_42A", "79200", "DagGem"],
     ]
     respx.get(KIWIS_URL).mock(
-        return_value=httpx.Response(200, json=response),
+        side_effect=_route_by_request(q_series, station_list),
     )
 
     async with BelgiumVmmConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
-    assert stations[1].latitude == 0.0
-    assert stations[1].longitude == 0.0
+    nullc = next(s for s in stations if s.native_id == "L06_42A")
+    assert nullc.latitude == 0.0
+    assert nullc.longitude == 0.0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_empty_string_coords_default_to_zero():
+    """Empty-string coordinates (VMM returns '' not null) default to 0.0."""
+    station_list = [
+        ["station_no", "station_name", "station_latitude", "station_longitude"],
+        ["L04_00A", "Empty Coords", "", ""],
+    ]
+    q_series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["L04_00A", "78123", "P.15"],
+    ]
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(q_series, station_list),
+    )
+
+    async with BelgiumVmmConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    assert stations[0].latitude == 0.0
+    assert stations[0].longitude == 0.0
