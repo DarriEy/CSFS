@@ -1,6 +1,6 @@
-"""Tests for the Greece OpenHI connector with mocked HTTP responses."""
+"""Tests for the Greece OpenHI (Enhydris) connector with mocked HTTP responses."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -10,127 +10,74 @@ from csfs.connectors.greece_openhi import GreeceOpenhiConnector
 
 BASE_URL = "https://system.openhi.net"
 
-# -- Station fixtures (DRF-paginated, GeoJSON point coords) ---------------
 
-MOCK_STATIONS_PAGE1 = {
-    "count": 3,
-    "next": f"{BASE_URL}/api/stations/?page=2",
-    "previous": None,
-    "results": [
-        {
-            "id": "STA001",
-            "name": "Aliakmonas - Ilarion",
-            "point": {
-                "type": "Point",
-                "coordinates": [21.74, 40.19],  # [lon, lat]
-            },
-            "river": "Aliakmonas",
-        },
-        {
-            "id": "STA002",
-            "name": "Acheloos - Kremasta",
-            "point": {
-                "type": "Point",
-                "coordinates": [21.51, 38.88],
-            },
-            "river": "Acheloos",
-        },
-    ],
-}
+# ----------------------------------------------------------------------
+# Helpers to mock the Enhydris endpoint tree
+# ----------------------------------------------------------------------
 
-MOCK_STATIONS_PAGE2 = {
-    "count": 3,
-    "next": None,
-    "previous": f"{BASE_URL}/api/stations/?page=1",
-    "results": [
-        {
-            "id": "STA003",
-            "name": "Pinios - Larissa",
-            "point": {
-                "type": "Point",
-                "coordinates": [22.42, 39.64],
-            },
-            "river": "Pinios",
-        },
-    ],
-}
+def _station(sid: int, name: str, lon: float, lat: float, tz: str = "Etc/GMT-2"):
+    return {
+        "id": sid,
+        "name": name,
+        "geom": f"SRID=4326;POINT ({lon} {lat})",
+        "display_timezone": tz,
+    }
 
-MOCK_STATIONS_SINGLE_PAGE = {
-    "count": 2,
-    "next": None,
-    "previous": None,
-    "results": [
-        {
-            "id": "STA001",
-            "name": "Aliakmonas - Ilarion",
-            "point": {
-                "type": "Point",
-                "coordinates": [21.74, 40.19],
-            },
-            "river": "Aliakmonas",
-        },
-        {
-            "id": "STA002",
-            "name": "Acheloos - Kremasta",
-            "point": {
-                "type": "Point",
-                "coordinates": [21.51, 38.88],
-            },
-            "river": "Acheloos",
-        },
-    ],
-}
 
-# Entries that should be skipped (no id / no coords)
-MOCK_STATIONS_WITH_BAD_ENTRIES = {
-    "count": 4,
-    "next": None,
-    "previous": None,
-    "results": [
-        {
-            "id": "STA001",
-            "name": "Aliakmonas - Ilarion",
-            "point": {"type": "Point", "coordinates": [21.74, 40.19]},
-            "river": "Aliakmonas",
-        },
-        {
-            "id": "",
-            "name": "Missing ID",
-            "point": {"type": "Point", "coordinates": [22.0, 39.0]},
-        },
-        {
-            "id": "STA003",
-            "name": "No Coords",
-            "river": "Pinios",
-        },
-        {
-            "id": "STA002",
-            "name": "Acheloos - Kremasta",
-            "point": {"type": "Point", "coordinates": [21.51, 38.88]},
-            "river": "Acheloos",
-        },
-    ],
-}
+def _groups(*variables_and_ids):
+    """Build a timeseriesgroups response from (id, variable) pairs."""
+    return {
+        "count": len(variables_and_ids),
+        "next": None,
+        "previous": None,
+        "results": [
+            {"id": gid, "variable": var} for gid, var in variables_and_ids
+        ],
+    }
 
-# -- Observation fixtures --------------------------------------------------
 
-MOCK_OBSERVATIONS = [
-    {
-        "timestamp": "2024-06-01T12:00:00",
-        "value": 45.3,
-        "flag": "VALIDATED",
-    },
-    {
-        "timestamp": "2024-06-01T12:15:00",
-        "value": 44.1,
-        "flag": "RAW",
-    },
-    {
-        "timestamp": "2024-06-01T12:30:00",
-        "value": None,
-        "flag": "MISSING",
-    },
-]
+def _timeseries(ts_id: int):
+    return {
+        "count": 1,
+        "next": None,
+        "previous": None,
+        "results": [{"id": ts_id, "type": "Initial"}],
+    }
+
+
+def _mock_two_station_api():
+    """Mock a 2-station instance: 100 has discharge, 200 is stage-only."""
+    respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
+        return_value=httpx.Response(200, json={
+            "count": 2,
+            "next": None,
+            "previous": None,
+            "results": [
+                _station(100, "Discharge Station", 22.0, 39.0),
+                _station(200, "Stage Only", 23.0, 40.0),
+            ],
+        }),
+    )
+    # Station 100: discharge (var 2) group 6 + stage (var 14) group 5.
+    respx.get(f"{BASE_URL}/api/stations/100/timeseriesgroups/").mock(
+        return_value=httpx.Response(200, json=_groups((6, 2), (5, 14))),
+    )
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/",
+    ).mock(return_value=httpx.Response(200, json=_timeseries(9001)))
+    # Station 200: stage only (var 14) -> no discharge.
+    respx.get(f"{BASE_URL}/api/stations/200/timeseriesgroups/").mock(
+        return_value=httpx.Response(200, json=_groups((5, 14))),
+    )
+
+
+# Enhydris CSV data export: "timestamp,value,flags" in display-local time.
+MOCK_CSV = (
+    "2024-06-01 02:00,45.3,VALIDATED\n"
+    "2024-06-01 02:15,44.1,\n"
+    "2024-06-01 02:30,,\n"
+    "2024-06-01 02:45,30.0,SUSPECT\n"
+)
 
 
 # ======================================================================
@@ -140,59 +87,56 @@ MOCK_OBSERVATIONS = [
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_parses_paginated():
+async def test_fetch_stations_filters_to_discharge_only():
+    """Only stations with a discharge (variable 2) group are returned."""
+    _mock_two_station_api()
+
+    async with GreeceOpenhiConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == 1
+    sta = stations[0]
+    assert sta.native_id == "100"
+    assert sta.id == "greece_openhi:100"
+    assert sta.provider == "greece_openhi"
+    assert sta.country_code == "GR"
+    # geom "POINT (lon lat)" -> (lat, lon)
+    assert sta.latitude == pytest.approx(39.0)
+    assert sta.longitude == pytest.approx(22.0)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_paginated():
     """Station list is parsed across multiple paginated responses."""
     respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
-        return_value=httpx.Response(200, json=MOCK_STATIONS_PAGE1),
+        return_value=httpx.Response(200, json={
+            "count": 2,
+            "next": f"{BASE_URL}/api/stations/?page=2",
+            "previous": None,
+            "results": [_station(100, "One", 22.0, 39.0)],
+        }),
     )
     respx.get(f"{BASE_URL}/api/stations/", params={"page": "2"}).mock(
-        return_value=httpx.Response(200, json=MOCK_STATIONS_PAGE2),
+        return_value=httpx.Response(200, json={
+            "count": 2,
+            "next": None,
+            "previous": f"{BASE_URL}/api/stations/?page=1",
+            "results": [_station(101, "Two", 23.0, 40.0)],
+        }),
     )
+    for sid in (100, 101):
+        respx.get(
+            f"{BASE_URL}/api/stations/{sid}/timeseriesgroups/",
+        ).mock(return_value=httpx.Response(200, json=_groups((6, 2))))
+        respx.get(
+            f"{BASE_URL}/api/stations/{sid}/timeseriesgroups/6/timeseries/",
+        ).mock(return_value=httpx.Response(200, json=_timeseries(9000 + sid)))
 
     async with GreeceOpenhiConnector() as conn:
         stations = await conn.fetch_stations()
 
-    assert len(stations) == 3
-    ids = {s.native_id for s in stations}
-    assert ids == {"STA001", "STA002", "STA003"}
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_stations_single_page():
-    """Single-page response (next=None) works correctly."""
-    respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
-        return_value=httpx.Response(200, json=MOCK_STATIONS_SINGLE_PAGE),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    assert len(stations) == 2
-
-    ilarion = next(s for s in stations if s.native_id == "STA001")
-    assert ilarion.id == "greece_openhi:STA001"
-    assert ilarion.provider == "greece_openhi"
-    assert ilarion.country_code == "GR"
-    assert ilarion.river == "Aliakmonas"
-    assert ilarion.latitude == pytest.approx(40.19)
-    assert ilarion.longitude == pytest.approx(21.74)
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_stations_skips_invalid_entries():
-    """Entries with missing id or coordinates are skipped."""
-    respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
-        return_value=httpx.Response(200, json=MOCK_STATIONS_WITH_BAD_ENTRIES),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    assert len(stations) == 2
-    ids = {s.native_id for s in stations}
-    assert ids == {"STA001", "STA002"}
+    assert {s.native_id for s in stations} == {"100", "101"}
 
 
 @pytest.mark.asyncio
@@ -211,207 +155,10 @@ async def test_fetch_stations_handles_empty():
     assert len(stations) == 0
 
 
-# ======================================================================
-# Observation tests
-# ======================================================================
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_parses_json():
-    """Observations are correctly parsed with quality flags."""
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert chunk.provider == "greece_openhi"
-    assert chunk.station_id == "greece_openhi:STA001"
-    assert len(chunk.observations) == 3
-
-    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
-    assert chunk.observations[0].quality.value == "good"
-
-    assert chunk.observations[1].discharge_m3s == pytest.approx(44.1)
-    assert chunk.observations[1].quality.value == "raw"
-
-    assert chunk.observations[2].discharge_m3s is None
-    assert chunk.observations[2].quality.value == "missing"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_handles_empty():
-    """An empty observation list returns zero observations."""
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=[]),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert len(chunk.observations) == 0
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_wrapped_in_results():
-    """Observations wrapped in a 'results' key (DRF pagination) are parsed."""
-    wrapped = {"results": MOCK_OBSERVATIONS[:2]}
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=wrapped),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert len(chunk.observations) == 2
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_fallback_to_ts_records():
-    """When /api/stations/{id}/data/ returns 404, falls back to /api/ts_records/."""
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(404),
-    )
-    respx.get(f"{BASE_URL}/api/ts_records/").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS[:1]),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_suspect_flag():
-    """SUSPECT flag is mapped correctly."""
-    data = [
-        {"timestamp": "2024-06-01T12:00:00", "value": 30.0, "flag": "SUSPECT"},
-    ]
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=data),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert chunk.observations[0].quality.value == "suspect"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_date_key():
-    """Observations that use 'date' instead of 'timestamp' are parsed."""
-    data = [
-        {"date": "2024-06-01T12:00:00", "value": 25.0, "flag": "RAW"},
-    ]
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=data),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "greece_openhi:STA001",
-            start=datetime(2024, 6, 1),
-            end=datetime(2024, 6, 2),
-        )
-
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(25.0)
-
-
-# ======================================================================
-# Coordinate extraction
-# ======================================================================
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_stations_with_flat_lat_lon():
-    """Stations with flat latitude/longitude keys (no GeoJSON point)."""
-    page = {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
-            {
-                "id": "STA010",
-                "name": "Flat coords station",
-                "latitude": 39.5,
-                "longitude": 22.0,
-                "river": "Penios",
-            },
-        ],
-    }
-    respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
-        return_value=httpx.Response(200, json=page),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    assert len(stations) == 1
-    assert stations[0].latitude == pytest.approx(39.5)
-    assert stations[0].longitude == pytest.approx(22.0)
-
-
-# ======================================================================
-# Registry
-# ======================================================================
-
-
-def test_connector_is_registered():
-    """The connector is discoverable via the registry."""
-    from csfs.core.registry import get_connector
-
-    cls = get_connector("greece_openhi")
-    assert cls is GreeceOpenhiConnector
-
-
-# ======================================================================
-# Additional coverage tests — error branches, edge cases, fallbacks
-# ======================================================================
-
-
-def test_flag_to_quality_none_returns_raw():
-    """_flag_to_quality(None) returns RAW (line 40)."""
-    from csfs.connectors.greece_openhi import _flag_to_quality
-    from csfs.core.models import QualityFlag
-
-    assert _flag_to_quality(None) == QualityFlag.RAW
-
-
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_http_error_raises_connector_error():
-    """HTTPStatusError on station listing raises ConnectorError (lines 81-82)."""
+    """HTTPStatusError on station listing raises ConnectorError."""
     from csfs.core.exceptions import ConnectorError
 
     respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
@@ -423,148 +170,245 @@ async def test_fetch_stations_http_error_raises_connector_error():
             await conn.fetch_stations()
 
 
+# ======================================================================
+# Observation tests
+# ======================================================================
+
+
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_non_404_error_raises_connector_error():
-    """Non-404 HTTPStatusError on observations raises ConnectorError (line 130)."""
-    from csfs.core.exceptions import ConnectorError
+async def test_fetch_observations_parses_csv_with_tz_conversion():
+    """CSV data is parsed; local timestamps convert to UTC; flags mapped."""
+    route = respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/9001/data/",
+    ).mock(return_value=httpx.Response(200, text=MOCK_CSV))
 
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(500),
+    async with GreeceOpenhiConnector() as conn:
+        # Pre-seed the discharge ref so we only exercise the data path.
+        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        chunk = await conn.fetch_observations(
+            "greece_openhi:100",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert route.called
+    assert chunk.provider == "greece_openhi"
+    assert len(chunk.observations) == 4
+
+    # Etc/GMT-2 == UTC+2, so local 02:00 -> 00:00 UTC.
+    assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    assert chunk.observations[0].quality.value == "good"  # VALIDATED
+
+    # Empty flag -> RAW
+    assert chunk.observations[1].discharge_m3s == pytest.approx(44.1)
+    assert chunk.observations[1].quality.value == "raw"
+
+    # Empty value -> MISSING
+    assert chunk.observations[2].discharge_m3s is None
+    assert chunk.observations[2].quality.value == "missing"
+
+    # SUSPECT flag
+    assert chunk.observations[3].quality.value == "suspect"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_sends_local_date_bounds():
+    """Query start/end are converted to the station's local timezone."""
+    route = respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/9001/data/",
+    ).mock(return_value=httpx.Response(200, text=""))
+
+    async with GreeceOpenhiConnector() as conn:
+        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        await conn.fetch_observations(
+            "greece_openhi:100",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 1, 12, 0, tzinfo=UTC),
+        )
+
+    sent = route.calls.last.request.url.params
+    # UTC 00:00 -> 02:00 local (UTC+2); UTC 12:00 -> 14:00 local.
+    assert sent["start_date"] == "2024-06-01 02:00"
+    assert sent["end_date"] == "2024-06-01 14:00"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_no_discharge_returns_empty():
+    """A station without a discharge group yields an empty chunk."""
+    respx.get(f"{BASE_URL}/api/stations/200/timeseriesgroups/").mock(
+        return_value=httpx.Response(200, json=_groups((5, 14))),
     )
 
     async with GreeceOpenhiConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "greece_openhi:200",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_http_error_raises_connector_error():
+    """A non-success on the data endpoint raises ConnectorError."""
+    from csfs.core.exceptions import ConnectorError
+
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/9001/data/",
+    ).mock(return_value=httpx.Response(500))
+
+    async with GreeceOpenhiConnector() as conn:
+        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
         with pytest.raises(ConnectorError, match="Failed to fetch observations"):
             await conn.fetch_observations(
-                "greece_openhi:STA001",
-                start=datetime(2024, 6, 1),
-                end=datetime(2024, 6, 2),
+                "greece_openhi:100",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 2, tzinfo=UTC),
             )
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_latest_delegates():
-    """fetch_latest delegates to fetch_observations (lines 140-141)."""
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(200, json=MOCK_OBSERVATIONS[:1]),
-    )
+    """fetch_latest delegates to fetch_observations (last 24h)."""
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/9001/data/",
+    ).mock(return_value=httpx.Response(
+        200, text="2024-06-01 02:00,45.3,VALIDATED\n",
+    ))
 
     async with GreeceOpenhiConnector() as conn:
-        chunk = await conn.fetch_latest("greece_openhi:STA001")
+        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        chunk = await conn.fetch_latest("greece_openhi:100")
 
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_fallback_ts_records_error_raises_connector_error():
-    """HTTPStatusError on fallback ts_records raises ConnectorError (lines 163-164)."""
-    from csfs.core.exceptions import ConnectorError
-
-    respx.get(f"{BASE_URL}/api/stations/STA001/data/").mock(
-        return_value=httpx.Response(404),
-    )
-    respx.get(url__startswith=f"{BASE_URL}/api/ts_records/").mock(
-        return_value=httpx.Response(500),
-    )
-
-    async with GreeceOpenhiConnector() as conn:
-        with pytest.raises(ConnectorError, match="fallback"):
-            await conn.fetch_observations(
-                "greece_openhi:STA001",
-                start=datetime(2024, 6, 1),
-                end=datetime(2024, 6, 2),
-            )
-
-
-def test_parse_stations_value_error_skips_entry():
-    """Station entries that raise ValueError during construction are skipped (lines 203-210).
-
-    We mock _extract_coords to return a non-float value that triggers
-    ValueError in float() at line 198.
-    """
-    from unittest.mock import patch
-
-    conn = GreeceOpenhiConnector()
-    items = [
-        {"id": "STA_BAD", "name": "Bad", "latitude": 40.0, "longitude": 21.0},
-        {"id": "STA_OK", "name": "Good", "latitude": 40.19, "longitude": 21.74},
-    ]
-
-    class BadFloat:
-        """Object that raises ValueError when float() is called."""
-        def __float__(self):
-            raise ValueError("bad float")
-
-    with patch.object(
-        GreeceOpenhiConnector,
-        "_extract_coords",
-        side_effect=[
-            (BadFloat(), 21.0),  # First entry: fails at float(lat)
-            (40.19, 21.74),       # Second entry: succeeds
-        ],
-    ):
-        stations = conn._parse_stations(items)
-
-    assert len(stations) == 1
-    assert stations[0].native_id == "STA_OK"
+# ======================================================================
+# Discharge-ref resolution
+# ======================================================================
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_stations_with_wkt_geom_coords():
-    """Stations with WKT geom field are parsed correctly (lines 228-231)."""
-    page = {
-        "count": 1,
-        "next": None,
-        "previous": None,
-        "results": [
-            {
-                "id": "STA_WKT",
-                "name": "WKT Station",
-                "geom": "POINT (21.74 40.19)",
-                "river": "Testriver",
-            },
-        ],
-    }
-    respx.get(f"{BASE_URL}/api/stations/", params={"page": "1"}).mock(
-        return_value=httpx.Response(200, json=page),
-    )
+async def test_resolve_discharge_ref_caches():
+    """The discharge ref is resolved once and cached."""
+    groups_route = respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/",
+    ).mock(return_value=httpx.Response(200, json=_groups((6, 2))))
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/",
+    ).mock(return_value=httpx.Response(200, json=_timeseries(9001)))
 
     async with GreeceOpenhiConnector() as conn:
-        stations = await conn.fetch_stations()
+        ref1 = await conn._resolve_discharge_ref("100", _station(100, "X", 22.0, 39.0))
+        ref2 = await conn._resolve_discharge_ref("100")
 
+    assert ref1 == (6, 9001, "Etc/GMT-2")
+    assert ref2 == ref1
+    assert groups_route.call_count == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_resolve_discharge_ref_no_timeseries_returns_none():
+    """A discharge group with no timeseries resolves to None."""
+    respx.get(f"{BASE_URL}/api/stations/300/timeseriesgroups/").mock(
+        return_value=httpx.Response(200, json=_groups((7, 2))),
+    )
+    respx.get(
+        f"{BASE_URL}/api/stations/300/timeseriesgroups/7/timeseries/",
+    ).mock(return_value=httpx.Response(200, json={"results": []}))
+
+    async with GreeceOpenhiConnector() as conn:
+        ref = await conn._resolve_discharge_ref("300")
+
+    assert ref is None
+
+
+# ======================================================================
+# Coordinate extraction
+# ======================================================================
+
+
+def test_extract_coords_wkt_with_srid():
+    """SRID-prefixed WKT geom is parsed to (lat, lon)."""
+    conn = GreeceOpenhiConnector()
+    lat, lon = conn._extract_coords(
+        {"geom": "SRID=4326;POINT (20.975265 39.15104)"},
+    )
+    assert lat == pytest.approx(39.15104)
+    assert lon == pytest.approx(20.975265)
+
+
+def test_extract_coords_geojson_point():
+    """GeoJSON point coordinates are parsed to (lat, lon)."""
+    conn = GreeceOpenhiConnector()
+    lat, lon = conn._extract_coords(
+        {"point": {"type": "Point", "coordinates": [21.74, 40.19]}},
+    )
+    assert lat == pytest.approx(40.19)
+    assert lon == pytest.approx(21.74)
+
+
+def test_extract_coords_flat_keys():
+    """Flat latitude/longitude keys are parsed."""
+    conn = GreeceOpenhiConnector()
+    lat, lon = conn._extract_coords({"latitude": 39.5, "longitude": 22.0})
+    assert lat == pytest.approx(39.5)
+    assert lon == pytest.approx(22.0)
+
+
+def test_extract_coords_missing_returns_none():
+    """A dict with no coordinates returns (None, None)."""
+    conn = GreeceOpenhiConnector()
+    assert conn._extract_coords({"name": "no coords"}) == (None, None)
+
+
+def test_parse_stations_skips_missing_coords():
+    """Station dicts without coordinates are skipped."""
+    conn = GreeceOpenhiConnector()
+    stations = conn._parse_stations([
+        {"id": 100, "name": "Good", "geom": "POINT (22.0 39.0)"},
+        {"id": 200, "name": "No coords"},
+        {"id": "", "name": "No id", "geom": "POINT (23.0 40.0)"},
+    ])
     assert len(stations) == 1
-    assert stations[0].latitude == pytest.approx(40.19)
-    assert stations[0].longitude == pytest.approx(21.74)
+    assert stations[0].native_id == "100"
 
 
-def test_parse_observations_unexpected_type_raises():
-    """Non-list/non-dict data raises DataFormatError (line 255)."""
-    from csfs.core.exceptions import DataFormatError
-
-    conn = GreeceOpenhiConnector()
-    with pytest.raises(DataFormatError, match="Unexpected response type"):
-        conn._parse_observations("string_data", "greece_openhi:STA001")
+# ======================================================================
+# Quality flags & registry
+# ======================================================================
 
 
-def test_parse_observations_missing_timestamp_raises():
-    """Missing timestamp/date in record raises DataFormatError (lines 263-264)."""
-    from csfs.core.exceptions import DataFormatError
+def test_flag_to_quality_none_returns_raw():
+    from csfs.connectors.greece_openhi import _flag_to_quality
+    from csfs.core.models import QualityFlag
 
-    conn = GreeceOpenhiConnector()
-    data = [{"value": 10.0}]  # no timestamp/date key
-    with pytest.raises(DataFormatError, match="Missing timestamp"):
-        conn._parse_observations(data, "greece_openhi:STA001")
+    assert _flag_to_quality(None) == QualityFlag.RAW
 
 
-def test_parse_observations_invalid_timestamp_raises():
-    """Invalid timestamp format raises DataFormatError (lines 270-271)."""
-    from csfs.core.exceptions import DataFormatError
+def test_flag_to_quality_known_flags():
+    from csfs.connectors.greece_openhi import _flag_to_quality
+    from csfs.core.models import QualityFlag
 
-    conn = GreeceOpenhiConnector()
-    data = [{"timestamp": "not-a-date", "value": 10.0}]
-    with pytest.raises(DataFormatError, match="Invalid timestamp"):
-        conn._parse_observations(data, "greece_openhi:STA001")
+    assert _flag_to_quality("VALIDATED") == QualityFlag.GOOD
+    assert _flag_to_quality("suspect") == QualityFlag.SUSPECT
+    assert _flag_to_quality("ESTIMATED") == QualityFlag.ESTIMATED
+    assert _flag_to_quality("unknown_flag") == QualityFlag.RAW
+
+
+def test_connector_is_registered():
+    """The connector is discoverable via the registry."""
+    from csfs.core.registry import get_connector
+
+    cls = get_connector("greece_openhi")
+    assert cls is GreeceOpenhiConnector
