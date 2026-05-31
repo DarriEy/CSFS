@@ -33,6 +33,7 @@ from pathlib import Path
 import structlog
 
 from csfs.connectors.base import BaseConnector
+from csfs.core.downloads import ensure_dataset
 from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
@@ -766,20 +767,22 @@ class CaravanConnector(BaseConnector):
         Caravan CSV naming: ``timeseries/csv/{basin_id}.csv`` or
         ``{basin_id}.csv`` with columns ``date, streamflow``.
 
-        If no local data directory is configured or the file does not
-        exist, logs download instructions and returns an empty chunk.
+        The Caravan dataset is auto-downloaded and cached on first use (see
+        :func:`csfs.core.downloads.ensure_dataset`) — note this is a large
+        (~12.5 GB) archive. Set ``config['data_dir']`` to use a pre-downloaded
+        copy, or ``config['auto_download'] = False`` to disable the download.
+        If the data is unavailable, returns an empty chunk.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
-        data_dir = self.config.get("data_dir")
+        data_dir = await ensure_dataset(self.slug, self.config)
 
-        if not data_dir:
+        if data_dir is None:
             logger.info(
                 "caravan_no_data_dir",
                 station=native_id,
                 hint=(
-                    "Set config['data_dir'] to a directory containing "
-                    "Caravan CSV files. Download from "
-                    f"{_ZENODO_DOWNLOAD_URL}"
+                    "Caravan data unavailable (auto-download disabled or "
+                    f"failed). Download from {_ZENODO_DOWNLOAD_URL}"
                 ),
             )
             return self._empty_chunk(station_id)
@@ -925,6 +928,16 @@ class CaravanConnector(BaseConnector):
         for candidate in candidates:
             if candidate.is_file():
                 return candidate
+        # The auto-downloaded Caravan.zip extracts to a nested tree
+        # (Caravan/timeseries/csv/<source>/<file>.csv); search recursively
+        # for either the raw basin id or the mapped Caravan filename.
+        for name in (basin_id, caravan_file):
+            match = next(
+                (p for p in data_dir.rglob(f"{name}.csv") if p.is_file()),
+                None,
+            )
+            if match is not None:
+                return match
         return None
 
     def _parse_csv_file(

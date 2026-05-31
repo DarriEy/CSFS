@@ -2,20 +2,29 @@
 # Paths are relative to the project root.
 
 providers:
-  # -- Local-file datasets --
-  # Run `csfs download-data --list` to see download instructions.
+  # -- Auto-downloading datasets --
+  # These connectors download + cache their dataset on first use, into
+  # `data/datasets/<slug>/` by default. No config is required.
+  #   - To use a pre-downloaded copy, set `data_dir:` (this disables the
+  #     auto-download).
+  #   - To disable auto-download entirely, set `auto_download: false`.
+  #   - To change the cache location, set `datasets_dir:` (default
+  #     `data/datasets`).
+  # NOTE: Caravan is ~12.5 GB and LamaH-CE ~1.5 GB — the first fetch that
+  # touches them will download the full archive.
+  #
+  # caravan:           {}   # auto-downloads (~12.5 GB)
+  # israel_caravan:    {}   # auto-downloads (~300 MB)
+  # lamah_ce:          {}   # auto-downloads (~1.5 GB)
+  # iceland_lamahice:  {}   # auto-downloads (~636 MB)
+  # gsim:              {}   # auto-downloads (~970 MB)
+  # panama_stri:       {}   # auto-downloads (~370 MB)
 
+  # -- Manual-download datasets --
+  # No public auto-download; fetch the files (see `csfs download-data --list`)
+  # and point `data_dir` at them.
   grdc:
     data_dir: data/datasets/grdc
-
-  gsim:
-    data_dir: data/datasets/gsim
-
-  caravan:
-    data_dir: data/datasets/caravan
-
-  israel_caravan:
-    data_dir: data/datasets/israel_caravan
 
   bolivia_ine:
     data_dir: data/datasets/bolivia_ine
@@ -25,12 +34,6 @@ providers:
 
   vietnam_mekong:
     data_dir: data/datasets/vietnam_mekong
-
-  panama_stri:
-    data_dir: data/datasets/panama_stri
-
-  lamah_ce:
-    data_dir: data/datasets/lamah_ce
 
   ca_discharge:
     data_dir: data/datasets/ca_discharge

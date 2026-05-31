@@ -27,6 +27,7 @@ from pathlib import Path
 import structlog
 
 from csfs.connectors.base import BaseConnector
+from csfs.core.downloads import ensure_dataset
 from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
@@ -136,21 +137,22 @@ class LamaHCEConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Read observations from local LamaH CSV files.
 
-        If no local data directory is configured or the file is not
-        found, logs guidance on how to download from Zenodo and returns
-        an empty TimeSeriesChunk.
+        The LamaH-CE daily dataset is auto-downloaded and cached on first
+        use (see :func:`csfs.core.downloads.ensure_dataset`); set
+        ``config['data_dir']`` to use a pre-downloaded copy, or
+        ``config['auto_download'] = False`` to disable the download. If the
+        data is unavailable, returns an empty TimeSeriesChunk.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
-        data_dir = self.config.get("data_dir")
+        data_dir = await ensure_dataset(self.slug, self.config)
 
-        if not data_dir:
+        if data_dir is None:
             logger.info(
                 "lamah_no_data_dir",
                 station=native_id,
                 hint=(
-                    "Set config['data_dir'] to a directory containing "
-                    "LamaH-CE CSV files. Download from "
-                    f"{ZENODO_RECORD_URL}"
+                    "LamaH-CE data unavailable (auto-download disabled or "
+                    f"failed). Download from {ZENODO_RECORD_URL}"
                 ),
             )
             return self._empty_chunk(station_id)
@@ -260,14 +262,23 @@ class LamaHCEConnector(BaseConnector):
           ID_{gauge_id}.csv
           {gauge_id}_daily.csv
         """
-        candidates = [
-            data_dir / f"{gauge_id}.csv",
-            data_dir / f"ID_{gauge_id}.csv",
-            data_dir / f"{gauge_id}_daily.csv",
-        ]
-        for candidate in candidates:
+        patterns = (
+            f"ID_{gauge_id}.csv",
+            f"{gauge_id}.csv",
+            f"{gauge_id}_daily.csv",
+        )
+        for pat in patterns:
+            candidate = data_dir / pat
             if candidate.is_file():
                 return candidate
+        # The auto-downloaded archive extracts to a nested tree
+        # (e.g. .../D_gauges/2_timeseries/daily/ID_<id>.csv); search recursively.
+        for pat in patterns:
+            match = next(
+                (p for p in data_dir.rglob(pat) if p.is_file()), None,
+            )
+            if match is not None:
+                return match
         return None
 
     def _parse_lamah_csv(

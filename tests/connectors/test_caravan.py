@@ -138,8 +138,8 @@ async def test_fetch_stations_zenodo_empty_files_raises():
 
 @pytest.mark.asyncio
 async def test_fetch_observations_no_data_dir():
-    """Without data_dir, returns empty chunk."""
-    async with CaravanConnector() as conn:
+    """Without data_dir and auto-download disabled, returns empty chunk."""
+    async with CaravanConnector(config={"auto_download": False}) as conn:
         chunk = await conn.fetch_observations(
             "caravan:camels_us_01013500",
             start=datetime(1990, 1, 1, tzinfo=UTC),
@@ -188,6 +188,26 @@ async def test_fetch_observations_nested_path(tmp_path: Path):
     ) as conn:
         chunk = await conn.fetch_observations(
             "caravan:camels_gb_15006",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 5
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_recursive_fallback(tmp_path: Path):
+    """CSV under an unexpected deep extract path is found via recursive search."""
+    # A layout matched by none of the fixed candidates — only rglob resolves it.
+    deep = tmp_path / "Caravan-1.5" / "timeseries" / "csv" / "camels"
+    deep.mkdir(parents=True)
+    (deep / "camels_01013500.csv").write_text(SAMPLE_CARAVAN_CSV, encoding="utf-8")
+
+    async with CaravanConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "caravan:camels_us_01013500",
             start=datetime(1990, 1, 1, tzinfo=UTC),
             end=datetime(1990, 1, 5, tzinfo=UTC),
         )
