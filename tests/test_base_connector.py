@@ -241,3 +241,53 @@ async def test_config_default_empty():
 
     conn2 = StubConnector(config={"key": "val"})
     assert conn2.config == {"key": "val"}
+
+
+# -- request concurrency cap --------------------------------------------------
+
+class _CappedConnector(StubConnector):
+    """A StubConnector that limits in-flight requests."""
+
+    slug = "capped"
+    base_url = "https://capped.example.com"
+    max_concurrent_requests = 2
+
+
+async def _peak_concurrency(conn, n=8):
+    """Fire n concurrent _get calls; return the peak in-flight count."""
+    import asyncio
+
+    state = {"now": 0, "peak": 0}
+
+    async def fake_get(path, **kwargs):
+        state["now"] += 1
+        state["peak"] = max(state["peak"], state["now"])
+        await asyncio.sleep(0.02)
+        state["now"] -= 1
+        return httpx.Response(200, json={})
+
+    conn._client.get = fake_get  # type: ignore[method-assign]
+    await asyncio.gather(*[conn._get("/x") for _ in range(n)])
+    return state["peak"]
+
+
+@pytest.mark.asyncio
+async def test_request_semaphore_caps_concurrency():
+    async with _CappedConnector() as conn:
+        assert conn._request_sem is not None
+        peak = await _peak_concurrency(conn)
+    assert peak <= 2
+
+
+@pytest.mark.asyncio
+async def test_no_cap_allows_full_concurrency():
+    async with StubConnector() as conn:
+        assert conn._request_sem is None
+        peak = await _peak_concurrency(conn)
+    assert peak > 2  # unbounded by the connector
+
+
+def test_sepa_sets_a_request_cap():
+    from csfs.connectors.scotland_sepa import ScotlandSepaConnector
+
+    assert ScotlandSepaConnector.max_concurrent_requests == 2

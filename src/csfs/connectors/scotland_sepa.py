@@ -41,6 +41,9 @@ class ScotlandSepaConnector(KiWISConnector):
     display_name = "SEPA (Scotland)"
     base_url = "https://timeseries.sepa.org.uk"
     country_codes = ["GB"]
+    # SEPA's KiWIS rate-limits (HTTP 429) under concurrent load; keep a small
+    # number of requests in flight so acquisition doesn't get throttled out.
+    max_concurrent_requests = 2
 
     _KIWIS_PATH = "/KiWIS/KiWIS"
     _DISCHARGE_PARAM = "Flow"

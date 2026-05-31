@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
@@ -34,10 +35,14 @@ class BaseConnector(ABC):
     display_name: str  # e.g. "USGS NWIS"
     base_url: str
     country_codes: list[str]  # ISO 3166-1 alpha-2
+    # Cap concurrent in-flight requests for rate-limited hosts (e.g. SEPA).
+    # None = unlimited (bounded only by the scheduler's per-cycle concurrency).
+    max_concurrent_requests: int | None = None
 
     def __init__(self, config: dict | None = None) -> None:
         self.config = config or {}
         self._client: httpx.AsyncClient | None = None
+        self._request_sem: asyncio.Semaphore | None = None
 
     async def __aenter__(self) -> BaseConnector:
         self._client = httpx.AsyncClient(
@@ -46,6 +51,8 @@ class BaseConnector(ABC):
             headers={"User-Agent": "CSFS/0.1 (https://github.com/DarriEy/CSFS)"},
             follow_redirects=True,
         )
+        if self.max_concurrent_requests:
+            self._request_sem = asyncio.Semaphore(self.max_concurrent_requests)
         return self
 
     async def __aexit__(self, *exc) -> None:
@@ -123,7 +130,11 @@ class BaseConnector(ABC):
         kwargs: dict = {"params": params}
         if timeout is not None:
             kwargs["timeout"] = timeout
-        resp = await self.client.get(path, **kwargs)
+        if self._request_sem is not None:
+            async with self._request_sem:
+                resp = await self.client.get(path, **kwargs)
+        else:
+            resp = await self.client.get(path, **kwargs)
         if resp.status_code == 429:
             raise RateLimitError(self.slug, "Rate limited")
         if resp.status_code not in (200, 206):
