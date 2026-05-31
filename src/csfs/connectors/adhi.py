@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import csv
 import io
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,8 +40,55 @@ ADHI_MISSING_VALUE = -999.0
 # Hints for identifying the station metadata file in the DataVerse file list
 _STATION_FILE_HINTS = ("stations", "metadata", "catalogue", "catalog")
 
-# Hints for identifying the discharge data file
-_DISCHARGE_FILE_HINTS = ("discharge", "monthly", "debit", "flow")
+# The discharge observations live in ADHI_MonthlySeries.zip — one headerless
+# file per station (``MonthlySeries/monthly_{ADHI_ID}.txt``) with columns:
+#   year, month, mean_runoff, max_runoff, min_runoff, num_missing_days
+# NOTE: do NOT match on "discharge" — that hits ADHI_Discharge_plots.zip,
+# a 35 MB archive of PNG plots, not data.
+_MONTHLY_SERIES_HINT = "monthlyseries"
+_MONTHLY_FILE_PREFIX = "monthly_"
+_NAN_TOKENS = frozenset({"nan", "na", "", "null", "none"})
+
+# ADHI records the country as an English name; map to ISO 3166-1 alpha-2.
+_COUNTRY_NAME_TO_ISO2: dict[str, str] = {
+    "algeria": "DZ",
+    "angola": "AO",
+    "benin": "BJ",
+    "botswana": "BW",
+    "burkina faso": "BF",
+    "burundi": "BI",
+    "cameroon": "CM",
+    "central african republic": "CF",
+    "chad": "TD",
+    "congo": "CG",
+    "cote d'ivoire": "CI",
+    "democratic republic of the congo": "CD",
+    "equatorial guinea": "GQ",
+    "ethiopia": "ET",
+    "gabon": "GA",
+    "ghana": "GH",
+    "guinea": "GN",
+    "guinea-bissau": "GW",
+    "lesotho": "LS",
+    "liberia": "LR",
+    "malawi": "MW",
+    "mali": "ML",
+    "morocco": "MA",
+    "mozambique": "MZ",
+    "namibia": "NA",
+    "niger": "NE",
+    "nigeria": "NG",
+    "rwanda": "RW",
+    "senegal": "SN",
+    "south africa": "ZA",
+    "swaziland": "SZ",
+    "togo": "TG",
+    "tunisia": "TN",
+    "uganda": "UG",
+    "united republic of tanzania": "TZ",
+    "zambia": "ZM",
+    "zimbabwe": "ZW",
+}
 
 # All African country codes covered by ADHI
 ADHI_COUNTRY_CODES: list[str] = [
@@ -230,6 +278,10 @@ class ADHIConnector(BaseConnector):
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
         self._file_list_cache: list[dict] | None = None
+        # Cached MonthlySeries.zip (downloaded once, reused across stations)
+        # and a basename -> archive-member index for fast per-station lookup.
+        self._monthly_zip: zipfile.ZipFile | None = None
+        self._monthly_members: dict[str, str] | None = None
 
     # ------------------------------------------------------------------
     # Public interface
@@ -313,31 +365,24 @@ class ADHIConnector(BaseConnector):
                     fetched_at=datetime.now(UTC),
                 )
 
-        # Try DataVerse API
+        # Try DataVerse API: download MonthlySeries.zip (cached) and read the
+        # station's monthly file.
         try:
-            file_list = await self._get_file_list()
-            discharge_file = self._find_file(
-                file_list, _DISCHARGE_FILE_HINTS,
+            zf = await self._get_monthly_zip()
+            observations = self._parse_monthly_series(
+                zf, native_id, station_id, start_aware, end_aware,
             )
-            if discharge_file is not None:
-                content = await self._download_datafile(
-                    discharge_file["id"],
-                )
-                observations = self._parse_discharge_data(
-                    content, native_id, station_id,
-                    start_aware, end_aware,
-                )
-                logger.info(
-                    "adhi_observations_fetched",
-                    station=native_id,
-                    count=len(observations),
-                )
-                return TimeSeriesChunk(
-                    station_id=station_id,
-                    provider=self.slug,
-                    observations=observations,
-                    fetched_at=datetime.now(UTC),
-                )
+            logger.info(
+                "adhi_observations_fetched",
+                station=native_id,
+                count=len(observations),
+            )
+            return TimeSeriesChunk(
+                station_id=station_id,
+                provider=self.slug,
+                observations=observations,
+                fetched_at=datetime.now(UTC),
+            )
         except (ConnectorError, DataFormatError) as exc:
             logger.warning(
                 "adhi_observations_api_failed",
@@ -433,7 +478,7 @@ class ADHIConnector(BaseConnector):
         return None
 
     async def _download_datafile(self, file_id: int) -> str:
-        """Download a file from IRD DataVerse by file ID."""
+        """Download a text file from IRD DataVerse by file ID."""
         try:
             resp = await self._get(f"/access/datafile/{file_id}")
             return resp.text
@@ -442,6 +487,64 @@ class ADHIConnector(BaseConnector):
                 self.slug,
                 f"Failed to download DataVerse file {file_id}: {exc}",
             ) from exc
+
+    async def _download_datafile_bytes(self, file_id: int) -> bytes:
+        """Download a binary file (e.g. a ZIP) from IRD DataVerse by file ID."""
+        try:
+            resp = await self._get(f"/access/datafile/{file_id}")
+            return resp.content
+        except Exception as exc:
+            raise ConnectorError(
+                self.slug,
+                f"Failed to download DataVerse file {file_id}: {exc}",
+            ) from exc
+
+    def _find_monthly_series_file(
+        self, file_list: list[dict],
+    ) -> dict | None:
+        """Locate the ADHI_MonthlySeries.zip entry in the dataset file list."""
+        for entry in file_list:
+            filename = entry.get("filename", "").strip().lower()
+            if _MONTHLY_SERIES_HINT in filename and filename.endswith(".zip"):
+                return entry
+        return None
+
+    async def _get_monthly_zip(self) -> zipfile.ZipFile:
+        """Download (once) and cache the MonthlySeries ZIP archive."""
+        if self._monthly_zip is not None:
+            return self._monthly_zip
+
+        file_list = await self._get_file_list()
+        entry = self._find_monthly_series_file(file_list)
+        if entry is None:
+            raise DataFormatError(
+                self.slug,
+                "ADHI_MonthlySeries.zip not found in DataVerse dataset",
+            )
+
+        raw = await self._download_datafile_bytes(entry["id"])
+        try:
+            zf = zipfile.ZipFile(io.BytesIO(raw))
+        except zipfile.BadZipFile as exc:
+            raise DataFormatError(
+                self.slug,
+                f"MonthlySeries download is not a valid ZIP: {exc}",
+            ) from exc
+
+        # Index members by basename so the folder prefix
+        # ("MonthlySeries/") doesn't matter for lookup.
+        self._monthly_members = {
+            name.rsplit("/", 1)[-1]: name
+            for name in zf.namelist()
+            if not name.endswith("/")
+        }
+        self._monthly_zip = zf
+        logger.info(
+            "adhi_monthly_zip_cached",
+            provider=self.slug,
+            member_count=len(self._monthly_members),
+        )
+        return zf
 
     # ------------------------------------------------------------------
     # Parsing helpers
@@ -517,12 +620,15 @@ class ADHIConnector(BaseConnector):
         if lat is None or lon is None:
             return None
 
-        country = (
+        country_raw = (
             lrow.get("country_code")
             or lrow.get("country")
             or lrow.get("pays")
             or ""
-        ).strip().upper()
+        ).strip()
+        country = _COUNTRY_NAME_TO_ISO2.get(
+            country_raw.lower(), country_raw.upper(),
+        )
 
         river = (
             lrow.get("river")
@@ -537,6 +643,8 @@ class ADHIConnector(BaseConnector):
             lrow.get("catchment_area")
             or lrow.get("area_km2")
             or lrow.get("catchment_area_km2")
+            # ADHI_stations.tab truncates the header to "Catchment".
+            or lrow.get("catchment")
             or lrow.get("surface")
         )
 
@@ -551,6 +659,69 @@ class ADHIConnector(BaseConnector):
             river=river,
             catchment_area_km2=catchment,
         )
+
+    def _parse_monthly_series(
+        self,
+        zf: zipfile.ZipFile,
+        native_id: str,
+        station_id: str,
+        start: datetime,
+        end: datetime,
+    ) -> list[Observation]:
+        """Parse a station's monthly series file from the ZIP archive.
+
+        Each file is headerless CSV with columns:
+        ``year, month, mean, max, min, num_missing_days``. The mean monthly
+        runoff (m3/s) is used as the discharge value, timestamped at the
+        first day of the month.
+        """
+        members = self._monthly_members or {}
+        member = members.get(f"{_MONTHLY_FILE_PREFIX}{native_id}.txt")
+        if member is None:
+            logger.debug(
+                "adhi_monthly_file_missing",
+                provider=self.slug,
+                station=native_id,
+            )
+            return []
+
+        text = zf.read(member).decode("utf-8", "replace")
+
+        observations: list[Observation] = []
+        for line in text.splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) < 3:
+                continue
+            try:
+                year = int(parts[0])
+                month = int(parts[1])
+                ts = datetime(year, month, 1, tzinfo=UTC)
+            except (ValueError, TypeError):
+                continue
+
+            if ts < start or ts > end:
+                continue
+
+            mean_token = parts[2]
+            if mean_token.lower() in _NAN_TOKENS:
+                discharge: float | None = None
+                quality = QualityFlag.MISSING
+            else:
+                try:
+                    discharge = float(mean_token)
+                    quality = QualityFlag.GOOD
+                except ValueError:
+                    discharge = None
+                    quality = QualityFlag.MISSING
+
+            observations.append(Observation(
+                station_id=station_id,
+                timestamp=ts,
+                discharge_m3s=discharge,
+                quality=quality,
+            ))
+
+        return observations
 
     def _parse_discharge_data(
         self,
