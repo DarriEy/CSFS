@@ -45,7 +45,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "philippines_dpwh", "pakistan_wapda", "nepal_icimod",
         "panama_stri", "vietnam_mekong", "afghanistan_usgs",
         "bolivia_ine", "bulgaria_nimh", "danube_his",
-        "israel_caravan", "chile_dga",
+        "israel_caravan", "chile_dga", "czechia_chmi",
     ],
     "weekly": [
         "grdc", "estreams", "ca_discharge", "caravan", "gsim",
