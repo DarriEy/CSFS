@@ -76,6 +76,9 @@ ignore = ["B905"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=csfs --cov-report=term-missing:skip-covered --cov-report=html:htmlcov"
+markers = [
+    "network: test reaches a real upstream API; deselected in CI via -m 'not network'",
+]
 
 [tool.coverage.run]
 source = ["csfs"]

@@ -53,9 +53,11 @@ MOCK_WIDE_CSV = """date,BO-001,BO-003
 """
 
 
+@respx.mock
 @pytest.mark.asyncio
 async def test_fetch_stations_returns_seed_list():
-    """Seed stations are returned when API is unreachable."""
+    """Seed stations are returned when the API is unreachable."""
+    respx.route(url__startswith=BASE_URL).mock(return_value=httpx.Response(503))
     async with BoliviaIneConnector() as conn:
         stations = await conn.fetch_stations()
 
@@ -65,9 +67,11 @@ async def test_fetch_stations_returns_seed_list():
     assert "3717600" in native_ids
 
 
+@respx.mock
 @pytest.mark.asyncio
 async def test_fetch_stations_seed_fields():
     """Seed stations have correct metadata."""
+    respx.route(url__startswith=BASE_URL).mock(return_value=httpx.Response(503))
     async with BoliviaIneConnector() as conn:
         stations = await conn.fetch_stations()
 

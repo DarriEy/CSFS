@@ -335,6 +335,124 @@ def status(ctx: click.Context, history: int) -> None:
     conn.close()
 
 
+@cli.command()
+@click.option("--stale-hours", default=168.0, type=float,
+              help="Observations older than this (hours) count as STALE (default: 168)")
+@click.option("--provider", "-p", default=None, help="Show only this provider")
+@click.option("--tier", "-t", default=None,
+              help="Scope to one tier's providers (realtime/hourly/daily/weekly)")
+@click.option("--degraded-only", is_flag=True, help="Show only connectors that are degraded")
+@click.option("--json", "as_json", is_flag=True, help="Emit machine-readable JSON")
+@click.option("--fail-on", default=None,
+              help="Comma-separated data_health/status values that force a non-zero exit "
+                   "(e.g. 'stale,empty,error'). Use in cron to trigger alerts.")
+@click.pass_context
+def health(
+    ctx: click.Context,
+    stale_hours: float,
+    provider: str | None,
+    tier: str | None,
+    degraded_only: bool,
+    as_json: bool,
+    fail_on: str | None,
+) -> None:
+    """Report per-connector health (data freshness + last acquisition run).
+
+    Exit code is non-zero when --fail-on matches any connector, so a cron
+    wrapper can alert when connectors go dark.
+    """
+    import json as _json
+    import sys
+
+    from csfs.core.health import (
+        DEGRADED_DATA_HEALTH,
+        DEGRADED_RUN_STATUS,
+        gather_connector_health,
+        is_degraded,
+        summarize_health,
+    )
+    from csfs.store.duckdb_store import DuckDBStore
+
+    async def _run() -> int:
+        async with DuckDBStore(ctx.obj["db_path"]) as store:
+            rows = await gather_connector_health(store, stale_after_hours=stale_hours)
+
+        if tier:
+            from csfs.scheduler.cron import PROVIDER_TIERS
+            tier_slugs = set(PROVIDER_TIERS.get(tier, []))
+            if not tier_slugs:
+                click.echo(f"Unknown tier '{tier}'", err=True)
+                return 2
+            rows = [r for r in rows if r["provider"] in tier_slugs]
+
+        if provider:
+            rows = [r for r in rows if r["provider"] == provider]
+            if not rows:
+                click.echo(f"No connector named '{provider}'", err=True)
+                return 2
+
+        if fail_on:
+            wanted = {v.strip() for v in fail_on.split(",") if v.strip()}
+            data_buckets = tuple(wanted & set(DEGRADED_DATA_HEALTH))
+            statuses = tuple(wanted & set(DEGRADED_RUN_STATUS))
+        else:
+            data_buckets = DEGRADED_DATA_HEALTH
+            statuses = DEGRADED_RUN_STATUS
+
+        def _bad(r: dict) -> bool:
+            return is_degraded(r, data_health=data_buckets, run_status=statuses)
+
+        flagged = [r for r in rows if _bad(r)]
+        display = flagged if degraded_only else rows
+
+        if as_json:
+            payload = {
+                "stale_threshold_hours": stale_hours,
+                "summary": summarize_health(rows),
+                "degraded": [r["provider"] for r in flagged],
+                "connectors": display,
+            }
+            click.echo(_json.dumps(payload, indent=2, default=str))
+        else:
+            summary = summarize_health(rows)
+            order = ["ok", "stale", "empty", "none"]
+            parts = [f"{k}={summary[k]}" for k in order if k in summary]
+            parts += [f"{k}={v}" for k, v in summary.items() if k not in order]
+            click.echo(f"\n  Connector health  ({len(rows)} connectors)  " + "  ".join(parts))
+            click.echo(
+                f"\n  {'PROVIDER':<25s}  {'DATA':<6s}  {'STATIONS':>8s}  {'OBS':>10s}  "
+                f"{'AGE':>8s}  {'LAST RUN':<9s}  {'OK%':>4s}"
+            )
+            click.echo(
+                f"  {'─' * 25}  {'─' * 6}  {'─' * 8}  {'─' * 10}  "
+                f"{'─' * 8}  {'─' * 9}  {'─' * 4}"
+            )
+            for r in display:
+                sh = r.get("staleness_hours")
+                if sh is None:
+                    age = "—"
+                elif sh < 48:
+                    age = f"{int(sh)}h"
+                else:
+                    age = f"{int(sh / 24)}d"
+                rate = r.get("success_rate")
+                rate_str = f"{int(rate * 100)}" if rate is not None else "—"
+                marker = "!" if _bad(r) else " "
+                click.echo(
+                    f"{marker} {r['provider']:<25s}  {r['data_health']:<6s}  "
+                    f"{r['stations']:>8,}  {r['observations']:>10,}  {age:>8s}  "
+                    f"{(r.get('last_status') or '—'):<9s}  {rate_str:>4s}"
+                )
+            if flagged:
+                click.echo(f"\n  {len(flagged)} degraded: " + ", ".join(r["provider"] for r in flagged))
+
+        if fail_on and flagged:
+            return 1
+        return 0
+
+    sys.exit(asyncio.run(_run()))
+
+
 @cli.command("download-data")
 @click.option("--dataset", "-d", multiple=True, help="Dataset slug(s) to download. Omit for all.")
 @click.option("--dest", default="data/datasets", help="Base directory (default: data/datasets)")
