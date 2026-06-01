@@ -136,6 +136,9 @@ jobs:
               || gh issue create --title "$title" --body "$body"
           fi
 
-      - name: Fail if degraded
-        if: steps.health.outputs.degraded == 'true'
-        run: exit 1
+      # The job is NOT failed when connectors degrade: in a real tier some
+      # connector is almost always degraded (dead host, awaiting data, etc.), so
+      # failing here would make every run red and train people to ignore it.
+      # A successful acquisition that saved the snapshot is a success; degraded
+      # connectors are surfaced via the alert issue and the health artifact.
+      # The job still fails naturally if fetch or the snapshot upload errors.
