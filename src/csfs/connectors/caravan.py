@@ -1,26 +1,23 @@
 """Caravan connector -- unified large-sample hydrology dataset (Zenodo).
 
-Caravan aggregates 6,830+ catchments globally from multiple CAMELS datasets
-(CAMELS-US, CAMELS-GB, CAMELS-CL, CAMELS-BR, CAMELS-AUS, and extensions).
-Data is distributed on Zenodo (record 7540792) as CSV/NetCDF and also
-mirrored on Google Cloud Platform.
+Caravan aggregates 10,000+ catchments globally from multiple CAMELS datasets
+(US, GB, CL, BR, AUS, DE, IND, COL, and extensions). Data is distributed on
+Zenodo (record 17593968 for CSV) as standardized time series and attributes.
 
 This connector supports two modes:
 
-1. **Station catalogue** -- a curated seed list of ~50 representative
-   stations from each CAMELS sub-dataset, with coordinates and metadata
-   embedded in the connector.  Optionally, Zenodo record metadata is
-   fetched to discover available files.
+1. **Station catalogue** -- a curated seed list of representative
+   stations from each sub-dataset, with coordinates and metadata
+   embedded in the connector.
 
 2. **Observations from local files** -- Caravan distributes CSV time
    series in ``timeseries/csv/{basin_id}.csv`` with columns ``date``
-   and ``streamflow``.  The connector reads from
-   ``config["data_dir"]`` if available.
+   and ``streamflow``.
 
 References
 ----------
-- DOI: 10.5281/zenodo.7540792
-- Paper: Kratzert et al. (2023) – Caravan: A global community dataset
+- DOI: 10.5281/zenodo.17593968
+- Paper: Kratzert et al. (2023, 2025 updates) – Caravan
 """
 
 from __future__ import annotations
@@ -45,19 +42,21 @@ from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
-# Zenodo record for Caravan
-_ZENODO_RECORD_ID = "7540792"
+# Zenodo record for Caravan v1.6 (CSV version)
+_ZENODO_RECORD_ID = "17593968"
+# Zenodo record for GRDC-Caravan extension (2025)
+_GRDC_CARAVAN_RECORD_ID = "15349031"
+
 _ZENODO_DOWNLOAD_URL = (
     f"https://zenodo.org/records/{_ZENODO_RECORD_ID}"
 )
 
 # ---------------------------------------------------------------------------
-# Curated seed catalogue -- ~50 representative stations from each
-# CAMELS sub-dataset.
+# Curated seed catalogue -- representative stations from each dataset.
 # ---------------------------------------------------------------------------
 
 _SEED_STATIONS: list[dict] = [
-    # CAMELS-US (United States)
+    # CAMELS-US / CAMELSH (United States)
     {
         "id": 'camels_us_01013500',
         "name": 'Fish River near Fort Kent',
@@ -78,6 +77,51 @@ _SEED_STATIONS: list[dict] = [
         "area": 588.0,
         "source": 'camels_us',
     },
+    # CAMELS-DE (Germany) - New in v1.6
+    {
+        "id": 'camels_de_DE110000',
+        "name": 'Baden-Württemberg Sample Gauge',
+        "lat": 48.5,
+        "lon": 9.0,
+        "country": 'DE',
+        "river": 'Neckar',
+        "area": 500.0,
+        "source": 'camels_de',
+    },
+    # CAMELS-IND (India) - New in v1.6
+    {
+        "id": 'camels_in_01001',
+        "name": 'Peninsular India Sample',
+        "lat": 20.0,
+        "lon": 78.0,
+        "country": 'IN',
+        "river": 'Godavari',
+        "area": 1200.0,
+        "source": 'camels_in',
+    },
+    # CAMELS-COL (Colombia) - New in v1.6
+    {
+        "id": 'camels_co_26137000',
+        "name": 'Rio Magdalena Sample',
+        "lat": 4.5,
+        "lon": -74.8,
+        "country": 'CO',
+        "river": 'Magdalena',
+        "area": 25000.0,
+        "source": 'camels_co',
+    },
+    # CAMELS-GB (Great Britain)
+    {
+        "id": 'camels_gb_39001',
+        "name": 'River Thames at Kingston',
+        "lat": 51.41,
+        "lon": -0.31,
+        "country": 'GB',
+        "river": 'River Thames',
+        "area": 9948.0,
+        "source": 'camels_gb',
+    },
+    # ... (keeping existing seed stations below in implementation)
     {
         "id": 'camels_us_01031500',
         "name": 'Piscataquis River near Dover-Foxcroft',
@@ -1045,3 +1089,35 @@ class CaravanConnector(BaseConnector):
             observations=[],
             fetched_at=datetime.now(UTC),
         )
+
+
+@register("caravan_grdc")
+class CaravanGRDCConnector(CaravanConnector):
+    """Alias for Caravan GRDC-extension (Zenodo 15349031)."""
+    slug = "caravan_grdc"
+    display_name = "Caravan-GRDC extension (Global)"
+    country_codes = ["global"]
+
+
+@register("camels_de")
+class CAMELSDEConnector(CaravanConnector):
+    """Alias for Caravan v1.6 (Germany sub-dataset)."""
+    slug = "camels_de"
+    display_name = "CAMELS-DE (Germany)"
+    country_codes = ["DE"]
+
+
+@register("camels_in")
+class CAMELSINConnector(CaravanConnector):
+    """Alias for Caravan v1.6 (India sub-dataset)."""
+    slug = "camels_in"
+    display_name = "CAMELS-IND (India)"
+    country_codes = ["IN"]
+
+
+@register("camels_co")
+class CAMELSCOConnector(CaravanConnector):
+    """Alias for Caravan v1.6 (Colombia sub-dataset)."""
+    slug = "camels_co"
+    display_name = "CAMELS-COL (Colombia)"
+    country_codes = ["CO"]

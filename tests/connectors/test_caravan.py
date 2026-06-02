@@ -9,8 +9,22 @@ import respx
 
 from csfs.connectors.caravan import (
     _SEED_STATIONS,
+    CAMELSCOConnector,
+    CAMELSDEConnector,
+    CAMELSINConnector,
     CaravanConnector,
+    CaravanGRDCConnector,
 )
+
+# Registered variant slugs -> their connector classes. All four are thin
+# subclasses of CaravanConnector that only override slug/display_name/
+# country_codes but inherit the full parsing + ID-building behaviour.
+VARIANTS = [
+    ("camels_co", CAMELSCOConnector),
+    ("camels_de", CAMELSDEConnector),
+    ("camels_in", CAMELSINConnector),
+    ("caravan_grdc", CaravanGRDCConnector),
+]
 
 # ------------------------------------------------------------------
 # Mock data
@@ -414,3 +428,73 @@ def test_safe_float_invalid():
     from csfs.connectors.caravan import _safe_float
 
     assert _safe_float("abc") is None
+
+
+# ------------------------------------------------------------------
+# Caravan variant connectors: camels_co, camels_de, camels_in,
+# caravan_grdc. Each is registered under its own slug and inherits the
+# base parsing logic, but stamps stations/observations with its own
+# slug/provider. These tests fail if any variant breaks.
+# ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("slug", "cls"), VARIANTS)
+def test_variant_registration(slug, cls):
+    """Each variant is registered under its own slug."""
+    from csfs.core.registry import get_connector
+
+    assert get_connector(slug) is cls
+    assert cls.slug == slug
+    # All four are Caravan subclasses (shared parsing path).
+    assert issubclass(cls, CaravanConnector)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("slug", "cls"), VARIANTS)
+async def test_variant_fetch_stations(slug, cls):
+    """Each variant returns the seed catalogue stamped with its slug."""
+    async with cls() as conn:
+        stations = await conn.fetch_stations()
+
+    assert len(stations) == len(_SEED_STATIONS)
+    for station in stations:
+        assert station.provider == slug
+        assert station.id == f"{slug}:{station.native_id}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("slug", "cls"), VARIANTS)
+async def test_variant_fetch_observations_parses_csv(slug, cls, tmp_path: Path):
+    """Each variant parses a local CSV and strips its own slug prefix."""
+    csv_file = tmp_path / "camels_de_DE110000.csv"
+    csv_file.write_text(SAMPLE_CARAVAN_CSV, encoding="utf-8")
+
+    station_id = f"{slug}:camels_de_DE110000"
+    async with cls(config={"data_dir": str(tmp_path)}) as conn:
+        chunk = await conn.fetch_observations(
+            station_id,
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert chunk.station_id == station_id
+    assert chunk.provider == slug
+    assert len(chunk.observations) == 5
+    assert chunk.observations[0].discharge_m3s == pytest.approx(15.3)
+    assert chunk.observations[4].discharge_m3s == pytest.approx(20.2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("slug", "cls"), VARIANTS)
+async def test_variant_fetch_observations_no_data_dir(slug, cls):
+    """Each variant returns an empty, slug-stamped chunk without data."""
+    async with cls(config={"auto_download": False}) as conn:
+        chunk = await conn.fetch_observations(
+            f"{slug}:camels_de_DE110000",
+            start=datetime(1990, 1, 1, tzinfo=UTC),
+            end=datetime(1990, 1, 5, tzinfo=UTC),
+        )
+
+    assert chunk.provider == slug
+    assert chunk.station_id == f"{slug}:camels_de_DE110000"
+    assert len(chunk.observations) == 0
