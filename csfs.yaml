@@ -29,8 +29,8 @@ providers:
   bolivia_ine:
     data_dir: data/datasets/bolivia_ine
 
-  spain_miteco:
-    data_dir: data/datasets/spain_miteco
+  spain_cedex:
+    data_dir: data/datasets/spain_cedex
 
   vietnam_mekong:
     data_dir: data/datasets/vietnam_mekong

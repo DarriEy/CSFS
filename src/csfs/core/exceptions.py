@@ -23,5 +23,9 @@ class DataFormatError(ConnectorError):
     """Raised when provider response doesn't match expected format."""
 
 
+class DependencyError(ConnectorError):
+    """Raised when a connector's required dependencies are missing."""
+
+
 class StoreError(CSFSError):
     """Raised when the data store layer fails."""

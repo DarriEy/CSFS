@@ -77,7 +77,7 @@ DATASETS: list[dict] = [
         "url": "https://grdc.bafg.de/data/data_portal/",
     },
     {
-        "slug": "spain_miteco",
+        "slug": "spain_cedex",
         "name": "Spain MITECO/CEDEX Yearbooks",
         "auto": False,
         "size": "~306 MB",

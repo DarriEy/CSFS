@@ -23,9 +23,10 @@ csfs serve
 Most connectors need no credentials. A few require a free key:
 
 - **Norway (`norway_nve`)** — needs a free [NVE HydAPI](https://hydapi.nve.no/) key.
-  Save the raw key on a single line in `~/.hydapi` (the default the connector
-  reads), or set `providers.norway_nve.api_key` in `csfs.yaml`. Keep keys out of
-  the tracked `csfs.yaml`.
+- **GloFAS (`glofas`)** — needs a [Copernicus CDS API](https://cds.climate.copernicus.eu/) Personal Access Token.
+  Save your key in `~/.cdsapirc` (recommended) or set `providers.glofas.api_key` in `csfs.yaml`.
+
+Save keys on a single line (except for `.cdsapirc` which follows its own format). Keep keys out of the tracked `csfs.yaml`.
 
 ## Architecture
 
@@ -48,7 +49,7 @@ inventory/      Global provider inventory (YAML)
 
 ## Provider inventory
 
-See `inventory/providers.yaml` for the full catalogue of 50+ global streamflow data sources, organized by readiness tier.
+See `inventory/providers.yaml` for the full catalogue of 80+ global streamflow data sources, organized by readiness tier.
 
 ## License
 
