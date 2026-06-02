@@ -332,8 +332,8 @@ _SEED_STATIONS: list[dict] = [
 ]
 
 
-@register("spain_miteco")
-class SpainMITECOConnector(BaseConnector):
+@register("spain_cedex")
+class SpainCedexConnector(BaseConnector):
     """MITECO/CEDEX connector -- seed catalogue, observations from local files.
 
     Configuration options (via ``config`` dict):
@@ -344,7 +344,7 @@ class SpainMITECOConnector(BaseConnector):
             to confirm it is still live (default False).
     """
 
-    slug = "spain_miteco"
+    slug = "spain_cedex"
     display_name = "MITECO/CEDEX Anuario de Aforos (Spain)"
     base_url = MITECO_BASE_URL
     country_codes: list[str] = ["ES"]

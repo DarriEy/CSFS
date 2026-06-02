@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.newzealand_nrc import NewZealandNrcConnector
+from csfs.connectors.newzealand_hilltop import NewZealandHilltopConnector
 from csfs.core.models import QualityFlag
 
 # -- Mock response data ------------------------------------------------
@@ -79,7 +79,7 @@ async def test_fetch_stations_parses_xml():
         return_value=httpx.Response(200, text=MOCK_SITE_LIST_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
@@ -87,8 +87,8 @@ async def test_fetch_stations_parses_xml():
     mangakahia = next(
         s for s in stations if s.native_id == "Mangakahia_at_Titoki"
     )
-    assert mangakahia.id == "newzealand_nrc:Mangakahia_at_Titoki"
-    assert mangakahia.provider == "newzealand_nrc"
+    assert mangakahia.id == "newzealand_hilltop:Mangakahia_at_Titoki"
+    assert mangakahia.provider == "newzealand_hilltop"
     assert mangakahia.name == "Mangakahia at Titoki"
     assert mangakahia.latitude == pytest.approx(-35.83)
     assert mangakahia.longitude == pytest.approx(174.18)
@@ -106,7 +106,7 @@ async def test_fetch_stations_handles_empty():
         return_value=httpx.Response(200, text=MOCK_SITE_LIST_EMPTY_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -116,7 +116,7 @@ async def test_fetch_stations_handles_empty():
 @respx.mock
 async def test_fetch_stations_invalid_xml_returns_empty():
     """Malformed XML from all councils returns empty list."""
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         stations = await conn.fetch_stations()
 
     # All councils unreachable in mock = empty
@@ -133,15 +133,15 @@ async def test_fetch_observations_parses_values():
         return_value=httpx.Response(200, text=MOCK_DATA_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         chunk = await conn.fetch_observations(
-            "newzealand_nrc:Mangakahia_at_Titoki",
+            "newzealand_hilltop:Mangakahia_at_Titoki",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
 
-    assert chunk.provider == "newzealand_nrc"
-    assert chunk.station_id == "newzealand_nrc:Mangakahia_at_Titoki"
+    assert chunk.provider == "newzealand_hilltop"
+    assert chunk.station_id == "newzealand_hilltop:Mangakahia_at_Titoki"
     assert len(chunk.observations) == 3
 
     assert chunk.observations[0].discharge_m3s == pytest.approx(5.23)
@@ -158,9 +158,9 @@ async def test_fetch_observations_handles_empty():
         return_value=httpx.Response(200, text=MOCK_DATA_EMPTY_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         chunk = await conn.fetch_observations(
-            "newzealand_nrc:Mangakahia_at_Titoki",
+            "newzealand_hilltop:Mangakahia_at_Titoki",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -176,9 +176,9 @@ async def test_fetch_observations_missing_i1_is_missing_quality():
         return_value=httpx.Response(200, text=MOCK_DATA_MISSING_VALUE_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         chunk = await conn.fetch_observations(
-            "newzealand_nrc:Mangakahia_at_Titoki",
+            "newzealand_hilltop:Mangakahia_at_Titoki",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -193,9 +193,9 @@ async def test_fetch_observations_missing_i1_is_missing_quality():
 @respx.mock
 async def test_fetch_observations_invalid_timestamp_returns_empty():
     """Invalid timestamp from all councils returns empty chunk."""
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         chunk = await conn.fetch_observations(
-            "newzealand_nrc:Nonexistent_Station",
+            "newzealand_hilltop:Nonexistent_Station",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -206,9 +206,9 @@ async def test_fetch_observations_invalid_timestamp_returns_empty():
 @respx.mock
 async def test_fetch_observations_no_data_returns_empty():
     """No matching data from any council returns empty chunk."""
-    async with NewZealandNrcConnector() as conn:
+    async with NewZealandHilltopConnector() as conn:
         chunk = await conn.fetch_observations(
-            "newzealand_nrc:Another_Missing_Station",
+            "newzealand_hilltop:Another_Missing_Station",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -221,15 +221,15 @@ def test_connector_is_registered():
     """The connector is registered with the expected slug."""
     from csfs.core.registry import get_connector
 
-    cls = get_connector("newzealand_nrc")
-    assert cls is NewZealandNrcConnector
+    cls = get_connector("newzealand_hilltop")
+    assert cls is NewZealandHilltopConnector
 
 
 def test_connector_class_attributes():
     """Class-level attributes match expectations."""
-    assert NewZealandNrcConnector.slug == "newzealand_nrc"
-    assert NewZealandNrcConnector.country_codes == ["NZ"]
-    assert "hilltop.nrc.govt.nz" in NewZealandNrcConnector.base_url
+    assert NewZealandHilltopConnector.slug == "newzealand_hilltop"
+    assert NewZealandHilltopConnector.country_codes == ["NZ"]
+    assert "hilltop.nrc.govt.nz" in NewZealandHilltopConnector.base_url
 
 
 # ======================================================================
@@ -245,10 +245,10 @@ async def test_fetch_latest_delegates():
         return_value=httpx.Response(200, text=MOCK_DATA_XML),
     )
 
-    async with NewZealandNrcConnector() as conn:
-        chunk = await conn.fetch_latest("newzealand_nrc:Mangakahia_at_Titoki")
+    async with NewZealandHilltopConnector() as conn:
+        chunk = await conn.fetch_latest("newzealand_hilltop:Mangakahia_at_Titoki")
 
-    assert chunk.provider == "newzealand_nrc"
+    assert chunk.provider == "newzealand_hilltop"
     # The call should work — observations may or may not match the last-24h range
 
 
@@ -256,7 +256,7 @@ def test_parse_station_xml_invalid_xml_raises():
     """Malformed XML raises DataFormatError (lines 124-125)."""
     from csfs.core.exceptions import DataFormatError
 
-    conn = NewZealandNrcConnector()
+    conn = NewZealandHilltopConnector()
     with pytest.raises(DataFormatError, match="Failed to parse station list XML"):
         conn._parse_station_xml("<not valid xml<<<<")
 
@@ -276,7 +276,7 @@ def test_parse_station_xml_empty_name_skipped():
   </Site>
 </HilltopServer>
 """
-    conn = NewZealandNrcConnector()
+    conn = NewZealandHilltopConnector()
     stations = conn._parse_station_xml(xml_text)
     assert len(stations) == 1
     assert stations[0].name == "Good Site"
@@ -297,7 +297,7 @@ def test_parse_station_xml_value_error_skipped():
   </Site>
 </HilltopServer>
 """
-    conn = NewZealandNrcConnector()
+    conn = NewZealandHilltopConnector()
     stations = conn._parse_station_xml(xml_text)
     assert len(stations) == 1
     assert stations[0].name == "Good Site"
@@ -307,9 +307,9 @@ def test_parse_data_xml_invalid_xml_raises():
     """Malformed data XML raises DataFormatError (lines 188-189)."""
     from csfs.core.exceptions import DataFormatError
 
-    conn = NewZealandNrcConnector()
+    conn = NewZealandHilltopConnector()
     with pytest.raises(DataFormatError, match="Failed to parse data XML"):
-        conn._parse_data_xml("<invalid<xml", "newzealand_nrc:test")
+        conn._parse_data_xml("<invalid<xml", "newzealand_hilltop:test")
 
 
 def test_parse_data_xml_missing_t_element_skipped():
@@ -325,8 +325,8 @@ def test_parse_data_xml_missing_t_element_skipped():
   </Measurement>
 </Hilltop>
 """
-    conn = NewZealandNrcConnector()
-    chunk = conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+    conn = NewZealandHilltopConnector()
+    chunk = conn._parse_data_xml(xml_text, "newzealand_hilltop:test")
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(5.31)
 
@@ -345,9 +345,9 @@ def test_parse_data_xml_invalid_timestamp_raises():
   </Measurement>
 </Hilltop>
 """
-    conn = NewZealandNrcConnector()
+    conn = NewZealandHilltopConnector()
     with pytest.raises(DataFormatError, match="Invalid timestamp"):
-        conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+        conn._parse_data_xml(xml_text, "newzealand_hilltop:test")
 
 
 def test_parse_data_xml_non_numeric_i1_is_missing():
@@ -362,8 +362,8 @@ def test_parse_data_xml_non_numeric_i1_is_missing():
   </Measurement>
 </Hilltop>
 """
-    conn = NewZealandNrcConnector()
-    chunk = conn._parse_data_xml(xml_text, "newzealand_nrc:test")
+    conn = NewZealandHilltopConnector()
+    chunk = conn._parse_data_xml(xml_text, "newzealand_hilltop:test")
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s is None
     assert chunk.observations[0].quality == QualityFlag.MISSING

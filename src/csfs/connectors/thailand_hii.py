@@ -16,12 +16,12 @@ from csfs.core.registry import register
 logger = structlog.get_logger()
 
 
-@register("thailand_thaiwater")
-class ThailandThaiWaterConnector(BaseConnector):
+@register("thailand_hii")
+class ThailandHiiConnector(BaseConnector):
     """Connector for the ThaiWater public API (real-time water level/discharge)."""
 
-    slug = "thailand_thaiwater"
-    display_name = "ThaiWater (Thailand)"
+    slug = "thailand_hii"
+    display_name = "HII (Thailand)"
     base_url = "https://api-v3.thaiwater.net/api/v1"
     country_codes = ["TH"]
 

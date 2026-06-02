@@ -45,12 +45,12 @@ _DISCHARGE_TSCON = "Q"
 _MAX_DAYS = 60
 
 
-@register("czechia_chmi")
-class CzechiaChmiConnector(BaseConnector):
+@register("czechia_chmu")
+class CzechiaChmuConnector(BaseConnector):
     """Connector for the Czech ČHMÚ hydrology open-data feed."""
 
-    slug = "czechia_chmi"
-    display_name = "ČHMÚ (Czech Republic)"
+    slug = "czechia_chmu"
+    display_name = "ČHMÚ (Czechia)"
     base_url = "https://opendata.chmi.cz"
     country_codes = ["CZ"]
 

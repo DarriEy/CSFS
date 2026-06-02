@@ -7,8 +7,8 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.belgium_wallonia import (
-    BelgiumWalloniaConnector,
+from csfs.connectors.belgium_spw import (
+    BelgiumSpwConnector,
     _map_quality,
 )
 from csfs.core.exceptions import ConnectorError
@@ -71,14 +71,14 @@ def _no_sleep(monkeypatch):
 async def test_fetch_stations_returns_discharge_stations():
     respx.get(KIWIS_URL).mock(side_effect=_route())
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
     ids = {s.native_id for s in stations}
     assert ids == {"L5442", "L6290"}
     aiseau = next(s for s in stations if s.native_id == "L5442")
-    assert aiseau.id == "belgium_wallonia:L5442"
+    assert aiseau.id == "belgium_spw:L5442"
     assert aiseau.name == "Aiseau"
     assert aiseau.country_code == "BE"
     assert aiseau.river == "Biesme"
@@ -90,9 +90,9 @@ async def test_fetch_stations_returns_discharge_stations():
 async def test_fetch_observations_parses_values_and_quality():
     respx.get(KIWIS_URL).mock(side_effect=_route())
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_wallonia:L5442",
+            "belgium_spw:L5442",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
             end=datetime(2024, 6, 1, 3, 0, tzinfo=UTC),
         )
@@ -124,7 +124,7 @@ async def test_transient_503_is_retried():
 
     respx.get(KIWIS_URL).mock(side_effect=_handler)
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert calls["n"] == 3          # two 503s then success
@@ -136,7 +136,7 @@ async def test_transient_503_is_retried():
 async def test_persistent_503_raises_connector_error():
     respx.get(KIWIS_URL).mock(return_value=httpx.Response(503))
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         with pytest.raises(ConnectorError):
             await conn.fetch_stations()
 
@@ -147,7 +147,7 @@ async def test_non_transient_error_not_retried():
     # A 500 is not transient — it should surface immediately as HTTPStatusError.
     respx.get(KIWIS_URL).mock(return_value=httpx.Response(500))
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         with pytest.raises(httpx.HTTPStatusError):
             await conn.fetch_stations()
 
@@ -157,10 +157,10 @@ async def test_non_transient_error_not_retried():
 async def test_station_without_series_raises():
     respx.get(KIWIS_URL).mock(side_effect=_route())
 
-    async with BelgiumWalloniaConnector() as conn:
+    async with BelgiumSpwConnector() as conn:
         with pytest.raises(ConnectorError):
             await conn.fetch_observations(
-                "belgium_wallonia:UNKNOWN",
+                "belgium_spw:UNKNOWN",
                 start=datetime(2024, 6, 1, tzinfo=UTC),
                 end=datetime(2024, 6, 2, tzinfo=UTC),
             )
@@ -176,4 +176,4 @@ def test_quality_mapping():
 def test_connector_is_registered():
     from csfs.core.registry import get_connector
 
-    assert get_connector("belgium_wallonia") is BelgiumWalloniaConnector
+    assert get_connector("belgium_spw") is BelgiumSpwConnector

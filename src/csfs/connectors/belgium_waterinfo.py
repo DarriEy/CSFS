@@ -33,8 +33,8 @@ def _map_quality(code: object) -> QualityFlag:
     return QualityFlag.SUSPECT
 
 
-@register("belgium_vmm")
-class BelgiumVmmConnector(KiWISConnector):
+@register("belgium_waterinfo")
+class BelgiumWaterinfoConnector(KiWISConnector):
     """Connector for the VMM Waterinfo KiWIS service (Belgium/Flanders).
 
     VMM hosts ~1,872 stations but only ~195 measure discharge. The canonical
@@ -42,8 +42,8 @@ class BelgiumVmmConnector(KiWISConnector):
     we prefer validated real-time 15-minute (``P.15``) over daily mean.
     """
 
-    slug = "belgium_vmm"
-    display_name = "VMM Waterinfo (Belgium)"
+    slug = "belgium_waterinfo"
+    display_name = "Waterinfo Flanders (Belgium)"
     base_url = "https://download.waterinfo.be"
     country_codes = ["BE"]
 

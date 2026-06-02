@@ -7,7 +7,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.czechia_chmi import _META_PATH, CzechiaChmiConnector
+from csfs.connectors.czechia_chmu import _META_PATH, CzechiaChmuConnector
 from csfs.core.exceptions import DataFormatError
 
 BASE_URL = "https://opendata.chmi.cz"
@@ -53,13 +53,13 @@ def _recent_url(day: str) -> str:
 async def test_fetch_stations_parses_metadata():
     respx.get(META_URL).mock(return_value=httpx.Response(200, text=MOCK_META))
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         stations = await conn.fetch_stations()
 
     # The no-coords row is dropped.
     assert len(stations) == 1
     st = stations[0]
-    assert st.id == "czechia_chmi:0-203-1-001000"
+    assert st.id == "czechia_chmu:0-203-1-001000"
     assert st.native_id == "0-203-1-001000"
     assert st.name == "Špindlerův Mlýn"
     assert st.country_code == "CZ"
@@ -73,7 +73,7 @@ async def test_fetch_stations_parses_metadata():
 async def test_invalid_metadata_raises():
     respx.get(META_URL).mock(return_value=httpx.Response(200, text="{not json"))
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         with pytest.raises(DataFormatError):
             await conn.fetch_stations()
 
@@ -85,9 +85,9 @@ async def test_fetch_observations_recent_day_filters_q_and_window():
         return_value=httpx.Response(200, text=_station_file("2024-06-01")),
     )
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         chunk = await conn.fetch_observations(
-            "czechia_chmi:0-203-1-001000",
+            "czechia_chmu:0-203-1-001000",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
             end=datetime(2024, 6, 1, 0, 30, tzinfo=UTC),
         )
@@ -108,9 +108,9 @@ async def test_window_excludes_out_of_range_points():
         return_value=httpx.Response(200, text=_station_file("2024-06-01")),
     )
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         chunk = await conn.fetch_observations(
-            "czechia_chmi:0-203-1-001000",
+            "czechia_chmu:0-203-1-001000",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
             end=datetime(2024, 6, 1, 0, 5, tzinfo=UTC),
         )
@@ -130,9 +130,9 @@ async def test_fetch_observations_spans_multiple_days():
         return_value=httpx.Response(200, text=_station_file("2024-06-02")),
     )
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         chunk = await conn.fetch_observations(
-            "czechia_chmi:0-203-1-001000",
+            "czechia_chmu:0-203-1-001000",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
             end=datetime(2024, 6, 2, 23, 59, tzinfo=UTC),
         )
@@ -149,9 +149,9 @@ async def test_missing_day_404_is_skipped():
         return_value=httpx.Response(200, text=_station_file("2024-06-02")),
     )
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         chunk = await conn.fetch_observations(
-            "czechia_chmi:0-203-1-001000",
+            "czechia_chmu:0-203-1-001000",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
             end=datetime(2024, 6, 2, 23, 59, tzinfo=UTC),
         )
@@ -169,9 +169,9 @@ async def test_today_uses_now_endpoint():
         return_value=httpx.Response(200, text=_station_file(f"{today:%Y-%m-%d}")),
     )
 
-    async with CzechiaChmiConnector() as conn:
+    async with CzechiaChmuConnector() as conn:
         chunk = await conn.fetch_observations(
-            "czechia_chmi:0-203-1-001000",
+            "czechia_chmu:0-203-1-001000",
             start=datetime(today.year, today.month, today.day, tzinfo=UTC),
             end=datetime.now(UTC) + timedelta(minutes=1),
         )
@@ -183,4 +183,4 @@ async def test_today_uses_now_endpoint():
 def test_connector_is_registered():
     from csfs.core.registry import get_connector
 
-    assert get_connector("czechia_chmi") is CzechiaChmiConnector
+    assert get_connector("czechia_chmu") is CzechiaChmuConnector

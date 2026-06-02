@@ -8,11 +8,11 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.spain_miteco import (
+from csfs.connectors.spain_cedex import (
     _SEED_STATIONS,
     MITECO_DOWNLOAD_PATH,
     MITECO_STATION_KMZ,
-    SpainMITECOConnector,
+    SpainCedexConnector,
 )
 
 # ---------------------------------------------------------------------------
@@ -66,13 +66,13 @@ def _make_yearbook_zip(
 @pytest.mark.asyncio
 async def test_fetch_stations_returns_seed_list():
     """Default mode returns the curated seed catalogue (no network)."""
-    async with SpainMITECOConnector() as conn:
+    async with SpainCedexConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == len(_SEED_STATIONS)
     for station in stations:
-        assert station.provider == "spain_miteco"
-        assert station.id.startswith("spain_miteco:")
+        assert station.provider == "spain_cedex"
+        assert station.id.startswith("spain_cedex:")
         assert station.country_code == "ES"
         assert station.latitude != 0.0 or station.longitude != 0.0
 
@@ -80,7 +80,7 @@ async def test_fetch_stations_returns_seed_list():
 @pytest.mark.asyncio
 async def test_seed_station_fields():
     """Seed stations have correct field values from the seed list."""
-    async with SpainMITECOConnector() as conn:
+    async with SpainCedexConnector() as conn:
         stations = await conn.fetch_stations()
 
     ebro = next(s for s in stations if s.native_id == "9001")
@@ -89,7 +89,7 @@ async def test_seed_station_fields():
     assert ebro.latitude == pytest.approx(42.68)
     assert ebro.longitude == pytest.approx(-2.95)
     assert ebro.catchment_area_km2 == pytest.approx(3327.0)
-    assert ebro.id == "spain_miteco:9001"
+    assert ebro.id == "spain_cedex:9001"
 
 
 @pytest.mark.asyncio
@@ -104,7 +104,7 @@ async def test_fetch_stations_verify_endpoint():
     )
 
     config = {"verify_endpoint": True}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == len(_SEED_STATIONS)
@@ -118,15 +118,15 @@ async def test_fetch_stations_verify_endpoint():
 @pytest.mark.asyncio
 async def test_fetch_observations_no_data_dir():
     """Without data_dir configured, returns empty chunk with guidance."""
-    async with SpainMITECOConnector() as conn:
+    async with SpainCedexConnector() as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 31, tzinfo=UTC),
         )
 
-    assert chunk.station_id == "spain_miteco:9001"
-    assert chunk.provider == "spain_miteco"
+    assert chunk.station_id == "spain_cedex:9001"
+    assert chunk.provider == "spain_cedex"
     assert len(chunk.observations) == 0
 
 
@@ -137,9 +137,9 @@ async def test_fetch_observations_from_csv(tmp_path: Path):
     csv_file.write_text(SAMPLE_CSV_SEMICOLON, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 4, tzinfo=UTC),
         )
@@ -168,9 +168,9 @@ async def test_fetch_observations_from_zip(tmp_path: Path):
     zip_path.write_bytes(zip_data)
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 4, tzinfo=UTC),
         )
@@ -186,9 +186,9 @@ async def test_fetch_observations_date_filtering(tmp_path: Path):
     csv_file.write_text(SAMPLE_CSV_SEMICOLON, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 2, tzinfo=UTC),
             end=datetime(2020, 1, 3, tzinfo=UTC),
         )
@@ -209,9 +209,9 @@ async def test_fetch_observations_spanish_decimal_commas(
     )
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -228,9 +228,9 @@ async def test_fetch_observations_iso_dates(tmp_path: Path):
     csv_file.write_text(SAMPLE_CSV_ISO_DATES, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -248,10 +248,10 @@ async def test_fetch_observations_bad_zip_raises(tmp_path: Path):
     from csfs.core.exceptions import DataFormatError
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         with pytest.raises(DataFormatError, match="Failed to read"):
             await conn.fetch_observations(
-                "spain_miteco:9001",
+                "spain_cedex:9001",
                 start=datetime(2020, 1, 1, tzinfo=UTC),
                 end=datetime(2020, 1, 31, tzinfo=UTC),
             )
@@ -269,7 +269,7 @@ async def test_fetch_stations_verify_endpoint_failure():
     )
 
     config = {"verify_endpoint": True}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == len(_SEED_STATIONS)
@@ -282,9 +282,9 @@ async def test_fetch_observations_comma_delimited(tmp_path: Path):
     csv_file.write_text(SAMPLE_CSV_COMMA_DELIMITED, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -302,9 +302,9 @@ async def test_fetch_observations_no_header_returns_empty(tmp_path: Path):
     )
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 12, 31, tzinfo=UTC),
         )
@@ -319,9 +319,9 @@ async def test_fetch_observations_no_matching_station(tmp_path: Path):
     csv_file.write_text(SAMPLE_CSV_SEMICOLON, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9999",  # station not in file
+            "spain_cedex:9999",  # station not in file
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 31, tzinfo=UTC),
         )
@@ -343,9 +343,9 @@ async def test_fetch_observations_negative_discharge_is_missing(
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -369,9 +369,9 @@ async def test_fetch_observations_unparseable_date(tmp_path: Path):
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -390,9 +390,9 @@ async def test_fetch_observations_unparseable_discharge(tmp_path: Path):
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -414,9 +414,9 @@ async def test_fetch_observations_empty_date(tmp_path: Path):
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -438,9 +438,9 @@ async def test_fetch_observations_quality_column_mapping(
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -461,9 +461,9 @@ async def test_fetch_observations_csv_no_station_column(tmp_path: Path):
     csv_file.write_text(csv_content, encoding="utf-8")
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 2, tzinfo=UTC),
         )
@@ -482,9 +482,9 @@ async def test_fetch_observations_zip_non_csv_skipped(tmp_path: Path):
     zip_path.write_bytes(buf.getvalue())
 
     config = {"data_dir": str(tmp_path)}
-    async with SpainMITECOConnector(config=config) as conn:
+    async with SpainCedexConnector(config=config) as conn:
         chunk = await conn.fetch_observations(
-            "spain_miteco:9001",
+            "spain_cedex:9001",
             start=datetime(2020, 1, 1, tzinfo=UTC),
             end=datetime(2020, 1, 4, tzinfo=UTC),
         )
@@ -495,7 +495,7 @@ async def test_fetch_observations_zip_non_csv_skipped(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_find_column_returns_none_for_no_match():
     """_find_column returns None when no candidates match."""
-    result = SpainMITECOConnector._find_column(
+    result = SpainCedexConnector._find_column(
         {"foo": "Foo", "bar": "Bar"},
         ("baz", "qux"),
     )
@@ -505,12 +505,12 @@ async def test_find_column_returns_none_for_no_match():
 @pytest.mark.asyncio
 async def test_parse_date_returns_none_for_bad_input():
     """_parse_date returns None for unrecognized formats."""
-    result = SpainMITECOConnector._parse_date("not-a-date")
+    result = SpainCedexConnector._parse_date("not-a-date")
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_parse_discharge_empty_string():
     """_parse_discharge returns None for empty string."""
-    result = SpainMITECOConnector._parse_discharge("")
+    result = SpainCedexConnector._parse_discharge("")
     assert result is None

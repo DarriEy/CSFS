@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.thailand_thaiwater import ThailandThaiWaterConnector
+from csfs.connectors.thailand_hii import ThailandHiiConnector
 from csfs.core.exceptions import DataFormatError
 from csfs.core.models import QualityFlag
 
@@ -71,14 +71,14 @@ async def test_fetch_stations_parses_nested_response():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
 
     cp = next(s for s in stations if s.native_id == "WL001")
-    assert cp.id == "thailand_thaiwater:WL001"
-    assert cp.provider == "thailand_thaiwater"
+    assert cp.id == "thailand_hii:WL001"
+    assert cp.provider == "thailand_hii"
     assert cp.name == "Chao Phraya at Nakhon Sawan"
     assert cp.latitude == pytest.approx(15.7)
     assert cp.longitude == pytest.approx(100.13)
@@ -93,7 +93,7 @@ async def test_fetch_stations_parses_flat_response():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_FLAT_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
@@ -109,7 +109,7 @@ async def test_fetch_stations_handles_empty():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_EMPTY),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -147,7 +147,7 @@ async def test_fetch_stations_deduplicates():
         return_value=httpx.Response(200, json=duplicated),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -163,15 +163,15 @@ async def test_fetch_observations_returns_latest_snapshot():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:WL001",
+            "thailand_hii:WL001",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
 
-    assert chunk.provider == "thailand_thaiwater"
-    assert chunk.station_id == "thailand_thaiwater:WL001"
+    assert chunk.provider == "thailand_hii"
+    assert chunk.station_id == "thailand_hii:WL001"
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
     assert chunk.observations[0].quality == QualityFlag.RAW
@@ -185,9 +185,9 @@ async def test_fetch_observations_station_not_found_returns_empty():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:NONEXISTENT",
+            "thailand_hii:NONEXISTENT",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -203,9 +203,9 @@ async def test_fetch_observations_null_discharge_is_missing():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_FLAT_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:WL002",
+            "thailand_hii:WL002",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -223,8 +223,8 @@ async def test_fetch_latest_delegates():
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_RESPONSE),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
-        chunk = await conn.fetch_latest("thailand_thaiwater:WL001")
+    async with ThailandHiiConnector() as conn:
+        chunk = await conn.fetch_latest("thailand_hii:WL001")
 
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
@@ -238,7 +238,7 @@ async def test_fetch_waterlevel_unexpected_type_raises():
         return_value=httpx.Response(200, json="unexpected string"),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         with pytest.raises(DataFormatError, match="Unexpected response type"):
             await conn.fetch_stations()
 
@@ -249,15 +249,15 @@ def test_connector_is_registered():
     """The connector is registered with the expected slug."""
     from csfs.core.registry import get_connector
 
-    cls = get_connector("thailand_thaiwater")
-    assert cls is ThailandThaiWaterConnector
+    cls = get_connector("thailand_hii")
+    assert cls is ThailandHiiConnector
 
 
 def test_connector_class_attributes():
     """Class-level attributes match expectations."""
-    assert ThailandThaiWaterConnector.slug == "thailand_thaiwater"
-    assert ThailandThaiWaterConnector.country_codes == ["TH"]
-    assert "thaiwater.net" in ThailandThaiWaterConnector.base_url
+    assert ThailandHiiConnector.slug == "thailand_hii"
+    assert ThailandHiiConnector.country_codes == ["TH"]
+    assert "thaiwater.net" in ThailandHiiConnector.base_url
 
 
 # ======================================================================
@@ -273,7 +273,7 @@ async def test_fetch_waterlevel_records_not_list_returns_empty():
         return_value=httpx.Response(200, json={"data": "not_a_list"}),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -299,7 +299,7 @@ async def test_parse_stations_non_dict_station_obj():
         return_value=httpx.Response(200, json=data),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -313,7 +313,7 @@ def test_parse_stations_exception_skips_entry():
     We call _parse_stations directly with data that triggers an error
     in the try block (e.g., tele_station_name.get() on a non-dict).
     """
-    conn = ThailandThaiWaterConnector()
+    conn = ThailandHiiConnector()
     # tele_station_name is a list (not dict, not str), causing AttributeError
     # when .get("en") is called on it
     records = [
@@ -357,9 +357,9 @@ async def test_parse_observations_non_dict_station_obj():
         return_value=httpx.Response(200, json=data),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:FLAT01",
+            "thailand_hii:FLAT01",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -385,9 +385,9 @@ async def test_parse_observations_missing_datetime_skipped():
         return_value=httpx.Response(200, json=data),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:WL001",
+            "thailand_hii:WL001",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -412,10 +412,10 @@ async def test_parse_observations_invalid_datetime_raises():
         return_value=httpx.Response(200, json=data),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
-                "thailand_thaiwater:WL001",
+                "thailand_hii:WL001",
                 start=datetime(2024, 6, 1),
                 end=datetime(2024, 6, 2),
             )
@@ -438,9 +438,9 @@ async def test_parse_observations_non_numeric_discharge():
         return_value=httpx.Response(200, json=data),
     )
 
-    async with ThailandThaiWaterConnector() as conn:
+    async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_observations(
-            "thailand_thaiwater:WL001",
+            "thailand_hii:WL001",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )

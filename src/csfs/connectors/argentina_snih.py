@@ -18,10 +18,10 @@ _DISCHARGE_VAR_NAMES = {"caudal"}
 _WATER_LEVEL_VAR_ID = 2  # Altura hidrometrica
 
 
-@register("argentina_ina")
-class ArgentinaINAConnector(BaseConnector):
-    slug = "argentina_ina"
-    display_name = "INA Alerta Hidrologica (Argentina)"
+@register("argentina_snih")
+class ArgentinaSnihConnector(BaseConnector):
+    slug = "argentina_snih"
+    display_name = "SNIH Argentina (INA)"
     base_url = "https://alerta.ina.gob.ar/a5"
     country_codes = ["AR"]
 

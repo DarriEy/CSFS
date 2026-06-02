@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.belgium_vmm import BelgiumVmmConnector, _map_quality
+from csfs.connectors.belgium_waterinfo import BelgiumWaterinfoConnector, _map_quality
 from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import QualityFlag
 
@@ -114,7 +114,7 @@ async def test_fetch_stations_parses_kiwis_response():
         ),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     # L99_NOQ has no discharge series and must be dropped.
@@ -122,8 +122,8 @@ async def test_fetch_stations_parses_kiwis_response():
     assert {s.native_id for s in stations} == {"L04_00A", "L06_42A"}
 
     dender = next(s for s in stations if s.native_id == "L04_00A")
-    assert dender.id == "belgium_vmm:L04_00A"
-    assert dender.provider == "belgium_vmm"
+    assert dender.id == "belgium_waterinfo:L04_00A"
+    assert dender.provider == "belgium_waterinfo"
     assert dender.name == "Dender te Denderleeuw"
     assert dender.latitude == pytest.approx(50.88)
     assert dender.longitude == pytest.approx(4.07)
@@ -143,7 +143,7 @@ async def test_fetch_stations_handles_empty():
         ),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -157,7 +157,7 @@ async def test_fetch_stations_handles_completely_empty():
         side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, []),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -172,7 +172,7 @@ async def test_fetch_stations_bad_columns_raises():
         side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, bad_station_list),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         with pytest.raises(DataFormatError, match="Unexpected column layout"):
             await conn.fetch_stations()
 
@@ -190,7 +190,7 @@ async def test_fetch_stations_skips_malformed_rows():
         side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, station_list),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -206,7 +206,7 @@ async def test_fetch_stations_bad_q_series_columns_raises():
         side_effect=_route_by_request(bad_q_series, MOCK_STATION_LIST_RESPONSE),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         with pytest.raises(DataFormatError, match="Unexpected column layout"):
             await conn.fetch_stations()
 
@@ -223,7 +223,7 @@ async def test_resolve_ts_id_prefers_realtime_cadence():
         ),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         # L04_00A has both DagGem (78100) and P.15 (78123); prefer P.15.
         assert await conn._resolve_ts_id("L04_00A") == "78123"
         # L06_42A only has DagGem.
@@ -242,7 +242,7 @@ async def test_resolve_ts_id_falls_back_to_any_series():
         side_effect=_route_by_request(q_series, MOCK_STATION_LIST_RESPONSE),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         assert await conn._resolve_ts_id("L04_00A") == "55555"
 
 
@@ -258,15 +258,15 @@ async def test_fetch_observations_parses_values():
         ),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
+            "belgium_waterinfo:L04_00A",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
 
-    assert chunk.provider == "belgium_vmm"
-    assert chunk.station_id == "belgium_vmm:L04_00A"
+    assert chunk.provider == "belgium_waterinfo"
+    assert chunk.station_id == "belgium_waterinfo:L04_00A"
     assert len(chunk.observations) == 3
 
     assert chunk.observations[0].discharge_m3s == pytest.approx(12.4)
@@ -291,9 +291,9 @@ async def test_fetch_observations_handles_empty():
 
     respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
+            "belgium_waterinfo:L04_00A",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -311,10 +311,10 @@ async def test_fetch_observations_no_ts_id_found_raises():
         ),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         with pytest.raises(ConnectorError, match="No discharge .Q. timeseries"):
             await conn.fetch_observations(
-                "belgium_vmm:UNKNOWN",
+                "belgium_waterinfo:UNKNOWN",
                 start=datetime(2024, 6, 1),
                 end=datetime(2024, 6, 2),
             )
@@ -334,10 +334,10 @@ async def test_fetch_observations_invalid_timestamp_raises():
 
     respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
-                "belgium_vmm:L04_00A",
+                "belgium_waterinfo:L04_00A",
                 start=datetime(2024, 6, 1),
                 end=datetime(2024, 6, 2),
             )
@@ -374,15 +374,15 @@ def test_connector_is_registered():
     """The connector is registered with the expected slug."""
     from csfs.core.registry import get_connector
 
-    cls = get_connector("belgium_vmm")
-    assert cls is BelgiumVmmConnector
+    cls = get_connector("belgium_waterinfo")
+    assert cls is BelgiumWaterinfoConnector
 
 
 def test_connector_class_attributes():
     """Class-level attributes match expectations."""
-    assert BelgiumVmmConnector.slug == "belgium_vmm"
-    assert BelgiumVmmConnector.country_codes == ["BE"]
-    assert "waterinfo.be" in BelgiumVmmConnector.base_url
+    assert BelgiumWaterinfoConnector.slug == "belgium_waterinfo"
+    assert BelgiumWaterinfoConnector.country_codes == ["BE"]
+    assert "waterinfo.be" in BelgiumWaterinfoConnector.base_url
 
 
 # -- Tests: fetch_latest -----------------------------------------------
@@ -399,11 +399,11 @@ async def test_fetch_latest_delegates_to_observations():
 
     respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with BelgiumVmmConnector() as conn:
-        chunk = await conn.fetch_latest("belgium_vmm:L04_00A")
+    async with BelgiumWaterinfoConnector() as conn:
+        chunk = await conn.fetch_latest("belgium_waterinfo:L04_00A")
 
-    assert chunk.provider == "belgium_vmm"
-    assert chunk.station_id == "belgium_vmm:L04_00A"
+    assert chunk.provider == "belgium_waterinfo"
+    assert chunk.station_id == "belgium_waterinfo:L04_00A"
     assert len(chunk.observations) == 0
 
 
@@ -422,7 +422,7 @@ async def test_fetch_stations_empty_native_id_skipped():
         side_effect=_route_by_request(MOCK_Q_SERIES_RESPONSE, station_list),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -443,9 +443,9 @@ async def test_fetch_observations_non_dict_first_element():
 
     respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
+            "belgium_waterinfo:L04_00A",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -469,9 +469,9 @@ async def test_fetch_observations_unparseable_discharge_value():
 
     respx.get(KIWIS_URL).mock(side_effect=handler)
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
+            "belgium_waterinfo:L04_00A",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -494,9 +494,9 @@ async def test_parse_q_series_malformed_row_skipped():
         side_effect=_route_by_request(q_series, MOCK_STATION_LIST_RESPONSE),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         chunk = await conn.fetch_observations(
-            "belgium_vmm:L04_00A",
+            "belgium_waterinfo:L04_00A",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -524,7 +524,7 @@ async def test_fetch_stations_null_coords_default_to_zero():
         side_effect=_route_by_request(q_series, station_list),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
@@ -549,7 +549,7 @@ async def test_fetch_stations_empty_string_coords_default_to_zero():
         side_effect=_route_by_request(q_series, station_list),
     )
 
-    async with BelgiumVmmConnector() as conn:
+    async with BelgiumWaterinfoConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1

@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.argentina_ina import ArgentinaINAConnector
+from csfs.connectors.argentina_snih import ArgentinaSnihConnector
 
 MOCK_STATIONS_RESPONSE = [
     {
@@ -98,7 +98,7 @@ async def test_fetch_stations_parses_list():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     # Station 303 has empty coordinates, so only 2 are returned
@@ -115,12 +115,12 @@ async def test_fetch_stations_field_values():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     station_a = next(s for s in stations if s.native_id == "101")
-    assert station_a.id == "argentina_ina:101"
-    assert station_a.provider == "argentina_ina"
+    assert station_a.id == "argentina_snih:101"
+    assert station_a.provider == "argentina_snih"
     assert station_a.name == "San Martin"
     assert station_a.country_code == "AR"
     assert station_a.river == "Parana"
@@ -136,7 +136,7 @@ async def test_fetch_stations_handles_empty():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=[]))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -146,7 +146,7 @@ async def test_fetch_stations_handles_empty():
 @respx.mock
 async def test_fetch_observations_parses_values():
     """Observations are correctly parsed into a TimeSeriesChunk."""
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     conn._station_to_series["101"] = 31
 
     respx.get(
@@ -157,13 +157,13 @@ async def test_fetch_observations_parses_values():
 
     async with conn:
         chunk = await conn.fetch_observations(
-            "argentina_ina:101",
+            "argentina_snih:101",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 2),
         )
 
-    assert chunk.provider == "argentina_ina"
-    assert chunk.station_id == "argentina_ina:101"
+    assert chunk.provider == "argentina_snih"
+    assert chunk.station_id == "argentina_snih:101"
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(5.21)
     assert chunk.observations[0].quality.value == "raw"
@@ -175,7 +175,7 @@ async def test_fetch_observations_parses_values():
 @respx.mock
 async def test_fetch_observations_handles_empty():
     """An empty observations array returns zero observations."""
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     conn._station_to_series["101"] = 31
 
     respx.get(
@@ -184,7 +184,7 @@ async def test_fetch_observations_handles_empty():
 
     async with conn:
         chunk = await conn.fetch_observations(
-            "argentina_ina:101",
+            "argentina_snih:101",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 2),
         )
@@ -196,7 +196,7 @@ async def test_fetch_observations_handles_empty():
 @respx.mock
 async def test_resolve_series_id_from_cache():
     """When the series cache is pre-populated, no metadata call is made."""
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     conn._station_to_series["101"] = 31
 
     respx.get(
@@ -207,7 +207,7 @@ async def test_resolve_series_id_from_cache():
 
     async with conn:
         chunk = await conn.fetch_observations(
-            "argentina_ina:101",
+            "argentina_snih:101",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 2),
         )
@@ -229,9 +229,9 @@ async def test_resolve_series_id_fetches_metadata():
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         chunk = await conn.fetch_observations(
-            "argentina_ina:101",
+            "argentina_snih:101",
             start=datetime(2024, 1, 1),
             end=datetime(2024, 1, 2),
         )
@@ -251,7 +251,7 @@ async def test_resolve_series_id_raises_on_unknown_station():
 
     from csfs.core.exceptions import DataFormatError
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         with pytest.raises(DataFormatError, match="No discharge series"):
             await conn.fetch_observations(
                 "argentina_ina:999",
@@ -268,7 +268,7 @@ async def test_build_series_cache_filters_discharge_only():
         "https://alerta.ina.gob.ar/a5/obs/puntual/series"
     ).mock(return_value=httpx.Response(200, json=MOCK_SERIES_GEOJSON))
 
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     async with conn:
         await conn._build_series_cache()
 
@@ -294,7 +294,7 @@ async def test_stations_skip_missing_id():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -333,7 +333,7 @@ async def test_stations_invalid_coords_skipped():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -368,7 +368,7 @@ async def test_stations_append_failure_skipped():
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
 
-    async with ArgentinaINAConnector() as conn:
+    async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
 
     # Station with None nombre uses native_id as name
@@ -387,7 +387,7 @@ async def test_observations_invalid_timestamp_raises():
     """Invalid timestamp in observation raises DataFormatError."""
     from csfs.core.exceptions import DataFormatError
 
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     conn._station_to_series["101"] = 31
 
     respx.get(
@@ -401,7 +401,7 @@ async def test_observations_invalid_timestamp_raises():
     async with conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
-                "argentina_ina:101",
+                "argentina_snih:101",
                 start=datetime(2024, 1, 1),
                 end=datetime(2024, 1, 2),
             )
@@ -413,7 +413,7 @@ async def test_observations_missing_timestamp_key_raises():
     """Missing 'timestart' key in observation raises DataFormatError."""
     from csfs.core.exceptions import DataFormatError
 
-    conn = ArgentinaINAConnector()
+    conn = ArgentinaSnihConnector()
     conn._station_to_series["101"] = 31
 
     respx.get(
@@ -427,7 +427,8 @@ async def test_observations_missing_timestamp_key_raises():
     async with conn:
         with pytest.raises(DataFormatError, match="Invalid timestamp"):
             await conn.fetch_observations(
-                "argentina_ina:101",
+                "argentina_snih:101",
                 start=datetime(2024, 1, 1),
                 end=datetime(2024, 1, 2),
             )
+

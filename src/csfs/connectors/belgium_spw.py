@@ -39,12 +39,12 @@ def _map_quality(code: object) -> QualityFlag:
     return QualityFlag.RAW
 
 
-@register("belgium_wallonia")
-class BelgiumWalloniaConnector(KiWISConnector):
+@register("belgium_spw")
+class BelgiumSpwConnector(KiWISConnector):
     """Connector for SPW Hydrométrie's KiWIS service (Wallonia, Belgium)."""
 
-    slug = "belgium_wallonia"
-    display_name = "SPW Hydrométrie (Wallonia)"
+    slug = "belgium_spw"
+    display_name = "SPW Hydrométrie (Belgium)"
     base_url = "https://hydrometrie.wallonie.be"
     country_codes = ["BE"]
 

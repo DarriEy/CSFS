@@ -26,11 +26,11 @@ _COUNCILS = [
 ]
 
 
-@register("newzealand_nrc")
-class NewZealandNrcConnector(BaseConnector):
+@register("newzealand_hilltop")
+class NewZealandHilltopConnector(BaseConnector):
     """Connector for NZ regional council Hilltop servers."""
 
-    slug = "newzealand_nrc"
+    slug = "newzealand_hilltop"
     display_name = "NZ Hilltop (multi-council)"
     base_url = "https://hilltop.nrc.govt.nz"
     country_codes = ["NZ"]

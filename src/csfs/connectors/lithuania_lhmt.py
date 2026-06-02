@@ -42,16 +42,16 @@ from csfs.core.registry import register
 logger = structlog.get_logger()
 
 
-@register("lithuania_meteo")
-class LithuaniaMeteoConnector(BaseConnector):
+@register("lithuania_lhmt")
+class LithuaniaLhmtConnector(BaseConnector):
     """Connector for Lithuanian Hydrometeorological Service (meteo.lt).
 
     Observations are *water level* (cm), not discharge (m3/s).
     Values are stored in ``discharge_m3s`` for interface compatibility.
     """
 
-    slug = "lithuania_meteo"
-    display_name = "LHMT meteo.lt (Lithuania)"
+    slug = "lithuania_lhmt"
+    display_name = "LHMT (Lithuania)"
     base_url = "https://api.meteo.lt"
     country_codes = ["LT"]
 

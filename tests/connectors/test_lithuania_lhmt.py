@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.lithuania_meteo import LithuaniaMeteoConnector
+from csfs.connectors.lithuania_lhmt import LithuaniaLhmtConnector
 
 BASE_URL = "https://api.meteo.lt"
 
@@ -103,7 +103,7 @@ async def test_fetch_stations_parses_json_array():
         return_value=httpx.Response(200, json=MOCK_STATIONS),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
@@ -119,14 +119,14 @@ async def test_fetch_stations_fields_correct():
         return_value=httpx.Response(200, json=MOCK_STATIONS),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     kaunas = next(
         s for s in stations if s.native_id == "nemunas-kaunas"
     )
-    assert kaunas.id == "lithuania_meteo:nemunas-kaunas"
-    assert kaunas.provider == "lithuania_meteo"
+    assert kaunas.id == "lithuania_lhmt:nemunas-kaunas"
+    assert kaunas.provider == "lithuania_lhmt"
     assert kaunas.name == "Nemunas ties Kaunu"
     assert kaunas.country_code == "LT"
     assert kaunas.river == "Nemunas"
@@ -144,7 +144,7 @@ async def test_fetch_stations_skips_invalid_entries():
         ),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 2
@@ -160,7 +160,7 @@ async def test_fetch_stations_handles_empty():
         return_value=httpx.Response(200, json=[]),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -182,15 +182,15 @@ async def test_fetch_observations_single_day():
         return_value=httpx.Response(200, json=MOCK_OBS_DAY1),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 1),
         )
 
-    assert chunk.provider == "lithuania_meteo"
-    assert chunk.station_id == "lithuania_meteo:nemunas-kaunas"
+    assert chunk.provider == "lithuania_lhmt"
+    assert chunk.station_id == "lithuania_lhmt:nemunas-kaunas"
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(152.3)
     assert chunk.observations[0].quality.value == "raw"
@@ -213,9 +213,9 @@ async def test_fetch_observations_multi_day():
         return_value=httpx.Response(200, json=MOCK_OBS_DAY2),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 2),
         )
@@ -234,9 +234,9 @@ async def test_fetch_observations_null_water_level():
         return_value=httpx.Response(200, json=MOCK_OBS_WITH_NULL),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 1),
         )
@@ -257,9 +257,9 @@ async def test_fetch_observations_404_returns_empty():
         return_value=httpx.Response(404),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 1),
         )
@@ -276,8 +276,8 @@ def test_connector_is_registered():
     """The connector is discoverable via the registry."""
     from csfs.core.registry import get_connector
 
-    cls = get_connector("lithuania_meteo")
-    assert cls is LithuaniaMeteoConnector
+    cls = get_connector("lithuania_lhmt")
+    assert cls is LithuaniaLhmtConnector
 
 
 # ======================================================================
@@ -295,7 +295,7 @@ async def test_fetch_stations_http_error_raises_connector_error():
         return_value=httpx.Response(500),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         with pytest.raises(ConnectorError, match="Failed to fetch station list"):
             await conn.fetch_stations()
 
@@ -308,7 +308,7 @@ async def test_fetch_stations_non_list_returns_empty():
         return_value=httpx.Response(200, json={"unexpected": "dict"}),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
@@ -327,10 +327,10 @@ async def test_fetch_day_non_404_error_raises():
         return_value=httpx.Response(500),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         with pytest.raises(ConnectorError, match="Failed to fetch observations"):
             await conn.fetch_observations(
-                "lithuania_meteo:nemunas-kaunas",
+                "lithuania_lhmt:nemunas-kaunas",
                 start=datetime(2024, 6, 1),
                 end=datetime(2024, 6, 1),
             )
@@ -357,7 +357,7 @@ async def test_parse_stations_invalid_coords_skipped():
         return_value=httpx.Response(200, json=bad_stations),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         stations = await conn.fetch_stations()
 
     assert len(stations) == 1
@@ -387,9 +387,9 @@ async def test_parse_observations_missing_timestamp_skipped():
         return_value=httpx.Response(200, json=obs_data),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 1),
         )
@@ -421,9 +421,9 @@ async def test_parse_observations_invalid_timestamp_skipped():
         return_value=httpx.Response(200, json=obs_data),
     )
 
-    async with LithuaniaMeteoConnector() as conn:
+    async with LithuaniaLhmtConnector() as conn:
         chunk = await conn.fetch_observations(
-            "lithuania_meteo:nemunas-kaunas",
+            "lithuania_lhmt:nemunas-kaunas",
             start=datetime(2024, 6, 1),
             end=datetime(2024, 6, 1),
         )
