@@ -210,7 +210,8 @@ class ItalyEmiliaConnector(BaseConnector):
         for block in cls._data_vars(rec):
             var = block.get("vars", {}).get(_VAR_NAME)
             if var is not None:
-                return var.get("v")
+                name = var.get("v")
+                return name if isinstance(name, str) else None
         return None
 
     @staticmethod

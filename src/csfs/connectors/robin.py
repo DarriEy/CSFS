@@ -12,7 +12,6 @@ References
 from __future__ import annotations
 
 import csv
-import io
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -97,7 +96,7 @@ class ROBINConnector(BaseConnector):
                             )
                         )
         except Exception as exc:
-            raise ConnectorError(self.slug, f"Failed to parse ROBIN file: {exc}")
+            raise ConnectorError(self.slug, f"Failed to parse ROBIN file: {exc}") from exc
 
         return TimeSeriesChunk(
             station_id=station_id,

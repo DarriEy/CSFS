@@ -214,11 +214,13 @@ class GEOGloWSConnector(BaseConnector):
         parallel to ``datetime``.
         """
         # Retrospective: keyed by reach id.
-        if isinstance(payload.get(reach_id), list):
-            return payload[reach_id]
+        retro = payload.get(reach_id)
+        if isinstance(retro, list):
+            return retro
         # Forecast: median of the ensemble.
-        if isinstance(payload.get("flow_median"), list):
-            return payload["flow_median"]
+        median = payload.get("flow_median")
+        if isinstance(median, list):
+            return median
         n = len(payload.get("datetime") or [])
         for key, val in payload.items():
             if key in ("datetime", "metadata"):

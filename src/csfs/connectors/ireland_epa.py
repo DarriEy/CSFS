@@ -212,7 +212,7 @@ class IrelandEPAConnector(BaseConnector):
                 with zf.open(csv_files[0]) as f:
                     csv_text = f.read().decode("utf-8-sig")
         except Exception as exc:
-            raise DataFormatError(self.slug, f"Failed to unzip/read CSV: {exc}")
+            raise DataFormatError(self.slug, f"Failed to unzip/read CSV: {exc}") from exc
 
         observations: list[Observation] = []
         # EPA CSVs often have header metadata lines starting with '#'
@@ -235,10 +235,7 @@ class IrelandEPAConnector(BaseConnector):
                     continue
                     
                 val_str = row.get("value")
-                if not val_str or val_str.strip() == "":
-                    discharge = None
-                else:
-                    discharge = float(val_str.strip())
+                discharge = None if not val_str or val_str.strip() == "" else float(val_str.strip())
                     
                 quality_raw = row.get("quality")
                 quality = (

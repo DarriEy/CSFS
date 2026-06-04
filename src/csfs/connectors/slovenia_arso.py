@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.exceptions import ConnectorError, DataFormatError
+from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,

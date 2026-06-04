@@ -350,10 +350,7 @@ def _parse_instant(time_obj: Any) -> datetime | None:
 
     Accepts ``{"instant": "...Z"}`` and bare ISO strings.
     """
-    if isinstance(time_obj, dict):
-        time_str = time_obj.get("instant") or time_obj.get("value")
-    else:
-        time_str = time_obj
+    time_str = time_obj.get("instant") or time_obj.get("value") if isinstance(time_obj, dict) else time_obj
     if not isinstance(time_str, str) or not time_str:
         return None
     try:

@@ -130,6 +130,9 @@ class IndonesiaPUPRConnector(BaseConnector):
             except (TypeError, ValueError):
                 latitude = longitude = None
 
+            if latitude is None or longitude is None:
+                continue
+
             try:
                 stations.append(
                     Station(

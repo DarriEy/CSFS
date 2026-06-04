@@ -10,7 +10,6 @@ References
 from __future__ import annotations
 
 import csv
-import io
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -93,7 +92,7 @@ class CAMELSDKConnector(BaseConnector):
                             )
                         )
         except Exception as exc:
-            raise ConnectorError(self.slug, f"Failed to parse CAMELS-DK file: {exc}")
+            raise ConnectorError(self.slug, f"Failed to parse CAMELS-DK file: {exc}") from exc
 
         return TimeSeriesChunk(
             station_id=station_id,

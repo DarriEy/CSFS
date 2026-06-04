@@ -16,7 +16,7 @@ import httpx
 import pytest
 import respx
 
-from csfs.connectors.bulgaria_eaemdr import EAEMDRConnector, _HIDROLOGY_PATH
+from csfs.connectors.bulgaria_eaemdr import _HIDROLOGY_PATH, EAEMDRConnector
 from csfs.core.models import QualityFlag
 from csfs.core.registry import get_connector
 

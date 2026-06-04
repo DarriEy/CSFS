@@ -74,6 +74,8 @@ ignore = ["B905"]
 "src/csfs/connectors/gsim.py" = ["E501"]
 "src/csfs/connectors/israel_caravan.py" = ["E501"]
 "src/csfs/connectors/panama_stri.py" = ["E501"]
+"tests/connectors/test_croatia_dhz.py" = ["E501"]
+"tests/connectors/test_germany_bavaria.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

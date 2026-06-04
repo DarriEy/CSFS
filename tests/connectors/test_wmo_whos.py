@@ -14,9 +14,9 @@ import pytest
 import respx
 
 from csfs.connectors.wmo_whos import (
+    _DEFAULT_TOKEN,
     WHOSConnector,
     WHOSPlataConnector,
-    _DEFAULT_TOKEN,
 )
 from csfs.core.registry import discover, get_connector
 

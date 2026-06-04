@@ -2,9 +2,9 @@
 # Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
 """Tests for the Ireland EPA HydroNet connector with mocked responses."""
 
-import zipfile
 import io
-from datetime import UTC, datetime, timedelta
+import zipfile
+from datetime import UTC, datetime
 
 import httpx
 import pytest

@@ -247,10 +247,7 @@ class GermanyBwConnector(BaseConnector):
             )
         except ValueError:
             return None
-        if tz is not None:
-            naive = naive.replace(tzinfo=tz)
-        else:
-            naive = naive.replace(tzinfo=UTC)
+        naive = naive.replace(tzinfo=tz) if tz is not None else naive.replace(tzinfo=UTC)
         return naive.astimezone(UTC)
 
     async def _resolve_row(self, native_id: str) -> list[str]:

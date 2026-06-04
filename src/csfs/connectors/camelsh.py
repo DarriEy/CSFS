@@ -20,7 +20,6 @@ References
 from __future__ import annotations
 
 import csv
-import io
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -123,19 +122,18 @@ class CAMELSHConnector(BaseConnector):
 
                     if start <= ts <= end:
                         q = row.get("streamflow_m3s") or row.get("q")
-                        h = row.get("water_level_m") or row.get("h")
-                        
+                        # The Observation model only tracks discharge; water level is
+                        # ignored (CSFS is a streamflow service).
                         observations.append(
                             Observation(
                                 station_id=station_id,
                                 timestamp=ts,
                                 discharge_m3s=float(q) if q else None,
-                                water_level_m=float(h) if h else None,
                                 quality=QualityFlag.RAW,
                             )
                         )
         except Exception as exc:
-            raise ConnectorError(self.slug, f"Failed to parse {file_path}: {exc}")
+            raise ConnectorError(self.slug, f"Failed to parse {file_path}: {exc}") from exc
 
         return TimeSeriesChunk(
             station_id=station_id,

@@ -142,12 +142,10 @@ class CroatiaDhzConnector(BaseConnector):
                     # We only care about discharge (m3/s) for CSFS primary field
                     # DHMZ latest data returns level (cm) for most, but some have flow.
                     # If it's cm, we store it for now, but real-time flow is preferred.
-                    if "m3/s" in raw_val.lower() or "m³/s" in raw_val.lower():
-                        discharge = val
-                    else:
-                        # It's water level in cm. CSFS models.py says discharge_m3s is the field.
-                        # We follow the project convention of storing level there if flow is missing.
-                        discharge = val
+                    # Flow (m3/s) is preferred; for level-only (cm) stations we follow the
+                    # project convention of storing the level in discharge_m3s when flow is
+                    # missing. Either way the value we keep is ``val``.
+                    discharge = val
                     
                     observations.append(Observation(
                         station_id=station_id,
