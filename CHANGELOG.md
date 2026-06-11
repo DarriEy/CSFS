@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-06-11
+
+### Added
+
+- SYMFLUENCE integration plugin (`csfs.integrations.symfluence`): a
+  `CSFSStreamflowHandler` observation handler that lets SYMFLUENCE pull
+  calibration/evaluation streamflow from any CSFS provider connector
+  (`CSFS_STATION_ID: "usgs:01646500"`, live fetch) or from a pre-built
+  CSFS DuckDB store (`CSFS_DB_PATH`), writing the framework's standard
+  raw and processed streamflow CSVs (`discharge_cms`, m³/s, UTC).
+- Auto-discovery via the `symfluence.plugins` entry point: with both
+  packages installed, `ADDITIONAL_OBSERVATIONS: csfs` works after a plain
+  `import symfluence` — no framework changes, no registration code.
+  SYMFLUENCE remains a non-dependency: the integration module imports the
+  framework defensively and `import csfs` is unaffected without it.
+- Documentation page (`docs/symfluence.md`) covering install, YAML
+  configuration, live-fetch vs store mode, and the unit/timezone contract.
+
 ## [0.2.0] — 2026-06-11
 
 ### Added

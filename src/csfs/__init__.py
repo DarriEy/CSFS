@@ -37,7 +37,7 @@ from csfs.core.registry import discover, get_connector, list_providers
 from csfs.scheduler.runner import run_acquisition
 from csfs.store.duckdb_store import DuckDBStore
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "OBSERVATION_SCHEMA",
