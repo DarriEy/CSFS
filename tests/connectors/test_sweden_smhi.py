@@ -1,6 +1,6 @@
 """Tests for the SMHI (Sweden) hydrology connector with mocked HTTP responses."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -310,6 +310,166 @@ async def test_fetch_observations_naive_datetimes():
 
 
 # ------------------------------------------------------------------
+# 15-minute product (parameter 2, config={"resolution": "15min"})
+# ------------------------------------------------------------------
+
+# Four 15-min steps starting 2024-06-01T00:00:00Z (epoch ms; 900000 ms apart),
+# plus one far outside the test window. Recent unchecked SMHI data carries
+# quality "O"; values are m³/s as served (no conversion).
+MOCK_15MIN_OBSERVATIONS_RESPONSE = {
+    "value": [
+        {"date": 1717200000000, "value": 186.0, "quality": "O"},
+        {"date": 1717200900000, "value": 186.5, "quality": "O"},
+        {"date": 1717201800000, "value": 187.0, "quality": "G"},
+        {"date": 1717202700000, "value": 187.5, "quality": "Y"},
+        {"date": 1718409600000, "value": 50.0, "quality": "G"},
+    ],
+}
+
+
+def test_resolution_default_is_daily():
+    conn = SwedenSMHIConnector()
+    assert conn.resolution == "daily"
+    assert conn._parameter == 1
+
+
+def test_resolution_15min_selects_parameter_2():
+    conn = SwedenSMHIConnector(config={"resolution": "15min"})
+    assert conn.resolution == "15min"
+    assert conn._parameter == 2
+
+
+def test_resolution_unknown_raises():
+    from csfs.core.exceptions import ConnectorError
+
+    with pytest.raises(ConnectorError, match="resolution"):
+        SwedenSMHIConnector(config={"resolution": "hourly"})
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_15min_uses_parameter_2():
+    """With resolution=15min the station roster comes from parameter 2."""
+    route = respx.get(f"{SMHI_BASE}/version/latest/parameter/2.json").mock(
+        return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE)
+    )
+
+    async with SwedenSMHIConnector(config={"resolution": "15min"}) as conn:
+        stations = await conn.fetch_stations()
+
+    assert route.called
+    assert len(stations) == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_15min_historical_uses_corrected_archive():
+    """Historical 15-min windows download the parameter-2 corrected archive."""
+    route = respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/2/station/2357/period/corrected-archive/data.json"
+    ).mock(return_value=httpx.Response(200, json=MOCK_15MIN_OBSERVATIONS_RESPONSE))
+
+    async with SwedenSMHIConnector(config={"resolution": "15min"}) as conn:
+        chunk = await conn.fetch_observations(
+            "sweden_smhi:2357",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 1, 1, 0, tzinfo=UTC),
+        )
+
+    assert route.called
+    # The June 15 value is filtered out client-side
+    assert len(chunk.observations) == 4
+    # Epoch-ms -> UTC and m³/s passthrough are identical to the daily path
+    assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
+    assert chunk.observations[1].timestamp == datetime(2024, 6, 1, 0, 15, tzinfo=UTC)
+    assert chunk.observations[0].discharge_m3s == pytest.approx(186.0)
+    assert chunk.observations[3].discharge_m3s == pytest.approx(187.5)
+    # Quality codes: O -> RAW, G -> GOOD, Y -> SUSPECT
+    assert chunk.observations[0].quality == QualityFlag.RAW
+    assert chunk.observations[2].quality == QualityFlag.GOOD
+    assert chunk.observations[3].quality == QualityFlag.SUSPECT
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_15min_recent_window_uses_latest_day():
+    """Windows starting within the last 24 h fetch the small latest-day file."""
+    route = respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/2/station/2357/period/latest-day/data.json"
+    ).mock(return_value=httpx.Response(200, json={"value": []}))
+
+    now = datetime.now(UTC)
+    async with SwedenSMHIConnector(config={"resolution": "15min"}) as conn:
+        chunk = await conn.fetch_observations(
+            "sweden_smhi:2357",
+            start=now - timedelta(hours=6),
+            end=now,
+        )
+
+    assert route.called
+    assert chunk.station_id == "sweden_smhi:2357"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_latest_15min_uses_latest_day():
+    """fetch_latest (last 24 h) takes the cheap latest-day path for 15-min data."""
+    route = respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/2/station/2357/period/latest-day/data.json"
+    ).mock(return_value=httpx.Response(200, json={"value": []}))
+
+    async with SwedenSMHIConnector(config={"resolution": "15min"}) as conn:
+        chunk = await conn.fetch_latest("sweden_smhi:2357")
+
+    assert route.called
+    assert chunk.provider == "sweden_smhi"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_daily_recent_window_keeps_corrected_archive():
+    """The default daily product always uses corrected-archive, even for recent windows."""
+    route = respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/1/station/1/period/corrected-archive/data.json"
+    ).mock(return_value=httpx.Response(200, json={"value": []}))
+
+    now = datetime.now(UTC)
+    async with SwedenSMHIConnector() as conn:
+        await conn.fetch_observations("sweden_smhi:1", start=now - timedelta(hours=6), end=now)
+
+    assert route.called
+
+
+def test_select_period_boundaries():
+    """Recent 15-min windows pick latest-day; old windows pick corrected-archive."""
+    conn = SwedenSMHIConnector(config={"resolution": "15min"})
+    assert conn._select_period(datetime.now(UTC) - timedelta(hours=1)) == "latest-day"
+    assert conn._select_period(datetime(2020, 1, 1, tzinfo=UTC)) == "corrected-archive"
+
+    daily = SwedenSMHIConnector()
+    assert daily._select_period(datetime.now(UTC) - timedelta(hours=1)) == "corrected-archive"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_15min_naive_recent_start_uses_latest_day():
+    """Naive (no tzinfo) datetimes are treated as UTC before period selection."""
+    route = respx.get(
+        f"{SMHI_BASE}/version/latest/parameter/2/station/2357/period/latest-day/data.json"
+    ).mock(return_value=httpx.Response(200, json={"value": []}))
+
+    naive_now = datetime.now(UTC).replace(tzinfo=None)
+    async with SwedenSMHIConnector(config={"resolution": "15min"}) as conn:
+        await conn.fetch_observations(
+            "sweden_smhi:2357",
+            start=naive_now - timedelta(hours=6),
+            end=naive_now,
+        )
+
+    assert route.called
+
+
+# ------------------------------------------------------------------
 # Quality mapping unit tests
 # ------------------------------------------------------------------
 
@@ -326,8 +486,15 @@ def test_quality_from_smhi_suspect():
     assert _quality_from_smhi("Y") == QualityFlag.SUSPECT
 
 
-def test_quality_from_smhi_unknown():
+def test_quality_from_smhi_unchecked_o():
+    """SMHI 'O' (orange) = okontrollerade/unchecked values -> RAW."""
+    assert _quality_from_smhi("O") == QualityFlag.RAW
+
+
+def test_quality_from_smhi_unknown_falls_through_to_raw():
+    """Unknown/future codes deliberately map to RAW (treated as unchecked)."""
     assert _quality_from_smhi("SomeOtherCode") == QualityFlag.RAW
+    assert _quality_from_smhi("R") == QualityFlag.RAW
 
 
 def test_quality_from_smhi_strips_whitespace():

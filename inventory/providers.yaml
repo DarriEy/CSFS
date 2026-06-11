@@ -164,6 +164,10 @@
   license: cc0
   status: implemented
   estreams_id: SE_SMHI
+  notes: >-
+    Two discharge products — parameter 1 "Vattenföring (Dygn)" (daily mean,
+    connector default) and parameter 2 "Vattenföring (15 min)" via
+    config resolution="15min". Both serve epoch-ms UTC timestamps and m³/s.
 
 # ──────────────────────────────────────────────
 #  TIER 2 — Usable APIs, moderate effort

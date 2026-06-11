@@ -94,7 +94,7 @@ In code, **86 connectors are registered**: the 78 `implemented` entries plus 8 w
 | Pakistan IRSA/WAPDA (`pakistan_wapda`) | PK | `implemented` | yes |  |
 | IMGW Public Data (`poland_imgw`) | PL | `implemented` | no | Hydrological year (Nov start). All gauges in monthly zip files. |
 | R-ArcticNET v4.0 (Russian Arctic) (`russia_arcticnet`) | RU | `implemented` | no | Monthly mean discharge for Russian Arctic stations. |
-| SMHI Open Data — Hydrology (`sweden_smhi`) | SE | `implemented` | yes |  |
+| SMHI Open Data — Hydrology (`sweden_smhi`) | SE | `implemented` | yes | Two discharge products — parameter 1 "Vattenföring (Dygn)" (daily mean, connector default) and parameter 2 "Vattenföring (15 min)" via config resolution="15min". Both serve epoch-ms UTC timestamps and m³/s. |
 | ARSO (Slovenia) (`slovenia_arso`) | SI | `implemented` | yes | Real-time XML feed of latest observations. |
 | MARN / SNET (El Salvador) (`elsalvador_marn`) | SV | `implemented` | yes | Uses AQUARIUS Time-Series platform. |
 | HII (Hydro-Informatics Institute Thailand) (`thailand_hii`) | TH | `implemented` | yes |  |

@@ -7,26 +7,51 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.exceptions import DataFormatError
+from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
+# Discharge products offered by the SMHI hydroobs API, keyed by the
+# connector-level ``resolution`` config option
+# (``SwedenSMHIConnector(config={"resolution": "15min"})``).
+_PARAMETER_BY_RESOLUTION = {
+    "daily": 1,  # "Vattenföring (Dygn)" — daily mean discharge
+    "15min": 2,  # "Vattenföring (15 min)" — 15-minute discharge
+}
+
+# A station's full 15-min corrected archive is served as one large JSON
+# document (~73 MB for long-record stations); allow extra download time.
+_ARCHIVE_TIMEOUT_15MIN_S = 300.0
+
 
 def _quality_from_smhi(raw: str) -> QualityFlag:
     """Map SMHI quality codes to CSFS quality flags.
 
-    SMHI codes:
-        "G"          -> good (green)
-        "Controlled" -> good (manually verified)
-        "Y"          -> suspect (yellow / uncertain)
+    SMHI's documented codes (the legend SMHI ships with every hydroobs
+    data file):
+
+        "G" (green)  -> "Kontrollerade och godkända värden"
+                        (checked and approved)      -> GOOD
+        "Y" (yellow) -> "Grovt kontrollerade värden"
+                        (roughly checked)           -> SUSPECT
+        "O" (orange) -> "Okontrollerade värden"
+                        (unchecked, e.g. recent realtime data) -> RAW
+
+    "Controlled" is kept for payloads that spell the green flag out.
+    SMHI also mentions a red code for QC-rejected values, but rejected
+    data is not served; any unknown/future code deliberately falls
+    through to RAW (treated as unchecked).
     """
     code = raw.strip()
     if code in ("G", "Controlled"):
         return QualityFlag.GOOD
     if code == "Y":
         return QualityFlag.SUSPECT
+    if code == "O":
+        return QualityFlag.RAW
+    # Deliberate fallthrough: treat unknown codes as unchecked data.
     return QualityFlag.RAW
 
 
@@ -37,13 +62,29 @@ class SwedenSMHIConnector(BaseConnector):
     base_url = "https://opendata-download-hydroobs.smhi.se/api"
     country_codes = ["SE"]
 
+    def __init__(self, config: dict | None = None) -> None:
+        super().__init__(config)
+        resolution = str(self.config.get("resolution", "daily"))
+        if resolution not in _PARAMETER_BY_RESOLUTION:
+            raise ConnectorError(
+                self.slug,
+                f"Unknown resolution {resolution!r}; "
+                f"expected one of {sorted(_PARAMETER_BY_RESOLUTION)}",
+            )
+        self.resolution = resolution
+        self._parameter = _PARAMETER_BY_RESOLUTION[resolution]
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all stations that report water discharge (parameter 1)."""
-        resp = await self._get("/version/latest/parameter/1.json")
+        """Return all stations reporting the configured discharge product.
+
+        Parameter 1 (daily discharge) by default; parameter 2 (15-minute
+        discharge) when constructed with ``config={"resolution": "15min"}``.
+        """
+        resp = await self._get(f"/version/latest/parameter/{self._parameter}.json")
         data = resp.json()
         return self._parse_stations(data)
 
@@ -55,16 +96,30 @@ class SwedenSMHIConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Fetch discharge observations for a station, filtered to [start, end].
 
-        SMHI's ``latest-months`` period returns roughly the last four months
-        of data. Date-range filtering is done client-side because the API
-        does not accept arbitrary date parameters on the observations
-        endpoint.
+        The hydroobs data endpoint accepts no date parameters, so the
+        whole period file is downloaded and date-range filtering is done
+        client-side. The period (``corrected-archive`` vs ``latest-day``)
+        is chosen per :meth:`_select_period`.
         """
+        # Normalize naive datetimes to UTC up front so both period
+        # selection and filtering see timezone-aware bounds.
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=UTC)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=UTC)
+
         native_id = station_id.removeprefix(f"{self.slug}:")
+        period = self._select_period(start)
+        timeout = (
+            _ARCHIVE_TIMEOUT_15MIN_S
+            if self.resolution == "15min" and period == "corrected-archive"
+            else None
+        )
 
         resp = await self._get(
-            f"/version/latest/parameter/1/station/{native_id}"
-            f"/period/corrected-archive/data.json",
+            f"/version/latest/parameter/{self._parameter}/station/{native_id}"
+            f"/period/{period}/data.json",
+            timeout=timeout,
         )
         data = resp.json()
         return self._parse_observations(data, station_id, start, end)
@@ -82,8 +137,29 @@ class SwedenSMHIConnector(BaseConnector):
     # Internal helpers
     # ------------------------------------------------------------------
 
+    def _select_period(self, start: datetime) -> str:
+        """Pick the cheapest API period that covers the requested window.
+
+        The hydroobs data endpoint only offers ``latest-hour``,
+        ``latest-day`` and ``corrected-archive`` (there is no
+        ``latest-months`` for this API, unlike SMHI metobs, and no date
+        subsetting). The daily product's corrected archive is small, so
+        it is always used — preserving long-standing behavior. The
+        15-minute corrected archive is one ~73 MB JSON document per
+        station, so when the requested window starts within the last
+        24 hours the much smaller ``latest-day`` file (observed to span
+        roughly the last two days) is fetched instead.
+        """
+        # One minute of slack so fetch_latest's "now - 24 h" window (computed
+        # microseconds before this check) still takes the cheap path; the
+        # latest-day file comfortably covers it.
+        cutoff = datetime.now(UTC) - timedelta(hours=24, minutes=1)
+        if self.resolution == "15min" and start >= cutoff:
+            return "latest-day"
+        return "corrected-archive"
+
     def _parse_stations(self, data: dict) -> list[Station]:
-        """Parse the station listing JSON from SMHI parameter 1 endpoint."""
+        """Parse the station listing JSON from the SMHI parameter endpoint."""
         stations: list[Station] = []
         for entry in data.get("station", []):
             native_id = str(entry.get("key", ""))
@@ -120,7 +196,11 @@ class SwedenSMHIConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Parse the observation JSON and filter to [start, end]."""
+        """Parse the observation JSON and filter to [start, end].
+
+        Identical for both products: timestamps are epoch milliseconds
+        (UTC) and values are m³/s (no conversion needed).
+        """
         # Ensure start/end are timezone-aware (UTC) for comparison
         if start.tzinfo is None:
             start = start.replace(tzinfo=UTC)

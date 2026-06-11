@@ -22,6 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   framework defensively and `import csfs` is unaffected without it.
 - Documentation page (`docs/symfluence.md`) covering install, YAML
   configuration, live-fetch vs store mode, and the unit/timezone contract.
+- SMHI 15-minute discharge product: `sweden_smhi` now accepts
+  `config={"resolution": "15min"}` to use hydroobs parameter 2
+  ("Vattenföring (15 min)") instead of the daily parameter 1
+  ("Vattenföring (Dygn)", still the default — existing behavior is
+  unchanged). The 15-min path keeps the same epoch-ms UTC timestamps and
+  m³/s passthrough; because the API offers no date subsetting and the full
+  15-min corrected archive is one ~73 MB JSON per station, windows starting
+  within the last 24 h fetch the small `latest-day` file instead (the API
+  has no `latest-months` period, unlike SMHI metobs), and full-archive
+  downloads get an extended timeout.
+
+### Fixed
+
+- SMHI quality-code map now follows SMHI's documented legend: `G` (green,
+  checked and approved) → good, `Y` (yellow, roughly checked) → suspect,
+  and the previously unmapped `O` (orange, unchecked — seen on recent
+  realtime data) is explicitly mapped to raw; unknown codes deliberately
+  fall through to raw.
+- `sweden_smhi.fetch_observations` docstring claimed the `latest-months`
+  period while the code fetched `corrected-archive`; it now documents the
+  actual window-dependent period selection.
 
 ## [0.2.0] — 2026-06-11
 
