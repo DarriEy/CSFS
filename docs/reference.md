@@ -3,6 +3,17 @@
 Generated from the source with mkdocstrings. The stable, user-facing surface
 is shown here; connector internals are documented in their modules.
 
+## Facade conveniences
+
+Top-level helpers on the `import csfs` facade (which also re-exports
+everything below — models, store, runner, registry).
+
+::: csfs.open_store
+
+::: csfs.fetch_observations
+
+::: csfs.fetch_observations_sync
+
 ## Canonical models
 
 ::: csfs.core.models.Station

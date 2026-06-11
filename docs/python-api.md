@@ -1,23 +1,115 @@
 # Python API
 
-Everything the CLI does is a thin wrapper over the library. Three layers are
-useful directly: the **store** (query what you have), the **runner**
-(acquire data), and the **connectors** (talk to one provider without a
-store). Full signatures are in the [API Reference](reference.md).
+`import csfs` is the blessed public surface — everything re-exported there
+(see `csfs.__all__`) is stable across minor releases, while deeper module
+paths are internal and may move. This facade is what downstream frameworks
+(e.g. a SYMFLUENCE streamflow-observation adapter) should call. Full
+signatures are in the [API Reference](reference.md).
 
-## Querying the store
+## Quick start: store → DataFrame
 
-`DuckDBStore` is an async context manager over a single-file DuckDB database.
+`csfs.open_store()` opens the single-file DuckDB store (read-only by
+default) as an async context manager. The `*_df` methods return pandas
+DataFrames; observations come back indexed by ascending UTC `timestamp`
+with `discharge_m3s` and `quality` columns.
+
+```python
+import asyncio
+
+import csfs
+
+
+async def main() -> None:
+    async with csfs.open_store("csfs.duckdb") as store:
+        # One gauge's series, ready for resampling/plotting/metrics
+        df = await store.get_observations_df("usgs:01646500")
+        print(df["discharge_m3s"].describe())
+
+        # Many gauges at once (a station_id column is kept)
+        multi = await store.get_observations_df(
+            ["usgs:01646500", "usgs:01638500"],
+        )
+
+        # Station metadata as a frame
+        stations = await store.get_stations_df(provider="usgs", limit=50)
+
+
+asyncio.run(main())
+```
+
+!!! note "pandas is an optional extra"
+    The DataFrame methods need pandas, which CSFS does not require by
+    default. Install it with:
+
+    ```bash
+    pip install "community-streamflow-service[pandas]"
+    ```
+
+    Without it, the `*_df` methods raise an `ImportError` pointing at that
+    command. The Arrow methods below need no extra.
+
+## Zero-copy Arrow queries
+
+`get_observations_arrow()` / `get_stations_arrow()` take the same filters
+as their list-returning counterparts and return a `pyarrow.Table` straight
+from DuckDB's native Arrow results — no Python-object round trip, ideal for
+large pulls or handing off to polars/datafusion:
+
+```python
+table = await store.get_observations_arrow(
+    ["usgs:01646500", "usgs:01638500"],
+    start=datetime(2026, 1, 1, tzinfo=UTC),
+    end=datetime(2026, 6, 1, tzinfo=UTC),
+)
+```
+
+## One-shot provider fetch (no store)
+
+To pull a single gauge's series directly from a provider — e.g. grabbing
+observations for one calibration basin — use `fetch_observations` /
+`fetch_observations_sync`. They handle connector discovery, instantiation,
+and the HTTP session for you and return a `TimeSeriesChunk` with discharge
+normalized to m³/s and timestamps to UTC:
+
+```python
+from datetime import UTC, datetime, timedelta
+
+import csfs
+
+end = datetime.now(UTC)
+chunk = csfs.fetch_observations_sync(
+    "usgs",
+    "usgs:01646500",          # canonical "<provider>:<native_id>" ID
+    start=end - timedelta(days=30),
+    end=end,
+    config=None,              # provider-specific settings, e.g. API keys
+)
+for obs in chunk.observations[:5]:
+    print(obs.timestamp, obs.discharge_m3s, obs.quality)
+```
+
+`fetch_observations_sync` runs its own event loop, so it must be called
+from synchronous code; inside async code (it raises `RuntimeError` there)
+use the awaitable form:
+
+```python
+chunk = await csfs.fetch_observations("usgs", "usgs:01646500", start, end)
+```
+
+## Querying the store (lists of models/dicts)
+
+The original query methods return pydantic `Station` models and plain
+dicts — handy for JSON serialization and small lookups:
 
 ```python
 import asyncio
 from datetime import UTC, datetime
 
-from csfs.store.duckdb_store import DuckDBStore
+import csfs
 
 
 async def main() -> None:
-    async with DuckDBStore("csfs.duckdb", read_only=True) as store:
+    async with csfs.open_store("csfs.duckdb") as store:
         # Stations: filter by provider, country, and/or bounding box
         stations = await store.get_stations(
             provider="usgs",
@@ -68,13 +160,12 @@ and returns a per-provider result dict.
 ```python
 import asyncio
 
-from csfs.scheduler.runner import run_acquisition
-from csfs.store.duckdb_store import DuckDBStore
+import csfs
 
 
 async def main() -> None:
-    async with DuckDBStore("csfs.duckdb") as store:
-        results = await run_acquisition(
+    async with csfs.open_store("csfs.duckdb", read_only=False) as store:
+        results = await csfs.run_acquisition(
             store,
             providers=["usgs", "france_hubeau"],  # None = all registered
             lookback_hours=48,
@@ -93,23 +184,27 @@ Incremental by design: for each station the runner asks the store for the
 latest stored timestamp and fetches only from there forward, so repeated runs
 do not re-download history.
 
+Provider configs can be loaded from `csfs.yaml` (or
+`~/.config/csfs/config.yaml`) with `csfs.load_config()`.
+
 ## Direct connector access
 
-To talk to one provider without a database, instantiate its connector. Every
-connector is an async context manager exposing `fetch_stations()` and
+For full control over one provider — station discovery, bulk fetches —
+instantiate its connector class. Every connector is an async context
+manager exposing `fetch_stations()` and
 `fetch_observations(station_id, start, end)`:
 
 ```python
 import asyncio
 from datetime import UTC, datetime, timedelta
 
-from csfs.core.registry import discover, get_connector
+import csfs
 
 
 async def main() -> None:
-    discover()  # import all connector modules, populating the registry
+    csfs.discover()  # import all connector modules, populating the registry
 
-    connector_cls = get_connector("usgs")
+    connector_cls = csfs.get_connector("usgs")
     async with connector_cls(config={}) as c:
         stations = await c.fetch_stations()
         print(len(stations), "stations")
@@ -137,12 +232,16 @@ Notes:
 
 ## Canonical models
 
-All data flows through three pydantic models in `csfs.core.models`:
+All data flows through three pydantic models, re-exported at top level:
 
-- **`Station`** — `id`, `provider`, `native_id`, `name`, `latitude`,
+- **`csfs.Station`** — `id`, `provider`, `native_id`, `name`, `latitude`,
   `longitude`, `country_code`, plus optional `river`,
   `catchment_area_km2`, `elevation_m`.
-- **`Observation`** — `station_id`, `timestamp` (UTC), `discharge_m3s`,
-  `quality` (`good` / `suspect` / `missing` / `estimated` / `raw`).
-- **`TimeSeriesChunk`** — a batch of observations from one connector fetch,
-  with `fetched_at` provenance.
+- **`csfs.Observation`** — `station_id`, `timestamp` (UTC),
+  `discharge_m3s`, `quality` (`good` / `suspect` / `missing` /
+  `estimated` / `raw`).
+- **`csfs.TimeSeriesChunk`** — a batch of observations from one connector
+  fetch, with `fetched_at` provenance.
+
+The matching PyArrow schemas are `csfs.OBSERVATION_SCHEMA` and
+`csfs.STATION_SCHEMA`.

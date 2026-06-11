@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-06-11
+
+### Added
+
+- Public Python API facade: `import csfs` now re-exports the blessed,
+  stable surface — `DuckDBStore`, the canonical models (`Station`,
+  `Observation`, `TimeSeriesChunk`, `QualityFlag`) and PyArrow schemas,
+  `run_acquisition`, `load_config`, and the registry
+  (`discover` / `get_connector` / `list_providers`) — with an explicit
+  `__all__`. Connector modules stay lazy behind `discover()`.
+- Arrow and pandas store queries: `DuckDBStore.get_observations_arrow()` /
+  `get_stations_arrow()` return zero-copy `pyarrow.Table`s via DuckDB's
+  native Arrow results; `get_observations_df()` / `get_stations_df()`
+  return pandas DataFrames (observations indexed by ascending UTC
+  `timestamp`). Observation queries accept a list of station IDs for
+  multi-gauge (e.g. calibration) workloads.
+- `pandas` optional extra (`pip install
+  "community-streamflow-service[pandas]"`); the DataFrame methods raise a
+  clear `ImportError` pointing to it when pandas is absent.
+- Direct-fetch helpers: `csfs.open_store()` (read-only by default) and
+  `csfs.fetch_observations()` / `csfs.fetch_observations_sync()` for
+  one-shot, store-less pulls of a single gauge's series from any provider.
+
 ## [0.1.0] — 2026-06-11
 
 Initial release.
@@ -35,4 +58,5 @@ Initial release.
 - Scheduled acquisition workflow on GitHub Actions with a release-hosted
   DuckDB snapshot and health alerting.
 
+[0.2.0]: https://github.com/DarriEy/CSFS/releases/tag/v0.2.0
 [0.1.0]: https://github.com/DarriEy/CSFS/releases/tag/v0.1.0

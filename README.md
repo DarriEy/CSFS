@@ -50,6 +50,7 @@ See the full [provider catalog](https://darriey.github.io/CSFS/catalog/).
 
 ```bash
 pip install community-streamflow-service            # core
+pip install "community-streamflow-service[pandas]"  # + DataFrame store queries
 pip install "community-streamflow-service[api]"     # + FastAPI read layer
 ```
 
@@ -70,26 +71,37 @@ csfs serve                              # HTTP read layer (needs the api extra)
 ```python
 import asyncio
 
-from csfs.scheduler.runner import run_acquisition
-from csfs.store.duckdb_store import DuckDBStore
+import csfs
 
 
 async def main() -> None:
-    async with DuckDBStore("csfs.duckdb") as store:
-        await run_acquisition(store, providers=["usgs"], lookback_hours=48, max_stations=20)
+    async with csfs.open_store("csfs.duckdb", read_only=False) as store:
+        await csfs.run_acquisition(store, providers=["usgs"], lookback_hours=48, max_stations=20)
 
         stations = await store.get_stations(provider="usgs", limit=5)
-        obs = await store.get_observations(stations[0].id, limit=10)
-        for row in obs:
-            print(row["timestamp"], row["discharge_m3s"])
+        # pandas DataFrame indexed by timestamp (needs the [pandas] extra);
+        # get_observations() / get_observations_arrow() need no extra.
+        df = await store.get_observations_df(stations[0].id)
+        print(df["discharge_m3s"].describe())
 
 
 asyncio.run(main())
 ```
 
+Or pull one gauge's series straight from a provider, no database involved:
+
+```python
+from datetime import UTC, datetime, timedelta
+
+import csfs
+
+end = datetime.now(UTC)
+chunk = csfs.fetch_observations_sync("usgs", "usgs:01646500", start=end - timedelta(days=7), end=end)
+```
+
 The store is a plain DuckDB file — any SQL/pandas/Arrow tooling works on it
-directly. For direct single-provider access without a database, see the
-[Python API guide](https://darriey.github.io/CSFS/python-api/).
+directly. The blessed, stable surface is what `import csfs` re-exports; see
+the [Python API guide](https://darriey.github.io/CSFS/python-api/).
 
 ## API keys
 
