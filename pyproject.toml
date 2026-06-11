@@ -41,6 +41,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pandas = [
+    "pandas>=2.0",
+]
 api = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
@@ -125,6 +128,7 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 # pyarrow ships no type stubs (no py.typed, no published types package).
+# pandas is an optional extra; mypy must pass whether or not it is installed.
 [[tool.mypy.overrides]]
-module = ["pyarrow", "pyarrow.*"]
+module = ["pyarrow", "pyarrow.*", "pandas", "pandas.*"]
 ignore_missing_imports = true

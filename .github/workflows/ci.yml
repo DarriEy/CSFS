@@ -22,7 +22,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install -e ".[dev,api]"
+        # pandas is an optional runtime extra, but installed in CI so the
+        # DataFrame query paths are tested and type-checked.
+        run: pip install -e ".[dev,api,pandas]"
 
       - name: Lint
         run: ruff check src/ tests/

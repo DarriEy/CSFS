@@ -4,13 +4,41 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import duckdb
+import pyarrow as pa
 
 from csfs.core.models import Station, TimeSeriesChunk
 from csfs.store.base import BaseStore
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+def _fetch_arrow(result: duckdb.DuckDBPyConnection) -> pa.Table:
+    """Materialize a query result as a pyarrow Table across duckdb versions.
+
+    duckdb 1.5 renamed ``fetch_arrow_table()`` to ``to_arrow_table()`` (and
+    repointed ``arrow()`` at a RecordBatchReader); support both spellings.
+    """
+    if hasattr(result, "to_arrow_table"):
+        return result.to_arrow_table()
+    return result.fetch_arrow_table()  # pragma: no cover — duckdb < 1.5
+
+
+def _require_pandas() -> None:
+    """Raise a helpful error when the optional pandas dependency is missing."""
+    try:
+        import pandas  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "pandas is required for DataFrame queries but is not installed. "
+            'Install it with: pip install "community-streamflow-service[pandas]"'
+        ) from exc
 
 _INIT_SQL = """
 CREATE TABLE IF NOT EXISTS stations (
@@ -131,14 +159,14 @@ class DuckDBStore(BaseStore):
         row = result.fetchone()
         return row[0] if row is not None else len(rows)
 
-    async def get_stations(
-        self,
-        provider: str | None = None,
-        country_code: str | None = None,
-        bbox: tuple[float, float, float, float] | None = None,
-        limit: int | None = None,
-        offset: int = 0,
-    ) -> list[Station]:
+    @staticmethod
+    def _stations_query(
+        provider: str | None,
+        country_code: str | None,
+        bbox: tuple[float, float, float, float] | None,
+        limit: int | None,
+        offset: int,
+    ) -> tuple[str, list]:
         query = "SELECT * FROM stations WHERE 1=1"
         params: list = []
         if provider:
@@ -155,7 +183,46 @@ class DuckDBStore(BaseStore):
         if limit is not None:
             query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
+        return query, params
 
+    @staticmethod
+    def _observations_query(
+        station_id: str | Sequence[str],
+        start: datetime | None,
+        end: datetime | None,
+        limit: int | None,
+        offset: int,
+    ) -> tuple[str, list]:
+        ids = [station_id] if isinstance(station_id, str) else list(station_id)
+        if not ids:
+            raise ValueError("station_id must be a station ID or a non-empty sequence of station IDs")
+        placeholders = ", ".join("?" for _ in ids)
+        query = (
+            "SELECT station_id, timestamp, discharge_m3s, quality "
+            f"FROM observations WHERE station_id IN ({placeholders})"
+        )
+        params: list = list(ids)
+        if start:
+            query += " AND timestamp >= ?"
+            params.append(start)
+        if end:
+            query += " AND timestamp <= ?"
+            params.append(end)
+        query += " ORDER BY timestamp, station_id"
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        return query, params
+
+    async def get_stations(
+        self,
+        provider: str | None = None,
+        country_code: str | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[Station]:
+        query, params = self._stations_query(provider, country_code, bbox, limit, offset)
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]
         return [
@@ -171,22 +238,79 @@ class DuckDBStore(BaseStore):
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
-        query = "SELECT station_id, timestamp, discharge_m3s, quality FROM observations WHERE station_id = ?"
-        params: list = [station_id]
-        if start:
-            query += " AND timestamp >= ?"
-            params.append(start)
-        if end:
-            query += " AND timestamp <= ?"
-            params.append(end)
-        query += " ORDER BY timestamp"
-        if limit is not None:
-            query += " LIMIT ? OFFSET ?"
-            params.extend([limit, offset])
-
+        query, params = self._observations_query(station_id, start, end, limit, offset)
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]
         return [dict(zip(columns, row)) for row in rows]
+
+    async def get_stations_arrow(
+        self,
+        provider: str | None = None,
+        country_code: str | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> pa.Table:
+        """Like :meth:`get_stations`, but returns a zero-copy :class:`pyarrow.Table`."""
+        query, params = self._stations_query(provider, country_code, bbox, limit, offset)
+        return _fetch_arrow(self.conn.execute(query, params))
+
+    async def get_observations_arrow(
+        self,
+        station_id: str | Sequence[str],
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> pa.Table:
+        """Like :meth:`get_observations`, but returns a zero-copy :class:`pyarrow.Table`.
+
+        ``station_id`` may also be a sequence of station IDs (e.g. for
+        calibration over many gauges); rows are ordered by timestamp, then
+        station ID.
+        """
+        query, params = self._observations_query(station_id, start, end, limit, offset)
+        return _fetch_arrow(self.conn.execute(query, params))
+
+    async def get_stations_df(
+        self,
+        provider: str | None = None,
+        country_code: str | None = None,
+        bbox: tuple[float, float, float, float] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> pd.DataFrame:
+        """Like :meth:`get_stations`, but returns a pandas DataFrame.
+
+        Requires the optional ``pandas`` extra
+        (``pip install "community-streamflow-service[pandas]"``).
+        """
+        _require_pandas()
+        table = await self.get_stations_arrow(provider, country_code, bbox, limit, offset)
+        return cast("pd.DataFrame", table.to_pandas())
+
+    async def get_observations_df(
+        self,
+        station_id: str | Sequence[str],
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> pd.DataFrame:
+        """Like :meth:`get_observations`, but returns a pandas DataFrame.
+
+        The frame is indexed by ``timestamp`` (ascending, UTC) with columns
+        ``discharge_m3s`` and ``quality``; a ``station_id`` column is kept
+        only when a sequence of station IDs is queried. Requires the
+        optional ``pandas`` extra
+        (``pip install "community-streamflow-service[pandas]"``).
+        """
+        _require_pandas()
+        table = await self.get_observations_arrow(station_id, start, end, limit, offset)
+        df = table.to_pandas().set_index("timestamp").sort_index()
+        if isinstance(station_id, str):
+            df = df.drop(columns=["station_id"])
+        return cast("pd.DataFrame", df)
 
     async def get_latest_timestamp(self, station_id: str) -> datetime | None:
         result = self.conn.execute(
