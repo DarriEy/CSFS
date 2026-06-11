@@ -28,7 +28,7 @@ class USGSConnector(BaseConnector):
     country_codes = ["US"]
 
     DISCHARGE_PARAM = "00060"  # cubic feet per second
-    CFS_TO_M3S = 0.0283168
+    CFS_TO_M3S = 0.028316846592  # exact: 1 ft³ = 0.3048³ m³
 
     # US states + territories for chunked fetching
     US_STATES = [

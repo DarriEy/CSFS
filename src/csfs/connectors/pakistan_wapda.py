@@ -17,7 +17,7 @@ This connector supports three modes:
 3. **Local CSV files** — reads Kaggle-format CSV files from a local
    directory configured via ``config["data_dir"]``.  Columns are
    typically ``Date, Tarbela_Inflow, Mangla_Inflow, ...`` in cusecs;
-   values are converted to m3/s using the factor 0.0283168.
+   values are converted to m3/s using the exact factor 0.028316846592.
 
 If neither web endpoints nor local files are available, empty chunks
 with download guidance are returned.
@@ -45,7 +45,7 @@ logger = structlog.get_logger()
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-CUSEC_TO_M3S = 0.0283168
+CUSEC_TO_M3S = 0.028316846592  # exact: 1 ft³ = 0.3048³ m³
 IRSA_DATA_URL = "http://pakirsa.gov.pk/DailyData.aspx"
 WAPDA_FLOW_URL = (
     "https://www.wapda.gov.pk/index.php/river-flow-data"

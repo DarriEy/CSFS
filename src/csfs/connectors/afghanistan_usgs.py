@@ -48,7 +48,7 @@ class AfghanistanUSGSConnector(BaseConnector):
     country_codes: list[str] = ["AF"]
 
     DISCHARGE_PARAM = "00060"  # cfs
-    CFS_TO_M3S = 0.0283168
+    CFS_TO_M3S = 0.028316846592  # exact: 1 ft³ = 0.3048³ m³
 
     # ------------------------------------------------------------------
     # Station catalogue
