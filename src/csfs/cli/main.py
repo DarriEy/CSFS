@@ -18,6 +18,7 @@ structlog.configure(
 
 
 @click.group()
+@click.version_option(package_name="csfs")
 @click.option("--db", default="csfs.duckdb", help="Path to DuckDB database file")
 @click.option("--config", "-c", default=None, type=click.Path(), help="Path to YAML config file")
 @click.pass_context

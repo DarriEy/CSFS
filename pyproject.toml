@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "csfs"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Community Streamflow Service — live acquisition and harmonization of global streamflow observations"
 readme = "README.md"
 license = "GPL-3.0-or-later"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
-    { name = "CSFS Contributors" },
+    { name = "Darri Eythorsson", email = "dae5@hi.is" },
 ]
 keywords = ["hydrology", "streamflow", "water", "open-data", "time-series"]
 classifiers = [
@@ -18,6 +18,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Hydrology",
 ]
 dependencies = [
@@ -59,8 +62,18 @@ dev = [
     "types-croniter",
 ]
 
+[project.urls]
+Homepage = "https://github.com/DarriEy/CSFS"
+Repository = "https://github.com/DarriEy/CSFS"
+Documentation = "https://darriey.github.io/CSFS/"
+Issues = "https://github.com/DarriEy/CSFS/issues"
+Changelog = "https://github.com/DarriEy/CSFS/blob/main/CHANGELOG.md"
+
 [project.scripts]
 csfs = "csfs.cli.main:cli"
+
+[tool.hatch.version]
+path = "src/csfs/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/csfs"]
@@ -96,7 +109,8 @@ source = ["csfs"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 0
+# Offline suite measures ~92%; floor set ~5 points below, rounded to a multiple of 5.
+fail_under = 85
 precision = 0
 sort = "Cover"
 exclude_lines = [
