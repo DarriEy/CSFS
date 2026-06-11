@@ -3,13 +3,13 @@
 ## Install
 
 ```bash
-pip install csfs
+pip install community-streamflow-service
 ```
 
 Python 3.11+ is required. For the FastAPI read layer, install the extra:
 
 ```bash
-pip install "csfs[api]"
+pip install "community-streamflow-service[api]"
 ```
 
 From source:
@@ -123,7 +123,7 @@ Keep keys out of any tracked config file.
 ## Serve over HTTP
 
 ```bash
-pip install "csfs[api]"
+pip install "community-streamflow-service[api]"
 csfs serve --port 8000
 ```
 

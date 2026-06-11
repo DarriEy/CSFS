@@ -49,8 +49,8 @@ See the full [provider catalog](https://darriey.github.io/CSFS/catalog/).
 ## Install
 
 ```bash
-pip install csfs            # core
-pip install "csfs[api]"     # + FastAPI read layer
+pip install community-streamflow-service            # core
+pip install "community-streamflow-service[api]"     # + FastAPI read layer
 ```
 
 Requires Python 3.11+.
@@ -62,7 +62,7 @@ csfs providers                          # list registered providers + tiers
 csfs fetch -p usgs --lookback 168 -n 50 # fetch a week of USGS data
 csfs status                             # what's in the local DuckDB
 csfs health                             # per-connector freshness + run health
-csfs serve                              # HTTP read layer (needs csfs[api])
+csfs serve                              # HTTP read layer (needs the api extra)
 ```
 
 ## Quick start (Python)

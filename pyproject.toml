@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "csfs"
+name = "community-streamflow-service"
 dynamic = ["version"]
 description = "Community Streamflow Service — live acquisition and harmonization of global streamflow observations"
 readme = "README.md"
