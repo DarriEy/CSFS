@@ -25,12 +25,11 @@ echo ""
 echo "--- TIER 2: European providers ---"
 for p in germany_pegelonline uk_ea uk_nrfa norway_nve sweden_smhi \
          finland_syke austria_ehyd switzerland_bafu poland_imgw \
-         spain_saih spain_cedex netherlands_rws ireland_epa \
+         spain_cedex netherlands_rws ireland_epa \
          denmark_dmihyd belgium_waterinfo belgium_spw \
-         hungary_ovf romania_inhga slovakia_shmu \
-         czechia_chmu croatia_dhz slovenia_arso \
-         greece_openhi portugal_snirh estonia_ilmateenistus \
-         lithuania_lhmt turkey_dsi bosnia_fhmz iceland_lamahice \
+         romania_inhga czechia_chmu croatia_dhz slovenia_arso \
+         greece_openhi scotland_sepa bulgaria_eaemdr \
+         lithuania_lhmt bosnia_fhmz iceland_lamahice \
          bulgaria_nimh; do
     echo "Fetching $p..."
     csfs fetch -p $p --lookback $LOOKBACK -n 200 || echo "  $p: FAILED (continuing)"
@@ -39,7 +38,7 @@ done
 # Tier 3: Italian/German regional
 echo ""
 echo "--- TIER 3: Regional providers ---"
-for p in italy_ispra italy_emilia italy_piedmont italy_tuscany \
+for p in italy_ispra_wof italy_emilia italy_piedmont italy_tuscany \
          germany_bavaria germany_bw germany_nrw; do
     echo "Fetching $p..."
     csfs fetch -p $p --lookback $LOOKBACK -n 100 || echo "  $p: FAILED (continuing)"
@@ -49,7 +48,7 @@ done
 echo ""
 echo "--- TIER 4: Americas ---"
 for p in brazil_ana chile_dga argentina_snih colombia_ideam \
-         peru_senamhi mexico_conagua ecuador_inamhi \
+         peru_senamhi ecuador_inamhi \
          elsalvador_marn panama_stri jamaica_wra \
          bolivia_ine pakistan_wapda; do
     echo "Fetching $p..."
@@ -59,8 +58,8 @@ done
 # Tier 5: Asia/Africa/Oceania
 echo ""
 echo "--- TIER 5: Asia/Africa/Oceania ---"
-for p in india_cwc south_korea_wamis japan_mlit taiwan_wra \
-         china_mwr thailand_hii bangladesh_ffwc \
+for p in japan_mlit taiwan_wra \
+         china_mwr thailand_hii \
          iran_iwrmc philippines_dpwh malaysia_did \
          nepal_icimod vietnam_mekong afghanistan_usgs \
          kazakhstan_kazhydromet \

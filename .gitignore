@@ -10,6 +10,14 @@ build/
 *.parquet
 data/datasets/
 
+# Local data artifacts (station dumps, maps, outreach notes) kept out of git
+data/all_stations.json
+data/all_stations_full.json
+data/coverage_stats.json
+data/provider_summary.json
+data/station_map.html
+data/data_request_emails.md
+
 .env
 .env.*
 *.secret
