@@ -75,6 +75,13 @@ Changelog = "https://github.com/DarriEy/CSFS/blob/main/CHANGELOG.md"
 [project.scripts]
 csfs = "csfs.cli.main:cli"
 
+# SYMFLUENCE auto-discovers this on `import symfluence` (its bootstrap loads
+# the "symfluence.plugins" entry-point group and invokes each hook). CSFS does
+# NOT depend on symfluence: the hook is simply never loaded when symfluence is
+# absent, and csfs.integrations.symfluence imports cleanly either way.
+[project.entry-points."symfluence.plugins"]
+csfs = "csfs.integrations.symfluence:register"
+
 [tool.hatch.version]
 path = "src/csfs/__init__.py"
 
@@ -129,6 +136,8 @@ check_untyped_defs = true
 
 # pyarrow ships no type stubs (no py.typed, no published types package).
 # pandas is an optional extra; mypy must pass whether or not it is installed.
+# symfluence is never a dependency — csfs.integrations.symfluence imports it
+# defensively and degrades when absent, so mypy must not require it either.
 [[tool.mypy.overrides]]
-module = ["pyarrow", "pyarrow.*", "pandas", "pandas.*"]
+module = ["pyarrow", "pyarrow.*", "pandas", "pandas.*", "symfluence", "symfluence.*"]
 ignore_missing_imports = true
