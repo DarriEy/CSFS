@@ -37,6 +37,7 @@ nav:
   - CLI: cli.md
   - Python API: python-api.md
   - Provider Catalog: catalog.md
+  - SYMFLUENCE Integration: symfluence.md
   - Architecture: architecture.md
   - API Reference: reference.md
 
