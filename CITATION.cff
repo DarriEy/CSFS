@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "CSFS: Community Streamflow Service"
+type: software
+authors:
+  - family-names: Eythorsson
+    given-names: Darri
+    email: dae5@hi.is
+    orcid: "https://orcid.org/0000-0003-3653-3936"
+    affiliation: "University of Calgary"
+repository-code: "https://github.com/DarriEy/CSFS"
+license: GPL-3.0-or-later
+version: 0.1.0
+date-released: 2026-06-11
+keywords:
+  - hydrology
+  - streamflow
+  - discharge
+  - open-data
+  - time-series
+abstract: >-
+  CSFS is a live acquisition service that connects to streamflow data
+  providers worldwide, harmonizes their observations into a canonical
+  station/observation schema, and maintains a near-real-time DuckDB
+  store with scheduler tiers, health monitoring, a CLI, and a FastAPI
+  read layer.
