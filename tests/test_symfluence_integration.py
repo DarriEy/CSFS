@@ -21,6 +21,7 @@ import importlib
 import logging
 import sys
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -719,3 +720,280 @@ class TestDropInProviderHandlers:
         assert df["discharge_cms"].iloc[0] == 10.0
         assert df.index.min() == pd.Timestamp("2020-01-01")
         assert df.index.tz is None
+
+
+# ---------------------------------------------------------------------------
+# 4. OBS_CSV_V1 pure helpers (standalone, no symfluence required)
+# ---------------------------------------------------------------------------
+
+
+def test_obs_csv_v1_frame_contract():
+    """Raw CSFS frame -> datetime,value,quality_flag (tz-naive UTC, m³/s)."""
+    pd = pytest.importorskip("pandas")
+    raw = pd.DataFrame(
+        {
+            "timestamp": ["2020-01-02T00:00:00+00:00", "2020-01-01T06:00:00+02:00"],
+            "discharge_m3s": [5.0, 4.0],
+            "quality": ["good", "estimated"],
+        }
+    )
+    out = integration.obs_csv_v1_frame(raw)
+    assert list(out.columns) == integration.OBS_CSV_V1_COLUMNS
+    # Sorted chronologically, tz-naive UTC (the +02:00 row converts to 04:00Z).
+    assert out["datetime"].tolist() == [
+        pd.Timestamp("2020-01-01 04:00:00"),
+        pd.Timestamp("2020-01-02 00:00:00"),
+    ]
+    assert out["datetime"].dt.tz is None
+    assert out["value"].tolist() == [4.0, 5.0]
+    assert out["quality_flag"].tolist() == ["estimated", "good"]
+
+
+def test_obs_csv_v1_frame_window_is_half_open():
+    """[start, end): the end-instant boundary bin is trimmed, start is kept."""
+    pd = pytest.importorskip("pandas")
+    raw = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2020-01-01", "2020-01-02", freq="h", tz="UTC"),  # 25 rows incl. end
+            "discharge_m3s": range(25),
+        }
+    )
+    out = integration.obs_csv_v1_frame(raw, start="2020-01-01 00:00", end="2020-01-02 00:00")
+    assert len(out) == 24
+    assert out["datetime"].min() == pd.Timestamp("2020-01-01 00:00:00")
+    assert out["datetime"].max() == pd.Timestamp("2020-01-01 23:00:00")
+
+
+def test_obs_csv_v1_frame_drops_unparseable_values_and_keeps_quality_optional():
+    pd = pytest.importorskip("pandas")
+    raw = pd.DataFrame(
+        {
+            "timestamp": ["2020-01-01T00:00:00Z", "2020-01-01T01:00:00Z"],
+            "discharge_m3s": [1.5, "not-a-number"],
+        }
+    )
+    out = integration.obs_csv_v1_frame(raw)
+    assert len(out) == 1
+    assert out["value"].tolist() == [1.5]
+    assert out["quality_flag"].tolist() == [""]
+
+
+def test_obs_csv_v1_frame_missing_columns_is_a_helpful_error():
+    pd = pytest.importorskip("pandas")
+    with pytest.raises(ValueError, match="missing required column"):
+        integration.obs_csv_v1_frame(pd.DataFrame({"timestamp": []}))
+
+
+def test_observation_capability_table_is_well_formed():
+    """Pure capability facts: the four providers, parity grammar, csfs ungated."""
+    import re
+
+    specs = {spec.provider_id: spec for spec in integration.OBSERVATION_CAPABILITIES}
+    assert set(specs) == {"USGS", "WSC", "SMHI", "CSFS"}
+    grade_re = re.compile(r"^(bit-identical|value-identical:.+)$")
+    for spec in specs.values():
+        assert spec.kinds == frozenset({"streamflow"})
+        assert spec.station_id_scheme
+        if spec.parity_grade is not None:
+            assert grade_re.match(spec.parity_grade), spec
+    assert specs["USGS"].parity_grade == "bit-identical"
+    assert specs["WSC"].parity_grade.startswith("value-identical:")
+    assert specs["SMHI"].parity_grade == "value-identical:rounding"
+    assert specs["CSFS"].parity_grade is None  # ungated by design (parity gate refuses it)
+
+
+def test_target_interface_version_is_hardcoded_semver():
+    """Skew detection relies on a literal target, never the installed framework's."""
+    import re
+
+    assert re.match(r"^\d+\.\d+\.\d+$", integration.TARGET_INTERFACE_VERSION)
+
+
+# ---------------------------------------------------------------------------
+# 5. CommunityObservationBackend (requires symfluence; upstream mocked)
+# ---------------------------------------------------------------------------
+
+
+class TestCommunityObservationBackend:
+    """The ObservationBackend protocol tier inside a real SYMFLUENCE env."""
+
+    @pytest.fixture(autouse=True)
+    def _requires_symfluence(self):
+        pytest.importorskip("symfluence")
+        pytest.importorskip("pandas")
+
+    def _backend(self, tmp_path, **overrides):
+        cfg = _symfluence_config(tmp_path, **overrides)
+        cfg.pop("CSFS_STATION_ID", None)
+        return integration.CommunityObservationBackend(cfg, logger)
+
+    def _request(self, tmp_path, **overrides):
+        from symfluence.data.backends.contract import ObservationRequest
+
+        kwargs = dict(
+            provider_id="USGS",
+            station_ids=("06191500",),
+            kind="streamflow",
+            window=("2020-01-01 00:00", "2020-01-10 00:00"),
+            target_dir=tmp_path / "obs_delivery",
+        )
+        kwargs.update(overrides)
+        return ObservationRequest(**kwargs)
+
+    def _capture_fetch(self, monkeypatch, n=10, freq_hours=24):
+        import csfs
+
+        calls = []
+
+        def fake_fetch(provider, station_id, start, end, config=None):
+            calls.append((provider, station_id, start, end))
+            return _make_chunk(n, freq_hours=freq_hours)
+
+        monkeypatch.setattr(csfs, "fetch_observations_sync", fake_fetch)
+        return calls
+
+    # -- registration ------------------------------------------------------
+
+    def test_register_adds_the_backend_tier(self):
+        import symfluence  # noqa: F401
+        from symfluence.core.registries import R
+
+        integration.register()  # idempotent
+        registered = R.observation_backends.get("community")
+        assert registered is not None
+        assert registered.__qualname__ == "CommunityObservationBackend"
+        assert registered.__module__ == "csfs.integrations.symfluence"
+        # Handler-tier registrations stay (the documented fallthrough).
+        for key in ("csfs", "usgs", "wsc", "smhi"):
+            assert key in R.observation_handlers, key
+
+    def test_capabilities_map_the_pure_table(self, tmp_path):
+        caps = {cap.provider_id: cap for cap in self._backend(tmp_path).capabilities()}
+        assert set(caps) == {"USGS", "WSC", "SMHI", "CSFS"}
+        assert caps["USGS"].parity_grade == "bit-identical"
+        assert caps["CSFS"].parity_grade is None
+        for cap in caps.values():
+            assert cap.kinds == frozenset({"streamflow"})
+            assert cap.auth == frozenset()
+
+    # -- acquire -------------------------------------------------------------
+
+    def test_acquire_serves_the_full_layered_delivery(self, tmp_path, monkeypatch):
+        """One call: existing fetch + byte-matched processing + OBS_CSV_V1 + manifest."""
+        from symfluence.data.backends.contract import SchemaId, read_manifest
+
+        calls = self._capture_fetch(monkeypatch)
+        backend = self._backend(tmp_path)
+        request = self._request(tmp_path)
+
+        result = backend.acquire(request)
+
+        # Fetch went through the existing handler internals, station namespaced.
+        assert calls == [("usgs", "usgs:06191500", datetime(2020, 1, 1, tzinfo=UTC),
+                          datetime(2020, 1, 10, tzinfo=UTC))]
+
+        # Protocol delivery: OBS_CSV_V1 file + sidecar manifest in target_dir.
+        assert result.schema is SchemaId.OBS_CSV_V1
+        assert result.dataset_id == "USGS"
+        assert result.variables_delivered == frozenset({"streamflow"})
+        assert [p.name for p in result.paths] == ["csfs_usgs_06191500_obs_v1.csv"]
+
+        import pandas as pd
+
+        obs = pd.read_csv(result.paths[0])
+        assert list(obs.columns) == ["datetime", "value", "quality_flag"]
+        assert obs["value"].iloc[0] == 10.0
+
+        manifest = read_manifest(request.target_dir)
+        assert manifest["schema"] == "obs-csv-v1"
+        assert manifest["backend"] == "community"
+
+        # The legacy artifacts are still produced byte-for-byte: raw CSV in the
+        # conventional dir and the processed calibration CSV.
+        processed = Path(manifest["provenance"]["processed_path"])
+        assert processed.name == "TestDomain_streamflow_processed.csv"
+        assert processed.exists()
+        df = pd.read_csv(processed, parse_dates=["datetime"], index_col="datetime")
+        assert list(df.columns) == ["discharge_cms"]
+        assert df["discharge_cms"].iloc[0] == 10.0
+
+    def test_delivery_obeys_the_half_open_window(self, tmp_path, monkeypatch):
+        """An inclusive-end upstream bin (NWIS endDT) is trimmed from the delivery."""
+        pd = pytest.importorskip("pandas")
+
+        # Hourly chunk running PAST the window end (window: Jan 1 - Jan 10).
+        self._capture_fetch(monkeypatch, n=24 * 9 + 1, freq_hours=1)
+        backend = self._backend(tmp_path)
+        result = backend.acquire(self._request(tmp_path))
+
+        times = pd.to_datetime(pd.read_csv(result.paths[0])["datetime"])
+        assert times.max() < pd.Timestamp("2020-01-10 00:00:00")
+        assert times.min() >= pd.Timestamp("2020-01-01 00:00:00")
+
+    def test_generic_csfs_provider_uses_namespaced_ids(self, tmp_path, monkeypatch):
+        calls = self._capture_fetch(monkeypatch)
+        backend = self._backend(tmp_path)
+        result = backend.acquire(self._request(
+            tmp_path, provider_id="CSFS", station_ids=("uk_ea:3400TH",)))
+
+        assert calls[0][0] == "uk_ea"
+        assert calls[0][1] == "uk_ea:3400TH"
+        assert [p.name for p in result.paths] == ["csfs_uk_ea_3400TH_obs_v1.csv"]
+
+    def test_station_ids_fall_back_to_config_resolution(self, tmp_path, monkeypatch):
+        """Empty request.station_ids => the handler's own config chain resolves."""
+        calls = self._capture_fetch(monkeypatch)
+        backend = self._backend(tmp_path, STATION_ID="06191500")
+        backend.acquire(self._request(tmp_path, station_ids=()))
+        assert calls[0][1] == "usgs:06191500"
+
+    def test_reacquisition_reuses_the_raw_delivery(self, tmp_path, monkeypatch):
+        calls = self._capture_fetch(monkeypatch)
+        backend = self._backend(tmp_path)
+
+        backend.acquire(self._request(tmp_path))
+        backend.acquire(self._request(tmp_path))
+        assert len(calls) == 1, "second acquisition must reuse the existing raw CSV"
+
+    # -- protocol error taxonomy ---------------------------------------------
+
+    def test_unknown_provider_is_dataset_unsupported(self, tmp_path):
+        from symfluence.data.backends.errors import DatasetUnsupported
+
+        with pytest.raises(DatasetUnsupported, match="does not serve provider"):
+            self._backend(tmp_path).acquire(self._request(tmp_path, provider_id="NOSUCH"))
+
+    def test_unsupported_kind_is_dataset_unsupported(self, tmp_path):
+        from symfluence.data.backends.errors import DatasetUnsupported
+
+        with pytest.raises(DatasetUnsupported, match="streamflow"):
+            self._backend(tmp_path).acquire(self._request(tmp_path, kind="swe"))
+
+    def test_missing_config_is_an_acquisition_error(self, tmp_path):
+        from symfluence.data.backends.errors import AcquisitionError
+
+        backend = integration.CommunityObservationBackend(None, logger)
+        with pytest.raises(AcquisitionError, match="requires a framework config"):
+            backend.acquire(self._request(tmp_path))
+
+    def test_connector_failures_map_to_upstream_outage(self, tmp_path, monkeypatch):
+        from symfluence.data.backends.errors import UpstreamOutage
+
+        import csfs
+        from csfs.core.exceptions import ConnectorError
+
+        def boom(*args, **kwargs):
+            raise ConnectorError("usgs", "503 from NWIS")
+
+        monkeypatch.setattr(csfs, "fetch_observations_sync", boom)
+        with pytest.raises(UpstreamOutage) as excinfo:
+            self._backend(tmp_path).acquire(self._request(tmp_path))
+        assert excinfo.value.upstream == "usgs"
+        assert isinstance(excinfo.value.__cause__, ConnectorError)
+
+    def test_config_errors_map_to_acquisition_error(self, tmp_path):
+        from symfluence.data.backends.errors import AcquisitionError
+
+        backend = self._backend(tmp_path)  # no station id anywhere
+        with pytest.raises(AcquisitionError, match="No station id configured"):
+            backend.acquire(self._request(tmp_path, station_ids=()))

@@ -11,6 +11,34 @@ two modes:
    APIs or a pre-built CSFS store) as an additional observation source via
    `ADDITIONAL_OBSERVATIONS: csfs` and namespaced station ids.
 
+## Integration tiers (how a request is routed)
+
+Under `DATA_ACCESS: community`, SYMFLUENCE resolves primary streamflow
+through three layered tiers, highest priority first:
+
+1. **ObservationBackend tier** (SYMFLUENCE acquisition-backend protocol,
+   contract 0.2.0): the plugin registers `CommunityObservationBackend` under
+   `R.observation_backends`. SYMFLUENCE's selection layer matches the
+   configured provider against the backend's declared capabilities (USGS,
+   WSC, SMHI — parity-graded — plus the ungated generic `CSFS`), applies the
+   parity gate, and hands the backend a formal `ObservationRequest`. The
+   backend reuses the handler classes below internally, then additionally
+   writes a per-station `*_obs_v1.csv` delivery (`datetime,value,quality_flag`,
+   UTC, m³/s, trimmed to the half-open `[start, end)` window) and an
+   `acquisition_manifest.json` sidecar.
+2. **Registry-handler tier** (the original integration): the drop-in keys
+   `usgs`/`wsc`/`smhi` plus the generic `csfs` key. This tier is the
+   fallthrough when the backend tier declines — e.g. the parity gate refuses
+   the ungated generic provider, or an older SYMFLUENCE without the backend
+   registry is installed — and remains the only route for
+   `ADDITIONAL_OBSERVATIONS: csfs`. Redundant under community mode but kept
+   by design.
+3. **Legacy tier**: SYMFLUENCE's native in-tree handlers — untouched, and
+   the default outside community mode.
+
+All tiers produce the identical processed calibration CSV; the backend tier
+adds the protocol artifacts on top.
+
 ## Drop-in community backend (USGS / WSC / SMHI)
 
 Take an existing experiment that calibrates against a USGS, WSC, or SMHI

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `CommunityObservationBackend`: CSFS now also registers under SYMFLUENCE's
+  `R.observation_backends` (acquisition-backend protocol, contract 0.2.0,
+  hardcoded `TARGET_INTERFACE_VERSION = "0.2.0"` for version-skew
+  detection). Under `DATA_ACCESS: community`, SYMFLUENCE's backend-first
+  streamflow dispatch routes USGS/WSC/SMHI (parity-graded capabilities) and
+  the ungated generic `CSFS` provider through this backend, which reuses the
+  existing handler classes internally (same fetch, byte-identical processed
+  CSV) and additionally writes a per-station OBS_CSV_V1 delivery
+  (`datetime,value,quality_flag`, UTC, m³/s, trimmed to the half-open
+  `[start, end)` window) plus an `acquisition_manifest.json` sidecar. CSFS
+  internal failures map onto the protocol error taxonomy
+  (`DatasetUnsupported`/`UpstreamOutage`/`AcquisitionError`/`IntegrityError`).
+  The registry-handler tier (`usgs`/`wsc`/`smhi`/`csfs` keys) is kept as the
+  documented fallthrough and still serves `ADDITIONAL_OBSERVATIONS: csfs`.
+- Pure OBS_CSV_V1 shaping helper `obs_csv_v1_frame()` and the framework-free
+  capability table `OBSERVATION_CAPABILITIES` (unit-tested without
+  SYMFLUENCE installed).
+
 ## [0.3.0] — 2026-06-11
 
 ### Added

@@ -3,8 +3,27 @@
 """SYMFLUENCE streamflow-observation adapter for CSFS.
 
 This module lets SYMFLUENCE pull calibration/evaluation streamflow from any
-of the CSFS provider connectors (or from a pre-built CSFS DuckDB store)
-through the standard observation-handler pipeline. Two modes:
+of the CSFS provider connectors (or from a pre-built CSFS DuckDB store).
+Three tiers, layered (highest priority first under ``DATA_ACCESS:
+community``):
+
+1. **ObservationBackend tier** (:class:`CommunityObservationBackend`,
+   contract 0.2.0): registered under ``R.observation_backends``;
+   SYMFLUENCE's observed_processor consults it FIRST under community mode,
+   builds an ``ObservationRequest``, and the backend reuses the handler
+   classes below as its internals (fetch + byte-matched processing), then
+   writes the OBS_CSV_V1 protocol delivery + sidecar manifest.
+2. **Registry-handler tier** (the drop-in keys ``usgs``/``wsc``/``smhi``
+   plus the generic ``csfs`` key): the pre-protocol integration, KEPT as the
+   fallthrough — it still serves when the backend tier declines (e.g. the
+   parity gate refuses an ungraded provider), when an older symfluence
+   without ``R.observation_backends`` is installed, and it remains the only
+   route for ``ADDITIONAL_OBSERVATIONS: csfs``. Redundant under community
+   mode but harmless by design.
+3. **Legacy tier**: SYMFLUENCE's native provider branches — untouched, and
+   the default outside community mode.
+
+The two registration modes of the handler tier:
 
 **Drop-in community backend** (registry keys ``usgs`` / ``wsc`` / ``smhi``):
 per-provider handlers that read the *existing* SYMFLUENCE station-id config
@@ -231,6 +250,44 @@ def combine_station_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
     return combined
 
 
+#: Column layout of the contract's OBS_CSV_V1 schema (UTC, SI).
+OBS_CSV_V1_COLUMNS = ["datetime", "value", "quality_flag"]
+
+
+def obs_csv_v1_frame(raw: pd.DataFrame, start: Any = None, end: Any = None) -> pd.DataFrame:
+    """Shape a raw CSFS frame onto the contract's OBS_CSV_V1 layout.
+
+    Columns ``datetime,value,quality_flag``: tz-naive UTC timestamps (naive
+    == UTC per the contract), discharge in m³/s, provider quality flag
+    passed through. When *start*/*end* are given, the frame is trimmed to
+    the **half-open UTC window** ``[start, end)`` — the contract's normative
+    window rule (the protocol delivery is window-trimmed; the legacy
+    processed CSV keeps its historical inclusive-end slice, see
+    :class:`CommunityObservationBackend`).
+    """
+    _require_pandas()
+    import pandas as pd
+
+    missing = {"timestamp", "discharge_m3s"} - set(raw.columns)
+    if missing:
+        raise ValueError(f"Raw CSFS frame is missing required column(s): {sorted(missing)}")
+
+    quality = raw["quality"] if "quality" in raw.columns else ""
+    df = pd.DataFrame(
+        {
+            "datetime": pd.to_datetime(raw["timestamp"], utc=True).dt.tz_localize(None),
+            "value": pd.to_numeric(raw["discharge_m3s"], errors="coerce"),
+            "quality_flag": quality,
+        }
+    )
+    df = df.dropna(subset=["value"]).sort_values("datetime").reset_index(drop=True)
+    if start is not None:
+        df = df[df["datetime"] >= ensure_utc(start).replace(tzinfo=None)]
+    if end is not None:
+        df = df[df["datetime"] < ensure_utc(end).replace(tzinfo=None)]
+    return df[OBS_CSV_V1_COLUMNS].reset_index(drop=True)
+
+
 # ---------------------------------------------------------------------------
 # Drop-in provider backends (pure declarations; no SYMFLUENCE dependency)
 # ---------------------------------------------------------------------------
@@ -352,6 +409,10 @@ class CSFSStreamflowHandler(_Base):
         "url": "https://github.com/DarriEy/CSFS",
     }
 
+    #: Set by :class:`CommunityObservationBackend` to serve an explicit
+    #: ``ObservationRequest.station_ids`` instead of resolving from config.
+    station_ids_override: tuple[str, ...] | None = None
+
     # -- acquisition ---------------------------------------------------
 
     def acquire(self) -> Path:  # pragma: no cover - exercised by symfluence integration tests
@@ -397,6 +458,8 @@ class CSFSStreamflowHandler(_Base):
 
     def _station_id_config(self) -> Any:  # pragma: no cover - symfluence-only config access
         """CSFS_STATION_ID, falling back to the shared evaluation station id."""
+        if self.station_ids_override:
+            return list(self.station_ids_override)
         raw = self.config_dict.get("CSFS_STATION_ID")
         if raw in (None, "", "default"):
             raw = self._get_config_value(
@@ -565,6 +628,11 @@ def make_provider_handler(provider_key: str) -> type[CSFSStreamflowHandler]:
 
         def _station_id_config(self) -> Any:  # pragma: no cover - symfluence-only config access
             """Native station id from the provider's existing config keys, namespaced."""
+            if self.station_ids_override:
+                return [
+                    resolve_provider_station_id(provider_key, sid)
+                    for sid in self.station_ids_override
+                ]
             for key in backend.station_keys:
                 value = self._get_config_value(
                     lambda key=key: key.accessor(self.config),  # type: ignore[misc]
@@ -598,24 +666,259 @@ PROVIDER_HANDLERS: dict[str, type[CSFSStreamflowHandler]] = {
 
 
 # ---------------------------------------------------------------------------
+# ObservationBackend (SYMFLUENCE acquisition-backend protocol, contract 0.2.0)
+# ---------------------------------------------------------------------------
+
+#: The contract version this backend targets. Deliberately hardcoded (not
+#: read from the installed framework) so that a contract bump on the
+#: SYMFLUENCE side is *detected* as skew by the selection layer instead of
+#: silently claimed compatible (pre-1.0, minor bumps are breaking).
+TARGET_INTERFACE_VERSION = "0.2.0"
+
+
+class ObservationCapabilitySpec(NamedTuple):
+    """Pure (framework-free) capability facts for one served provider."""
+
+    provider_id: str
+    kinds: frozenset[str]
+    station_id_scheme: str
+    parity_grade: str | None
+    notes: str
+
+
+#: Providers the community observation backend claims. Parity grades record
+#: the validated native-vs-CSFS comparison of the processed streamflow CSV;
+#: the generic ``CSFS`` entry is deliberately ungated (parity_grade=None) —
+#: SYMFLUENCE's parity-gate policy refuses it unless
+#: ``ALLOW_UNGATED_BACKENDS: true``, falling through to the handler tier.
+OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
+    ObservationCapabilitySpec(
+        provider_id="USGS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="USGS site number (zero-padded to 8 digits; 'usgs:<id>' also accepted)",
+        parity_grade="bit-identical",
+        notes="USGS NWIS via the CSFS usgs connector; processed CSV bit-identical "
+              "to the native handler per the parity work.",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="WSC",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="WSC station number (e.g. 05BB001; 'environment_canada:<id>' also accepted)",
+        parity_grade="value-identical:float-repr",
+        notes="Environment Canada real-time/historical via CSFS; values identical, "
+              "byte differences limited to float representation.",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="SMHI",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="SMHI hydroobs station number (e.g. 2357; 'sweden_smhi:<id>' also accepted)",
+        parity_grade="value-identical:rounding",
+        notes="SMHI 15-minute discharge (hydroobs parameter 2) pinned to match the "
+              "native handler; values identical up to provider rounding.",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CSFS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="namespaced CSFS id '<provider>:<native_id>' (run 'csfs providers')",
+        parity_grade=None,
+        notes="Ungated generic access to every CSFS provider connector; refused by "
+              "the parity gate unless ALLOW_UNGATED_BACKENDS: true (the registry-"
+              "handler tier and ADDITIONAL_OBSERVATIONS: csfs remain available).",
+    ),
+)
+
+
+def _backend_contract() -> Any:  # pragma: no cover - symfluence-only import
+    from symfluence.data.backends import contract
+
+    return contract
+
+
+def _backend_errors() -> Any:  # pragma: no cover - symfluence-only import
+    from symfluence.data.backends import errors
+
+    return errors
+
+
+class CommunityObservationBackend:
+    """CSFS exposed through SYMFLUENCE's ObservationBackend protocol (0.2.0).
+
+    A thin wrapper over the handler classes above (factored, not duplicated):
+    ``acquire()`` runs the existing fetch (``handler.acquire()`` — skip-if-
+    exists raw CSVs, store or live) and the existing byte-matched processing
+    (``handler.process()`` — the parity-gated ``{domain}_streamflow_processed
+    .csv``), then derives the *protocol delivery*: one OBS_CSV_V1 file per
+    station plus the sidecar ``acquisition_manifest.json``.
+
+    Window semantics: the OBS_CSV_V1 delivery is trimmed to the contract's
+    half-open UTC ``[start, end)`` window. The processed CSV deliberately
+    reproduces the legacy pipeline byte-for-byte — including its historical
+    inclusive-end slice — so the parity grades above keep holding; the
+    boundary bin can therefore appear in the processed artifact but never in
+    the protocol delivery.
+
+    Instantiated by SYMFLUENCE's selection layer with ``(config, logger)``,
+    exactly like the framework's NativeBackend (handlers are config-driven).
+    """
+
+    name = "community"
+    interface_version = TARGET_INTERFACE_VERSION
+
+    def __init__(self, config: Any = None, logger: Any = None) -> None:
+        self.config = config
+        self.logger = logger or _integration_logger()
+
+    # -- protocol surface ---------------------------------------------------
+
+    def capabilities(self) -> tuple[Any, ...]:  # pragma: no cover - symfluence-only
+        """Observation providers servable, as contract ObservationCapability."""
+        contract = _backend_contract()
+        return tuple(
+            contract.ObservationCapability(
+                provider_id=spec.provider_id,
+                kinds=spec.kinds,
+                station_id_scheme=spec.station_id_scheme,
+                temporal=None,
+                auth=frozenset(),
+                parity_grade=spec.parity_grade,
+                notes=spec.notes,
+            )
+            for spec in OBSERVATION_CAPABILITIES
+        )
+
+    def acquire(self, request: Any) -> Any:  # pragma: no cover - exercised by integration tests
+        """Serve an ``ObservationRequest`` via the existing handler internals."""
+        contract = _backend_contract()
+        errors = _backend_errors()
+
+        provider_key = str(request.provider_id).strip().lower()
+        if provider_key == "csfs":
+            handler_cls: type[CSFSStreamflowHandler] = CSFSStreamflowHandler
+        else:
+            maybe = PROVIDER_HANDLERS.get(provider_key)
+            if maybe is None:
+                served = sorted(spec.provider_id for spec in OBSERVATION_CAPABILITIES)
+                raise errors.DatasetUnsupported(
+                    f"The community observation backend does not serve provider "
+                    f"'{request.provider_id}' (served: {served})",
+                    dataset_id=request.provider_id,
+                    backend=self.name,
+                )
+            handler_cls = maybe
+        if request.kind != "streamflow":
+            raise errors.DatasetUnsupported(
+                f"The community observation backend serves kind 'streamflow', "
+                f"not {request.kind!r}",
+                dataset_id=request.provider_id,
+                backend=self.name,
+            )
+
+        if self.config is None:
+            raise errors.AcquisitionError(
+                "CommunityObservationBackend.acquire() requires a framework config "
+                "(the CSFS handlers are configuration-driven)"
+            )
+
+        handler = handler_cls(self.config, self.logger)
+        if request.station_ids:
+            handler.station_ids_override = tuple(request.station_ids)
+
+        from csfs.core.exceptions import ConnectorError
+
+        try:
+            raw = handler.acquire()
+            processed = handler.process(raw)
+        except ConnectorError as exc:
+            raise errors.UpstreamOutage(
+                f"CSFS connector failure while acquiring '{request.provider_id}' "
+                f"observations: {exc}",
+                upstream=provider_key,
+            ) from exc
+        except FileNotFoundError as exc:
+            raise errors.AcquisitionError(
+                f"CSFS observation acquisition for '{request.provider_id}' failed: {exc}"
+            ) from exc
+        except (ValueError, KeyError, TypeError, RuntimeError, OSError) as exc:
+            raise errors.AcquisitionError(
+                f"CSFS observation acquisition for '{request.provider_id}' failed: {exc}"
+            ) from exc
+
+        # Protocol delivery: OBS_CSV_V1 per station, derived from the raw
+        # CSVs the handler wrote (window-trimmed to UTC [start, end)).
+        _require_pandas()
+        import pandas as pd
+
+        target_dir = Path(request.target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        raw_path = Path(raw)
+        raw_files = [raw_path] if raw_path.is_file() else sorted(raw_path.glob("csfs_*_raw.csv"))
+        if not raw_files:
+            raise errors.IntegrityError(
+                f"CSFS handler reported success but delivered no raw station files "
+                f"under {raw_path}"
+            )
+
+        start = request.window[0] if request.window else None
+        end = request.window[1] if request.window else None
+        paths: list[Path] = []
+        for raw_file in raw_files:
+            obs = obs_csv_v1_frame(pd.read_csv(raw_file), start=start, end=end)
+            out = target_dir / f"{raw_file.stem.removesuffix('_raw')}_obs_v1.csv"
+            obs.to_csv(out, index=False)
+            paths.append(out)
+
+        import csfs
+
+        result = contract.AcquisitionResult(
+            paths=tuple(paths),
+            schema=contract.SchemaId.OBS_CSV_V1,
+            dataset_id=request.provider_id,
+            backend=self.name,
+            provenance={
+                "integration": f"{__name__}.CommunityObservationBackend",
+                "csfs_version": getattr(csfs, "__version__", "unknown"),
+                "provider_id": str(request.provider_id),
+                "stations": ",".join(request.station_ids),
+                "processed_path": str(processed),
+                "acquired_at": datetime.now(UTC).isoformat(),
+            },
+            variables_delivered=frozenset({"streamflow"}),
+        )
+        contract.write_manifest(result, target_dir)
+        return result
+
+
+def _integration_logger() -> Any:
+    import logging
+
+    return logging.getLogger("csfs.integrations.symfluence")
+
+
+# ---------------------------------------------------------------------------
 # Plugin entry point
 # ---------------------------------------------------------------------------
 
 
 def register() -> None:
-    """Register the CSFS observation handlers with SYMFLUENCE (idempotent).
+    """Register the CSFS observation tiers with SYMFLUENCE (idempotent).
 
     Zero-arg hook referenced by the ``symfluence.plugins`` entry point;
     SYMFLUENCE's bootstrap calls it automatically on ``import symfluence``.
-    After registration:
+    After registration, layered as in the module docstring:
 
+    * :class:`CommunityObservationBackend` joins ``R.observation_backends``
+      (the protocol tier, consulted FIRST under ``DATA_ACCESS: community``;
+      skipped when the installed symfluence predates contract 0.2.0 — the
+      handler tier then still serves community mode);
     * ``ADDITIONAL_OBSERVATIONS: csfs`` dispatches to
       :class:`CSFSStreamflowHandler` (any CSFS provider, namespaced ids);
-    * the drop-in keys ``usgs`` / ``wsc`` / ``smhi`` are available for
-      SYMFLUENCE's registry-first primary-streamflow dispatch
-      (``DATA_ACCESS: community``). The native handlers live under
-      ``usgs_streamflow``-style keys, so these registrations are additive
-      and inert until that mode is enabled.
+    * the drop-in keys ``usgs`` / ``wsc`` / ``smhi`` stay registered for
+      SYMFLUENCE's registry-first primary-streamflow dispatch — the
+      fallthrough tier below the backend, now redundant under community
+      mode but harmless and required for ADDITIONAL_OBSERVATIONS and for
+      frameworks without the backend registry. The native handlers live
+      under ``usgs_streamflow``-style keys, so these registrations are
+      additive and inert until community mode is enabled.
     """
     if not HAVE_SYMFLUENCE:
         raise ImportError(
@@ -628,6 +931,13 @@ def register() -> None:
     for key, handler_cls in PROVIDER_HANDLERS.items():  # pragma: no cover - symfluence-only
         if key not in R.observation_handlers:
             R.observation_handlers.add(key, handler_cls)
+
+    # Protocol tier (contract 0.2.0). Registered as a CLASS: SYMFLUENCE's
+    # selection layer instantiates it with (config, logger). Older
+    # frameworks without the registry simply skip this tier.
+    backends = getattr(R, "observation_backends", None)  # pragma: no cover - symfluence-only
+    if backends is not None and "community" not in backends:  # pragma: no cover - symfluence-only
+        backends.add("community", CommunityObservationBackend)
 
 
 # Self-register when SYMFLUENCE is importable. This complements the entry
