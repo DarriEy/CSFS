@@ -4,7 +4,22 @@
 
 This module lets SYMFLUENCE pull calibration/evaluation streamflow from any
 of the CSFS provider connectors (or from a pre-built CSFS DuckDB store)
-through the standard observation-handler pipeline::
+through the standard observation-handler pipeline. Two modes:
+
+**Drop-in community backend** (registry keys ``usgs`` / ``wsc`` / ``smhi``):
+per-provider handlers that read the *existing* SYMFLUENCE station-id config
+keys — no new keys required — so a stock experiment switches its primary
+streamflow acquisition to CSFS with a single line::
+
+    DATA_ACCESS: community            # STREAMFLOW_DATA_PROVIDER stays USGS/WSC/SMHI
+
+SYMFLUENCE's registry-first streamflow dispatch resolves the lowercased
+provider name in the observation-handler registry and routes to these
+handlers when the backend is ``community`` (the default/native path is
+untouched). See :data:`PROVIDER_BACKENDS` and :func:`make_provider_handler`.
+
+**Generic handler** (registry key ``csfs``): any of CSFS's 86 providers via
+namespaced station ids through the ``ADDITIONAL_OBSERVATIONS`` mechanism::
 
     ADDITIONAL_OBSERVATIONS: csfs
     CSFS_STATION_ID: "usgs:01646500"     # canonical "<provider>:<native_id>"
@@ -45,9 +60,10 @@ pure reshape — no unit conversion.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -213,6 +229,103 @@ def combine_station_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
     combined = pd.DataFrame({"discharge_cms": merged.mean(axis=1)})
     combined.index.name = "datetime"
     return combined
+
+
+# ---------------------------------------------------------------------------
+# Drop-in provider backends (pure declarations; no SYMFLUENCE dependency)
+# ---------------------------------------------------------------------------
+
+
+class StationKey(NamedTuple):
+    """One config location a native SYMFLUENCE handler reads its station id from."""
+
+    accessor: Callable[[Any], Any]  # typed-config accessor, e.g. cfg.data.usgs_site_code
+    dict_key: str  # legacy flat YAML key, e.g. "USGS_SITE_CODE"
+
+
+class ProviderBackend(NamedTuple):
+    """How a SYMFLUENCE streamflow provider name maps onto a CSFS connector."""
+
+    slug: str  # CSFS connector slug (``csfs providers``)
+    station_keys: tuple[StationKey, ...]  # resolution order = the native handler's
+    connector_defaults: dict[str, str]  # fixed connector config (e.g. SMHI 15-min)
+    normalize: Callable[[str], str] | None  # native-id normalizer (e.g. USGS zfill)
+
+
+def _normalize_usgs_site(native_id: str) -> str:
+    """Zero-pad short numeric USGS site codes to 8 digits (native-handler parity)."""
+    if native_id.isdigit() and len(native_id) < 8:
+        return native_id.zfill(8)
+    return native_id
+
+
+_EVAL_STATION_KEY = StationKey(lambda cfg: cfg.evaluation.streamflow.station_id, "STATION_ID")
+
+#: SYMFLUENCE provider name (lowercased ``STREAMFLOW_DATA_PROVIDER``) -> CSFS
+#: backend. Station-key order mirrors each native handler's own lookups
+#: (``handlers/usgs.py`` / ``wsc.py`` / ``smhi.py``) so the drop-in needs no
+#: new config keys. SMHI pins the 15-minute discharge product (hydroobs
+#: parameter 2) because that is what the native SMHI handler downloads; the
+#: CSFS default would be the daily product (parameter 1).
+PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
+    "usgs": ProviderBackend(
+        slug="usgs",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.usgs_site_code, "USGS_SITE_CODE"),
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=_normalize_usgs_site,
+    ),
+    "wsc": ProviderBackend(
+        slug="environment_canada",
+        station_keys=(_EVAL_STATION_KEY,),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "smhi": ProviderBackend(
+        slug="sweden_smhi",
+        station_keys=(_EVAL_STATION_KEY,),
+        connector_defaults={"resolution": "15min"},
+        normalize=None,
+    ),
+}
+
+
+def resolve_provider_station_id(provider_key: str, raw: Any) -> str:
+    """Resolve a native or namespaced station id to the canonical CSFS id.
+
+    The drop-in handlers accept the station id exactly as the native
+    SYMFLUENCE handlers do — bare native ids like ``06191500`` / ``05BB001``
+    / ``2357`` — plus already-namespaced CSFS ids using either the CSFS
+    connector slug (``environment_canada:05BB001``) or the SYMFLUENCE
+    provider name (``wsc:05BB001``) as the prefix. Anything namespaced for a
+    *different* provider is rejected loudly rather than silently re-routed.
+
+    Returns the canonical ``"<slug>:<native_id>"`` form.
+    """
+    backend = PROVIDER_BACKENDS[provider_key]
+    value = "" if raw is None else str(raw).strip()
+    if not value:
+        raise ValueError(f"Empty station id for streamflow provider {provider_key!r}")
+
+    prefix, sep, rest = value.partition(":")
+    if sep:
+        if prefix.strip().lower() not in {provider_key, backend.slug} or not rest.strip():
+            raise ValueError(
+                f"Station id {value!r} is not a {provider_key.upper()} station id. "
+                f"Use the bare native id (e.g. from the agency site) or namespace it "
+                f"as '{backend.slug}:<native_id>'. For gauges from other networks, "
+                "use the generic handler (ADDITIONAL_OBSERVATIONS: csfs) instead."
+            )
+        native_id = rest.strip()
+    else:
+        native_id = value
+
+    if backend.normalize is not None:
+        native_id = backend.normalize(native_id)
+    return f"{backend.slug}:{native_id}"
 
 
 # ---------------------------------------------------------------------------
@@ -410,17 +523,99 @@ class CSFSStreamflowHandler(_Base):
 
 
 # ---------------------------------------------------------------------------
+# Drop-in per-provider handlers
+# ---------------------------------------------------------------------------
+
+
+def make_provider_handler(provider_key: str) -> type[CSFSStreamflowHandler]:
+    """Build the drop-in handler class for one native SYMFLUENCE provider name.
+
+    The returned class is :class:`CSFSStreamflowHandler` with two overrides:
+
+    * the station id is resolved from the *existing* SYMFLUENCE config keys
+      (the same lookups, in the same order, as the native handler for that
+      provider — see :data:`PROVIDER_BACKENDS`), then namespaced onto the
+      CSFS connector slug via :func:`resolve_provider_station_id`;
+    * the backend's fixed connector defaults (SMHI: ``resolution: 15min``)
+      are merged under any user-supplied ``CSFS_CONNECTOR_CONFIG``.
+
+    ``acquire()``/``process()`` are inherited unchanged: direct connector
+    fetch for the experiment window into the conventional raw dir, then the
+    byte-matched processed-CSV transform (tz-naive UTC ``datetime`` index,
+    ``discharge_cms`` in m³/s, resample + interpolate identical to native).
+
+    No backend routing happens here. The native handlers register under
+    different keys (``usgs_streamflow`` / ``wsc_streamflow`` /
+    ``smhi_streamflow``), so registering under the short provider names is
+    collision-free, and SYMFLUENCE's registry-first streamflow dispatch only
+    routes to these keys when ``DATA_ACCESS`` resolves to ``community`` (or
+    the provider is unknown to its legacy branches) — native-mode traffic
+    never reaches this class.
+    """
+    backend = PROVIDER_BACKENDS[provider_key]
+
+    class _ProviderHandler(CSFSStreamflowHandler):
+        source_name = f"{provider_key.upper()} (via CSFS)"
+        SOURCE_INFO = {
+            "source": f"{provider_key.upper()} via CSFS (Community Streamflow Service)",
+            "url": "https://github.com/DarriEy/CSFS",
+        }
+        PROVIDER_KEY = provider_key
+        BACKEND = backend
+
+        def _station_id_config(self) -> Any:  # pragma: no cover - symfluence-only config access
+            """Native station id from the provider's existing config keys, namespaced."""
+            for key in backend.station_keys:
+                value = self._get_config_value(
+                    lambda key=key: key.accessor(self.config),  # type: ignore[misc]
+                    default=None,
+                    dict_key=key.dict_key,
+                )
+                if value in (None, "", "default"):
+                    continue
+                return resolve_provider_station_id(provider_key, value)
+            flat_keys = ", ".join(key.dict_key for key in backend.station_keys)
+            raise ValueError(
+                f"No station id configured for streamflow provider "
+                f"{provider_key.upper()}. Set one of: {flat_keys}."
+            )
+
+        def _connector_config(self) -> dict | None:  # pragma: no cover - symfluence-only
+            """Backend connector defaults, overridable via CSFS_CONNECTOR_CONFIG."""
+            user = super()._connector_config() or {}
+            merged = {**backend.connector_defaults, **user}
+            return merged or None
+
+    _ProviderHandler.__name__ = f"CSFS{provider_key.upper()}StreamflowHandler"
+    _ProviderHandler.__qualname__ = _ProviderHandler.__name__
+    return _ProviderHandler
+
+
+#: Registry key -> drop-in handler class, one per native provider name.
+PROVIDER_HANDLERS: dict[str, type[CSFSStreamflowHandler]] = {
+    key: make_provider_handler(key) for key in PROVIDER_BACKENDS
+}
+
+
+# ---------------------------------------------------------------------------
 # Plugin entry point
 # ---------------------------------------------------------------------------
 
 
 def register() -> None:
-    """Register the CSFS observation handler with SYMFLUENCE (idempotent).
+    """Register the CSFS observation handlers with SYMFLUENCE (idempotent).
 
     Zero-arg hook referenced by the ``symfluence.plugins`` entry point;
     SYMFLUENCE's bootstrap calls it automatically on ``import symfluence``.
-    After registration, ``ADDITIONAL_OBSERVATIONS: csfs`` dispatches to
-    :class:`CSFSStreamflowHandler` with no framework changes.
+    After registration:
+
+    * ``ADDITIONAL_OBSERVATIONS: csfs`` dispatches to
+      :class:`CSFSStreamflowHandler` (any CSFS provider, namespaced ids);
+    * the drop-in keys ``usgs`` / ``wsc`` / ``smhi`` are available for
+      SYMFLUENCE's registry-first primary-streamflow dispatch
+      (``DATA_ACCESS: community``). The native handlers live under
+      ``usgs_streamflow``-style keys, so these registrations are additive
+      and inert until that mode is enabled.
     """
     if not HAVE_SYMFLUENCE:
         raise ImportError(
@@ -430,6 +625,9 @@ def register() -> None:
 
     if "csfs" not in R.observation_handlers:  # pragma: no cover - symfluence-only
         R.observation_handlers.add("csfs", CSFSStreamflowHandler)
+    for key, handler_cls in PROVIDER_HANDLERS.items():  # pragma: no cover - symfluence-only
+        if key not in R.observation_handlers:
+            R.observation_handlers.add(key, handler_cls)
 
 
 # Self-register when SYMFLUENCE is importable. This complements the entry

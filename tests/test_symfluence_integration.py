@@ -263,6 +263,101 @@ def test_chunk_round_trip_through_csv(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 2b. Drop-in provider backends (pure declarations, no symfluence required)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_backends_cover_the_native_streamflow_providers():
+    """Drop-in keys mirror SYMFLUENCE's lowercased STREAMFLOW_DATA_PROVIDER values."""
+    assert set(integration.PROVIDER_BACKENDS) == {"usgs", "wsc", "smhi"}
+    slugs = {key: backend.slug for key, backend in integration.PROVIDER_BACKENDS.items()}
+    assert slugs == {"usgs": "usgs", "wsc": "environment_canada", "smhi": "sweden_smhi"}
+
+
+def test_smhi_backend_pins_the_15min_product():
+    """Native SMHI downloads hydroobs parameter 2 (15-min discharge); parity requires it."""
+    assert integration.PROVIDER_BACKENDS["smhi"].connector_defaults == {"resolution": "15min"}
+    # USGS/WSC need no connector overrides — the CSFS defaults already match.
+    assert integration.PROVIDER_BACKENDS["usgs"].connector_defaults == {}
+    assert integration.PROVIDER_BACKENDS["wsc"].connector_defaults == {}
+
+
+def test_backend_station_key_resolution_order():
+    """Key order mirrors the native handlers' own config lookups."""
+    assert [k.dict_key for k in integration.PROVIDER_BACKENDS["usgs"].station_keys] == [
+        "STATION_ID",
+        "USGS_SITE_CODE",
+        "STREAMFLOW_STATION_ID",
+    ]
+    assert [k.dict_key for k in integration.PROVIDER_BACKENDS["wsc"].station_keys] == ["STATION_ID"]
+    assert [k.dict_key for k in integration.PROVIDER_BACKENDS["smhi"].station_keys] == ["STATION_ID"]
+
+
+@pytest.mark.parametrize(
+    ("provider", "raw", "expected"),
+    [
+        ("usgs", "06191500", "usgs:06191500"),
+        ("wsc", "05BB001", "environment_canada:05BB001"),
+        ("smhi", "2357", "sweden_smhi:2357"),
+        ("smhi", 2357, "sweden_smhi:2357"),
+    ],
+)
+def test_resolve_bare_native_station_ids(provider, raw, expected):
+    assert integration.resolve_provider_station_id(provider, raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["6191500", 6191500])
+def test_resolve_usgs_zero_pads_short_numeric_ids(raw):
+    """YAML int / short codes get the native handler's 8-digit zero-padding."""
+    assert integration.resolve_provider_station_id("usgs", raw) == "usgs:06191500"
+
+
+def test_resolve_usgs_leaves_long_or_alpha_ids_alone():
+    assert integration.resolve_provider_station_id("usgs", "06191500") == "usgs:06191500"
+    assert integration.resolve_provider_station_id("usgs", "0123456789") == "usgs:0123456789"
+
+
+@pytest.mark.parametrize(
+    ("provider", "raw", "expected"),
+    [
+        ("usgs", "usgs:06191500", "usgs:06191500"),
+        ("wsc", "environment_canada:05BB001", "environment_canada:05BB001"),
+        ("wsc", "wsc:05BB001", "environment_canada:05BB001"),
+        ("smhi", "sweden_smhi:2357", "sweden_smhi:2357"),
+        ("smhi", "SMHI:2357", "sweden_smhi:2357"),
+    ],
+)
+def test_resolve_accepts_namespaced_station_ids(provider, raw, expected):
+    """Both the CSFS slug and the SYMFLUENCE provider name work as prefixes."""
+    assert integration.resolve_provider_station_id(provider, raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("provider", "raw"),
+    [("usgs", "uk_ea:3400TH"), ("wsc", "usgs:06191500"), ("smhi", "wsc:05BB001"), ("usgs", "usgs:")],
+)
+def test_resolve_rejects_foreign_or_malformed_namespaces(provider, raw):
+    with pytest.raises(ValueError, match="ADDITIONAL_OBSERVATIONS: csfs"):
+        integration.resolve_provider_station_id(provider, raw)
+
+
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_resolve_rejects_empty_station_ids(raw):
+    with pytest.raises(ValueError, match="Empty station id"):
+        integration.resolve_provider_station_id("usgs", raw)
+
+
+def test_provider_handler_classes_are_built_for_every_backend():
+    assert set(integration.PROVIDER_HANDLERS) == set(integration.PROVIDER_BACKENDS)
+    for key, cls in integration.PROVIDER_HANDLERS.items():
+        assert issubclass(cls, integration.CSFSStreamflowHandler)
+        assert cls.__name__ == f"CSFS{key.upper()}StreamflowHandler"
+        assert key == cls.PROVIDER_KEY
+        assert cls.BACKEND is integration.PROVIDER_BACKENDS[key]
+        assert cls.obs_type == "streamflow"
+
+
+# ---------------------------------------------------------------------------
 # 3. Integration tests (skip when symfluence is not installed)
 # ---------------------------------------------------------------------------
 
@@ -457,3 +552,170 @@ class TestSymfluenceIntegration:
         handler = self._handler(tmp_path, CSFS_CONNECTOR_CONFIG="not-a-dict")
         with pytest.raises(Exception, match="CSFS_CONNECTOR_CONFIG"):
             handler.acquire()
+
+
+class TestDropInProviderHandlers:
+    """Drop-in handlers (registry keys usgs/wsc/smhi) inside a real SYMFLUENCE env."""
+
+    @pytest.fixture(autouse=True)
+    def _requires_symfluence(self):
+        pytest.importorskip("symfluence")
+        pytest.importorskip("pandas")
+
+    def _handler(self, provider, tmp_path, **overrides):
+        """Provider handler with a native-style config (no CSFS_* keys)."""
+        assert integration.HAVE_SYMFLUENCE
+        cfg = _symfluence_config(tmp_path, **overrides)
+        cfg.pop("CSFS_STATION_ID", None)
+        return integration.PROVIDER_HANDLERS[provider](cfg, logger)
+
+    def _capture_fetch(self, monkeypatch, n=10):
+        import csfs
+
+        calls = {}
+
+        def fake_fetch(provider, station_id, start, end, config=None):
+            calls.update(provider=provider, station_id=station_id, start=start, end=end, config=config)
+            return _make_chunk(n)
+
+        monkeypatch.setattr(csfs, "fetch_observations_sync", fake_fetch)
+        return calls
+
+    # -- registration ----------------------------------------------------
+
+    def test_entry_point_registers_all_drop_in_keys(self):
+        """Plain `import symfluence` exposes csfs + the three provider names."""
+        import symfluence  # noqa: F401
+        from symfluence.core.registries import R
+
+        for key in ("csfs", "usgs", "wsc", "smhi"):
+            assert key in R.observation_handlers, key
+        for key in ("usgs", "wsc", "smhi"):
+            registered = R.observation_handlers.get(key)
+            assert registered.__module__ == "csfs.integrations.symfluence"
+            assert registered.__qualname__ == f"CSFS{key.upper()}StreamflowHandler"
+
+    def test_native_handler_registrations_are_untouched(self):
+        """No collision: natives live under *_streamflow keys and stay native."""
+        import symfluence  # noqa: F401
+        from symfluence.core.registries import R
+
+        for key in ("usgs_streamflow", "wsc_streamflow", "smhi_streamflow"):
+            assert R.observation_handlers.get(key).__module__.startswith("symfluence.")
+
+    def test_register_is_idempotent_for_provider_keys(self):
+        from symfluence.core.registries import R
+
+        integration.register()
+        before = {key: R.observation_handlers.get(key) for key in ("usgs", "wsc", "smhi")}
+        integration.register()
+        for key, cls in before.items():
+            assert R.observation_handlers.get(key) is cls
+
+    # -- station-id resolution from the existing config keys --------------
+
+    @pytest.mark.parametrize(
+        ("provider", "overrides", "expected_station"),
+        [
+            ("usgs", {"STATION_ID": "06191500"}, "usgs:06191500"),
+            ("usgs", {"USGS_SITE_CODE": "06191500"}, "usgs:06191500"),
+            ("usgs", {"STREAMFLOW_STATION_ID": "06191500"}, "usgs:06191500"),
+            ("usgs", {"STATION_ID": "usgs:06191500"}, "usgs:06191500"),
+            # NOTE: int station ids (YAML `STATION_ID: 6191500`) fail SymfluenceConfig
+            # validation and degrade the whole config to a dict (framework behavior,
+            # same for the native handlers) — int coercion is covered at the pure
+            # resolver level instead (test_resolve_bare_native_station_ids).
+            ("usgs", {"STATION_ID": "6191500"}, "usgs:06191500"),
+            ("wsc", {"STATION_ID": "05BB001"}, "environment_canada:05BB001"),
+            ("wsc", {"STATION_ID": "environment_canada:05BB001"}, "environment_canada:05BB001"),
+            ("wsc", {"STATION_ID": "wsc:05BB001"}, "environment_canada:05BB001"),
+            ("smhi", {"STATION_ID": "2357"}, "sweden_smhi:2357"),
+        ],
+    )
+    def test_station_id_resolves_from_existing_config_keys(
+        self, tmp_path, monkeypatch, provider, overrides, expected_station
+    ):
+        calls = self._capture_fetch(monkeypatch)
+        handler = self._handler(provider, tmp_path, **overrides)
+        handler.acquire()
+        assert calls["provider"] == integration.PROVIDER_BACKENDS[provider].slug
+        assert calls["station_id"] == expected_station
+
+    def test_usgs_station_key_precedence_matches_native(self, tmp_path, monkeypatch):
+        """evaluation station id wins over the data.* fallbacks, like handlers/usgs.py."""
+        calls = self._capture_fetch(monkeypatch)
+        handler = self._handler(
+            "usgs", tmp_path, STATION_ID="06191500", USGS_SITE_CODE="01646500"
+        )
+        handler.acquire()
+        assert calls["station_id"] == "usgs:06191500"
+
+    def test_missing_station_id_lists_the_existing_keys(self, tmp_path):
+        handler = self._handler("usgs", tmp_path)
+        with pytest.raises(Exception, match="STATION_ID, USGS_SITE_CODE, STREAMFLOW_STATION_ID"):
+            handler.acquire()
+
+    def test_provider_handlers_do_not_read_csfs_station_id(self, tmp_path):
+        """Drop-in handlers use only the native keys; CSFS_STATION_ID is the generic handler's."""
+        cfg = _symfluence_config(tmp_path)  # sets CSFS_STATION_ID, no STATION_ID
+        handler = integration.PROVIDER_HANDLERS["usgs"](cfg, logger)
+        with pytest.raises(Exception, match="No station id configured"):
+            handler.acquire()
+
+    # -- connector config --------------------------------------------------
+
+    def test_smhi_requests_the_15min_product(self, tmp_path, monkeypatch):
+        """Parity with native SMHI requires hydroobs parameter 2 (15-min discharge)."""
+        calls = self._capture_fetch(monkeypatch)
+        handler = self._handler("smhi", tmp_path, STATION_ID="2357")
+        handler.acquire()
+        assert calls["config"] == {"resolution": "15min"}
+
+    def test_usgs_and_wsc_pass_no_connector_config_by_default(self, tmp_path, monkeypatch):
+        for provider, station in (("usgs", "06191500"), ("wsc", "05BB001")):
+            calls = self._capture_fetch(monkeypatch)
+            self._handler(provider, tmp_path / provider, STATION_ID=station).acquire()
+            assert calls["config"] is None
+
+    def test_connector_config_merges_user_overrides(self, tmp_path, monkeypatch):
+        """CSFS_CONNECTOR_CONFIG wins over backend defaults (documented escape hatch)."""
+        calls = self._capture_fetch(monkeypatch)
+        handler = self._handler(
+            "smhi", tmp_path, STATION_ID="2357",
+            CSFS_CONNECTOR_CONFIG={"resolution": "daily", "api_key": "k"},
+        )
+        handler.acquire()
+        assert calls["config"] == {"resolution": "daily", "api_key": "k"}
+
+    # -- acquire + process happy path ---------------------------------------
+
+    @pytest.mark.parametrize(
+        ("provider", "station", "raw_name"),
+        [
+            ("usgs", "06191500", "csfs_usgs_06191500_raw.csv"),
+            ("wsc", "05BB001", "csfs_environment_canada_05BB001_raw.csv"),
+            ("smhi", "2357", "csfs_sweden_smhi_2357_raw.csv"),
+        ],
+    )
+    def test_acquire_and_process_happy_path(self, tmp_path, monkeypatch, provider, station, raw_name):
+        calls = self._capture_fetch(monkeypatch)
+        handler = self._handler(provider, tmp_path, STATION_ID=station)
+
+        raw_path = handler.acquire()
+        assert calls["start"] == datetime(2020, 1, 1, tzinfo=UTC)
+        assert calls["end"] == datetime(2020, 1, 10, tzinfo=UTC)
+        assert raw_path.is_file()
+        assert raw_path.name == raw_name
+        assert raw_path.parent == handler.project_observations_dir / "streamflow" / "raw_data"
+
+        processed = handler.process(raw_path)
+
+        import pandas as pd
+
+        assert processed.name == "TestDomain_streamflow_processed.csv"
+        assert processed.parent == handler.project_observations_dir / "streamflow" / "preprocessed"
+        df = pd.read_csv(processed, parse_dates=["datetime"], index_col="datetime")
+        assert list(df.columns) == ["discharge_cms"]
+        assert df["discharge_cms"].iloc[0] == 10.0
+        assert df.index.min() == pd.Timestamp("2020-01-01")
+        assert df.index.tz is None

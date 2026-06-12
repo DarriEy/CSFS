@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Drop-in SYMFLUENCE community backend: the plugin now also registers
+  per-provider observation handlers under SYMFLUENCE's existing streamflow
+  provider names (`usgs`, `wsc`, `smhi`), built by a small factory on top of
+  `CSFSStreamflowHandler`. With SYMFLUENCE's registry-first streamflow
+  dispatch and `DATA_ACCESS: community`, a stock experiment
+  (`STREAMFLOW_DATA_PROVIDER` and station-id keys unchanged) acquires its
+  primary streamflow through CSFS; the in-tree handlers keep their separate
+  `usgs_streamflow`-style registry keys and the default path is untouched.
+  Station ids resolve from the same config keys the native handlers read
+  (`STATION_ID`, plus `USGS_SITE_CODE`/`STREAMFLOW_STATION_ID` for USGS,
+  with native zero-padding) and also accept CSFS-namespaced ids. The WSC
+  handler maps to the `environment_canada` connector (value-identical to
+  native, without the native GeoMet pagination corruption); the SMHI handler
+  pins the connector to the 15-minute discharge product for parity with the
+  native download (overridable via `CSFS_CONNECTOR_CONFIG`). Documented in
+  `docs/symfluence.md` together with the measured parity table
+  (USGS bit-identical after the timezone/conversion fixes, WSC
+  value-identical, SMHI 15-min product parity).
 - SYMFLUENCE integration plugin (`csfs.integrations.symfluence`): a
   `CSFSStreamflowHandler` observation handler that lets SYMFLUENCE pull
   calibration/evaluation streamflow from any CSFS provider connector
