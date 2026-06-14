@@ -11,17 +11,17 @@ and an inventory entry.
 
 ## Status breakdown
 
-Of the **103 cataloged sources**:
+Of the **91 cataloged sources**:
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| `implemented` | 77 | Registered connector exists in `csfs/connectors/`, with tests |
-| `research` | 17 | API exists but needs investigation (8 of these already have a connector under validation) |
+| `implemented` | 72 | Registered connector exists in `csfs/connectors/`, with tests |
+| `research` | 10 | API exists but needs investigation (2 of these already have a connector under validation) |
 | `fallback` | 5 | Community/research dataset used for gap-filling |
 | `manual` | 3 | No API; requires scraping or manual download |
 | `deprecated` | 1 | Source retired or superseded |
 
-In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 whose inventory entries remain `research` while their upstream data paths are validated. **41 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
+In code, **74 connectors are registered**: the 72 `implemented` entries plus 2 whose inventory entries remain `research` while their upstream data paths are validated. **38 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 
 !!! note "Live providers wobble"
     A connector being `implemented` means the code path is real and tested
@@ -33,7 +33,6 @@ In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 w
 
 | Provider | Country | Status | Realtime | Notes |
 | --- | --- | --- | --- | --- |
-| Afghanistan (USGS NWIS) (`afghanistan_usgs`) | AF | `implemented` | no | Historical digitized records. Discharge param 00060 (cfs), convert to m3/s. |
 | SNIH Argentina (`argentina_snih`) | AR | `implemented` | — |  |
 | WMO WHOS-Plata (`wmo_whos_plata`) | AR, BO, BR, PY, UY | `implemented` | yes | La Plata River Basin federated access. |
 | eHYD Austria (BMLUK) (`austria_ehyd`) | AT | `implemented` | yes | Official WFS service from the Federal Ministry (BMLUK). |
@@ -45,7 +44,6 @@ In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 w
 | SIEREM (IRD African Hydrology) (`sierem`) | BF, BJ, CF, CG, CI, CM, GA, GN, ML, MR, NE, SN, TD, TG | `implemented` | no | IRD database focused on West and Central Africa. |
 | EAEMDR Bulgaria (`bulgaria_eaemdr`) | BG | `implemented` | yes | Scrapes the daily Danube hydrology bulletin (/hidrology-en) for current discharge (m3/s) at 6 gauges (Novo Selo, Lom, Oryahovo, Svishtov,... |
 | NIMH Bulgaria (open data) (`bulgaria_nimh`) | BG | `implemented` | no | Daily water runoff data. |
-| DanubeHIS (`danube_his`) | BG, RS, UA, HU, RO, SK, AT, DE, CZ, HR, SI, BA, MD | `implemented` | yes | Covers the entire Danube River basin. |
 | INE Bolivia (Caudales y Niveles) (`bolivia_ine`) | BO | `implemented` | no | NADA catalog dataset |
 | ANA HidroWeb / Telemetria (`brazil_ana`) | BR | `implemented` | yes |  |
 | Environment Canada Hydrometric Data (`environment_canada`) | CA | `implemented` | yes |  |
@@ -77,10 +75,8 @@ In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 w
 | IWRMC Iran (stu.wrm.ir) (`iran_iwrmc`) | IR | `implemented` | — |  |
 | LamaH-Ice (`iceland_lamahice`) | IS | `implemented` | no |  |
 | ARPAE Emilia-Romagna (`italy_emilia`) | IT | `implemented` | yes | Discharge (m3/s) from the ARPAE open-data instantaneous-flow feed (dati-simc.arpae.it). Only ~7 Po-river discharge gauges are public; rol... |
-| WRA (Jamaica) (`jamaica_wra`) | JM | `implemented` | no |  |
 | MLIT Water Information System (`japan_mlit`) | JP | `implemented` | yes |  |
 | CA-discharge (Central Asian Discharge Dataset) (`ca_discharge`) | KG,TJ,KZ,UZ,AF | `implemented` | no | Academic dataset covering mountainous Central Asia. |
-| Kazhydromet (Kazakhstan) (`kazakhstan_kazhydromet`) | KZ | `implemented` | yes |  |
 | LHMT (Lithuania) (`lithuania_lhmt`) | LT | `implemented` | yes | Hydrology API launched Nov 2023. |
 | EStreams (European Streamflow Dataset) (`estreams`) | LU,AL,ME,MK | `implemented` | no | Catalogue connector for countries without national APIs. |
 | DID Malaysia (Public Infobanjir) (`malaysia_did`) | MY | `implemented` | yes |  |
@@ -95,7 +91,6 @@ In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 w
 | R-ArcticNET v4.0 (Russian Arctic) (`russia_arcticnet`) | RU | `implemented` | no | Monthly mean discharge for Russian Arctic stations. |
 | SMHI Open Data — Hydrology (`sweden_smhi`) | SE | `implemented` | yes | Two discharge products — parameter 1 "Vattenföring (Dygn)" (daily mean, connector default) and parameter 2 "Vattenföring (15 min)" via config resolution="15min". Both serve epoch-ms UTC timestamps and m³/s. |
 | ARSO (Slovenia) (`slovenia_arso`) | SI | `implemented` | yes | Real-time XML feed of latest observations. |
-| MARN / SNET (El Salvador) (`elsalvador_marn`) | SV | `implemented` | yes | Uses AQUARIUS Time-Series platform. |
 | HII (Hydro-Informatics Institute Thailand) (`thailand_hii`) | TH | `implemented` | yes |  |
 | WRA (Taiwan Water Resources Agency) (`taiwan_wra`) | TW | `implemented` | yes | Bilingual API (English + Chinese field names). |
 | CAMELSH (Hourly US) (`camelsh`) | US | `implemented` | no | Hourly CAMELSH (Zenodo, 1980-2024). Offline archive: seed catalogue only; observations require local downloaded files (config['data_dir']... |
@@ -115,16 +110,10 @@ In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 w
 | Ecuador INAMHI (via GEOGloWS) (`peru_senamhi_legacy`) | EC | `research` | no | Legacy/duplicate entry, superseded by ecuador_inamhi and peru_senamhi; no connector. (name field is stale.) |
 | Ilmateenistus (Estonia) (`estonia_ilmateenistus`) | EE | `research` | no |  |
 | OVF (Hungary) (`hungary_ovf`) | HU | `research` | yes |  |
-| PUPR SDA Indonesia (`indonesia_pupr`) | ID | `research` | yes | UNVERIFIED (2026-06): SIGI ArcGIS endpoint returns HTTP 500; fetch_stations fails. |
 | CWC India (WRIS) (`india_cwc`) | IN | `research` | yes | Defensive dual-endpoint. Replaces india_wris in inventory. |
 | India WRIS / CWC (`india_wris`) | IN | `research` | yes |  |
-| ISPRA HIS-Central Italy (`italy_ispra_wof`) | IT | `research` | yes | UNVERIFIED (2026-06): 1-station stub; HIS-Central WaterOneFlow endpoints unverified; returns no discharge. |
-| ARPA Piemonte (`italy_piedmont`) | IT | `research` | yes | ARPA Piemonte public API exposes only water LEVEL (m), no discharge; connector returns the catalogue with discharge_m3s=None. Verified 20... |
 | SIR Toscana (`italy_tuscany`) | IT | `research` | yes | SIR Toscana exposes only hydrometric LEVEL (m), no discharge (verified 2026-06). Returns no discharge. |
 | WAMIS (Water Management Information System) (`south_korea_wamis`) | KR | `research` | yes |  |
-| SENAMHI Peru (`peru_senamhi`) | PE | `research` | yes | UNVERIFIED (2026-06): 1-station stub (PHISIS); returns no discharge. |
-| PAGASA Philippines (`philippines_pagasa`) | PH | `research` | yes | UNVERIFIED (2026-06): fetch_stations fails (connection/retry error); returns no discharge. |
-| INHGA Romania (`romania_inhga`) | RO | `research` | yes | UNVERIFIED (2026-06): 1-station stub, RoWaterAPI endpoint unverified, returns no discharge. |
 | SHMU (Slovakia) (`slovakia_shmu`) | SK | `research` | no |  |
 | DSI Turkey (FACE Portal) (`turkey_dsi`) | TR | `research` | no | Historical discharge 1936-2015. |
 | CAMELS-AUS (`camels_aus`) | AU | `fallback` | no |  |
