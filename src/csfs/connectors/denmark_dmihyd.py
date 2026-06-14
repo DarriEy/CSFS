@@ -12,9 +12,11 @@ Documentation: https://github.com/danmarksmiljoeportal/VanDa/wiki/Hydro-API
 
 from __future__ import annotations
 
+import functools
 from datetime import UTC, datetime, timedelta
 
 import structlog
+from pyproj import Transformer
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
@@ -30,12 +32,27 @@ logger = structlog.get_logger()
 
 _BASE_URL = "https://vandah.miljoeportal.dk/api"
 _PARAM_DISCHARGE = "Vandføring"
+# VanDa station coordinates are ETRS89 / UTM zone 32N (EPSG:25832), in metres.
+_UTM32N_EPSG = 25832
 
-def _map_quality(raw: str | None) -> QualityFlag:
-    """Map VanDa quality marks to CSFS flags."""
-    # VanDa uses quality marks; for now, we treat standard results as GOOD
-    # if they have a numeric value.
-    return QualityFlag.GOOD
+
+@functools.lru_cache(maxsize=1)
+def _utm32n_to_wgs84() -> Transformer:
+    """Cached EPSG:25832 (easting, northing) -> WGS84 (lon, lat) transformer."""
+    return Transformer.from_crs(_UTM32N_EPSG, 4326, always_xy=True)
+
+
+def _to_wgs84(location: dict | None) -> tuple[float, float]:
+    """Convert a VanDa UTM-32N location object to (latitude, longitude)."""
+    if not location:
+        return 0.0, 0.0
+    try:
+        lon, lat = _utm32n_to_wgs84().transform(
+            float(location["x"]), float(location["y"]),
+        )
+        return lat, lon
+    except (KeyError, TypeError, ValueError):
+        return 0.0, 0.0
 
 
 @register("denmark_dmihyd")
@@ -80,18 +97,16 @@ class DenmarkHydroConnector(BaseConnector):
             if not native_id:
                 continue
 
-            # Coordinates are in ETRS89 / UTM zone 32N (SRID 25832) in metadata,
-            # but we need WGS84 for the Station model.
-            # For now, if metadata doesn't provide lat/lng in WGS84, we keep 0.0
-            # or extract from another source if possible.
-            # VanDa metadata usually only provides UTM 'location' objects.
+            # VanDa serves coordinates only as ETRS89 / UTM zone 32N (metres)
+            # in the station 'location' object; convert to WGS84 lat/lon.
+            latitude, longitude = _to_wgs84(entry.get("location"))
             stations.append(Station(
                 id=self._station_id(native_id),
                 provider=self.slug,
                 native_id=native_id,
                 name=entry.get("name", "Unknown"),
-                latitude=0.0, # TODO: UTM to WGS84 conversion if needed
-                longitude=0.0,
+                latitude=latitude,
+                longitude=longitude,
                 country_code="DK",
                 river=None, # VanDa doesn't explicitly name the river in root
                 catchment_area_km2=None,
@@ -131,31 +146,37 @@ class DenmarkHydroConnector(BaseConnector):
                 f"Failed to fetch water flows for station {native_id}: {exc}",
             ) from exc
 
+        # /water-flows returns a list of per-station objects, each wrapping the
+        # actual readings in a nested 'results' array -- the timestamp/value
+        # live there, NOT on the top-level object.
         observations: list[Observation] = []
-        for row in data:
-            try:
-                raw_time = row.get("measurementDateTime")
-                if not raw_time:
-                    continue
-                ts = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
-                
-                # result is usually in l/s (liters per second), convert to m3/s
-                raw_val = row.get("result")
-                if raw_val is None:
-                    discharge = None
-                    quality = QualityFlag.MISSING
-                else:
-                    discharge = float(raw_val) / 1000.0
-                    quality = QualityFlag.GOOD
+        for station_obj in data:
+            for row in station_obj.get("results", []):
+                try:
+                    if row.get("parameter") != _PARAM_DISCHARGE:
+                        continue
+                    raw_time = row.get("measurementDateTime")
+                    if not raw_time:
+                        continue
+                    ts = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
 
-                observations.append(Observation(
-                    station_id=station_id,
-                    timestamp=ts,
-                    discharge_m3s=discharge,
-                    quality=quality,
-                ))
-            except (ValueError, TypeError):
-                continue
+                    # VanDa discharge is in l/s; convert to m3/s.
+                    raw_val = row.get("result")
+                    if raw_val is None:
+                        discharge = None
+                        quality = QualityFlag.MISSING
+                    else:
+                        discharge = float(raw_val) / 1000.0
+                        quality = QualityFlag.GOOD
+
+                    observations.append(Observation(
+                        station_id=station_id,
+                        timestamp=ts,
+                        discharge_m3s=discharge,
+                        quality=quality,
+                    ))
+                except (ValueError, TypeError):
+                    continue
 
         return TimeSeriesChunk(
             station_id=station_id,
