@@ -103,6 +103,21 @@ The store is a plain DuckDB file — any SQL/pandas/Arrow tooling works on it
 directly. The blessed, stable surface is what `import csfs` re-exports; see
 the [Python API guide](https://darriey.github.io/CSFS/python-api/).
 
+## SYMFLUENCE integration
+
+CSFS doubles as a streamflow-observation plugin for
+[SYMFLUENCE](https://github.com/DarriEy/SYMFLUENCE): install both packages and
+SYMFLUENCE auto-discovers the handler, so an experiment YAML needs only
+
+```yaml
+ADDITIONAL_OBSERVATIONS: csfs
+CSFS_STATION_ID: "usgs:01646500"
+```
+
+to calibrate against any CSFS-reachable gauge (live fetch, or offline from a
+CSFS store via `CSFS_DB_PATH`). See the
+[SYMFLUENCE integration guide](https://darriey.github.io/CSFS/symfluence/).
+
 ## API keys
 
 Most connectors need no credentials. Exceptions: **`norway_nve`** (free

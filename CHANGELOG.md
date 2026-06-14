@@ -5,6 +5,85 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `CommunityObservationBackend`: CSFS now also registers under SYMFLUENCE's
+  `R.observation_backends` (acquisition-backend protocol, contract 0.2.0,
+  hardcoded `TARGET_INTERFACE_VERSION = "0.2.0"` for version-skew
+  detection). Under `DATA_ACCESS: community`, SYMFLUENCE's backend-first
+  streamflow dispatch routes USGS/WSC/SMHI (parity-graded capabilities) and
+  the ungated generic `CSFS` provider through this backend, which reuses the
+  existing handler classes internally (same fetch, byte-identical processed
+  CSV) and additionally writes a per-station OBS_CSV_V1 delivery
+  (`datetime,value,quality_flag`, UTC, m³/s, trimmed to the half-open
+  `[start, end)` window) plus an `acquisition_manifest.json` sidecar. CSFS
+  internal failures map onto the protocol error taxonomy
+  (`DatasetUnsupported`/`UpstreamOutage`/`AcquisitionError`/`IntegrityError`).
+  The registry-handler tier (`usgs`/`wsc`/`smhi`/`csfs` keys) is kept as the
+  documented fallthrough and still serves `ADDITIONAL_OBSERVATIONS: csfs`.
+- Pure OBS_CSV_V1 shaping helper `obs_csv_v1_frame()` and the framework-free
+  capability table `OBSERVATION_CAPABILITIES` (unit-tested without
+  SYMFLUENCE installed).
+
+## [0.3.0] — 2026-06-11
+
+### Added
+
+- Drop-in SYMFLUENCE community backend: the plugin now also registers
+  per-provider observation handlers under SYMFLUENCE's existing streamflow
+  provider names (`usgs`, `wsc`, `smhi`), built by a small factory on top of
+  `CSFSStreamflowHandler`. With SYMFLUENCE's registry-first streamflow
+  dispatch and `DATA_ACCESS: community`, a stock experiment
+  (`STREAMFLOW_DATA_PROVIDER` and station-id keys unchanged) acquires its
+  primary streamflow through CSFS; the in-tree handlers keep their separate
+  `usgs_streamflow`-style registry keys and the default path is untouched.
+  Station ids resolve from the same config keys the native handlers read
+  (`STATION_ID`, plus `USGS_SITE_CODE`/`STREAMFLOW_STATION_ID` for USGS,
+  with native zero-padding) and also accept CSFS-namespaced ids. The WSC
+  handler maps to the `environment_canada` connector (value-identical to
+  native, without the native GeoMet pagination corruption); the SMHI handler
+  pins the connector to the 15-minute discharge product for parity with the
+  native download (overridable via `CSFS_CONNECTOR_CONFIG`). Documented in
+  `docs/symfluence.md` together with the measured parity table
+  (USGS bit-identical after the timezone/conversion fixes, WSC
+  value-identical, SMHI 15-min product parity).
+- SYMFLUENCE integration plugin (`csfs.integrations.symfluence`): a
+  `CSFSStreamflowHandler` observation handler that lets SYMFLUENCE pull
+  calibration/evaluation streamflow from any CSFS provider connector
+  (`CSFS_STATION_ID: "usgs:01646500"`, live fetch) or from a pre-built
+  CSFS DuckDB store (`CSFS_DB_PATH`), writing the framework's standard
+  raw and processed streamflow CSVs (`discharge_cms`, m³/s, UTC).
+- Auto-discovery via the `symfluence.plugins` entry point: with both
+  packages installed, `ADDITIONAL_OBSERVATIONS: csfs` works after a plain
+  `import symfluence` — no framework changes, no registration code.
+  SYMFLUENCE remains a non-dependency: the integration module imports the
+  framework defensively and `import csfs` is unaffected without it.
+- Documentation page (`docs/symfluence.md`) covering install, YAML
+  configuration, live-fetch vs store mode, and the unit/timezone contract.
+- SMHI 15-minute discharge product: `sweden_smhi` now accepts
+  `config={"resolution": "15min"}` to use hydroobs parameter 2
+  ("Vattenföring (15 min)") instead of the daily parameter 1
+  ("Vattenföring (Dygn)", still the default — existing behavior is
+  unchanged). The 15-min path keeps the same epoch-ms UTC timestamps and
+  m³/s passthrough; because the API offers no date subsetting and the full
+  15-min corrected archive is one ~73 MB JSON per station, windows starting
+  within the last 24 h fetch the small `latest-day` file instead (the API
+  has no `latest-months` period, unlike SMHI metobs), and full-archive
+  downloads get an extended timeout.
+
+### Fixed
+
+- SMHI quality-code map now follows SMHI's documented legend: `G` (green,
+  checked and approved) → good, `Y` (yellow, roughly checked) → suspect,
+  and the previously unmapped `O` (orange, unchecked — seen on recent
+  realtime data) is explicitly mapped to raw; unknown codes deliberately
+  fall through to raw.
+- `sweden_smhi.fetch_observations` docstring claimed the `latest-months`
+  period while the code fetched `corrected-archive`; it now documents the
+  actual window-dependent period selection.
+
 ## [0.2.0] — 2026-06-11
 
 ### Added

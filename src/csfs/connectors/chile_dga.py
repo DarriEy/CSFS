@@ -65,9 +65,14 @@ class ChileDgaConnector(BaseConnector):
         all_features: list[dict] = []
         offset = 0
         page_size = 1000
+        # The DGA network has ~5,000 stations (~5 pages). Cap pagination so a
+        # misbehaving ArcGIS endpoint -- e.g. one that ignores resultOffset and
+        # keeps returning the first page -- cannot loop indefinitely and stall
+        # the acquisition run.
+        max_pages = 50
         path = "/arcgis/rest/services/DGA/Red_Hidrometrica/MapServer/0/query"
 
-        while True:
+        for _page in range(max_pages):
             params = {
                 "where": "1=1",
                 "outFields": "*",
@@ -100,6 +105,13 @@ class ChileDgaConnector(BaseConnector):
             if len(features) < page_size:
                 break
             offset += page_size
+        else:
+            logger.warning(
+                "pagination_cap_reached",
+                provider=self.slug,
+                max_pages=max_pages,
+                fetched=len(all_features),
+            )
 
         logger.info("stations_fetched", provider=self.slug, count=len(all_features))
         return self._parse_features(all_features)

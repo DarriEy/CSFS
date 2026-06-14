@@ -26,7 +26,7 @@ def test_all_names_resolve():
 
 
 def test_version():
-    assert csfs.__version__ == "0.2.0"
+    assert csfs.__version__ == "0.3.0"
     assert "__version__" in csfs.__all__
 
 

@@ -296,6 +296,44 @@ async def test_fetch_stations_pagination():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_stations_pagination_cap_stops_runaway():
+    """A server that always returns a full page must not loop forever.
+
+    If the ArcGIS endpoint ignores ``resultOffset`` and keeps returning a
+    full page, pagination is bounded by ``max_pages`` (50) rather than
+    spinning until the runner is killed.
+    """
+    call_count = 0
+
+    def always_full(request):
+        nonlocal call_count
+        # Unique codes per call so parsed stations are not deduplicated,
+        # letting us assert the exact page cap was honoured.
+        page = [
+            {
+                "attributes": {
+                    "codigo_estacion": f"STA{call_count:02d}{i:04d}",
+                    "nombre_estacion": f"Station {i}",
+                },
+                "geometry": {"x": -70.0 + i * 0.001, "y": -33.0},
+            }
+            for i in range(1000)
+        ]
+        call_count += 1
+        return httpx.Response(200, json={"features": page})
+
+    respx.get(f"{BASE_URL}{QUERY_PATH}").side_effect = always_full
+
+    async with ChileDgaConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # Exactly max_pages (50) requests of 1000 features, then it gives up.
+    assert call_count == 50
+    assert len(stations) == 50_000
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_stations_http_error_first_page_raises():
     """HTTPStatusError on the first page raises ConnectorError."""
     from csfs.core.exceptions import ConnectorError
