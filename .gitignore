@@ -28,6 +28,10 @@ venv/
 # mkdocs build output
 site/
 
+# connector health-sweep artifacts (scripts/probe_connectors.py)
+connector_health.json
+probe_stderr.log
+
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
