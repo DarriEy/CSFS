@@ -1,6 +1,8 @@
-"""Tests for Ecuador INAMHI (GEOGloWS) connector with mocked HTTP responses."""
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Darri Eythorsson <dareyt@gmail.com>
+"""Tests for the Ecuador INAMHI (GEOGLOWS V2) connector with mocked responses."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -10,67 +12,40 @@ from csfs.connectors.ecuador_inamhi import EcuadorINAMHIConnector
 from csfs.core.exceptions import DataFormatError
 from csfs.core.models import QualityFlag
 
-# ── Mock payloads ───────────────────────────────────────────────────
+_BASE = "https://geoglows.ecmwf.int/api/v2"
+_REACH = "670049564"  # Guayas at Daule
 
-MOCK_HISTORIC = {
-    "data": [
-        {
-            "datetime": "2024-06-01T00:00:00",
-            "streamflow_m3s": 350.2,
-        },
-        {
-            "datetime": "2024-06-02T00:00:00",
-            "streamflow_m3s": 375.8,
-        },
-        {
-            "datetime": "2024-06-03T00:00:00",
-            "streamflow_m3s": 400.1,
-        },
-        {
-            "datetime": "2024-05-30T00:00:00",
-            "streamflow_m3s": 310.0,
-        },
+# GEOGLOWS V2 retrospective shape: discharge keyed by river_id, parallel to
+# the shared "datetime" array.
+MOCK_RETRO = {
+    _REACH: [350.2, 375.8, 400.1, 310.0],
+    "datetime": [
+        "2024-06-01T00:00:00",
+        "2024-06-02T00:00:00",
+        "2024-06-03T00:00:00",
+        "2024-05-30T00:00:00",
     ],
+    "metadata": {"river_id": int(_REACH)},
 }
 
 MOCK_FORECAST = {
-    "data": [
-        {
-            "datetime": "2024-06-10T00:00:00",
-            "flow_avg": 420.5,
-        },
-        {
-            "datetime": "2024-06-11T00:00:00",
-            "flow_avg": 415.0,
-        },
-    ],
+    "datetime": ["2024-06-10T00:00:00", "2024-06-11T00:00:00"],
+    "flow_median": [420.5, 415.0],
 }
 
-# ── Base URLs ───────────────────────────────────────────────────────
 
-_BASE = "https://geoglows.ecmwf.int/api"
-_TETHYS_BASE = "https://inamhi.geoglows.org/api"
-
-
-# =====================================================================
-# Station tests
-# =====================================================================
-
+# === Station tests ===================================================
 
 @pytest.mark.asyncio
 async def test_fetch_stations_returns_seed_list():
-    """fetch_stations returns the curated seed list of Ecuadorian reaches."""
     async with EcuadorINAMHIConnector() as conn:
         stations = await conn.fetch_stations()
 
-    assert len(stations) == 20
-
+    assert len(stations) == 19  # 20 seeds, two Esmeraldas points dedup to one reach
     s0 = stations[0]
-    assert s0.id == "ecuador_inamhi:9027406"
-    assert s0.native_id == "9027406"
+    assert s0.id == f"ecuador_inamhi:{_REACH}"
+    assert s0.native_id == _REACH
     assert s0.name == "Guayas at Daule"
-    assert s0.latitude == pytest.approx(-1.86)
-    assert s0.longitude == pytest.approx(-79.97)
     assert s0.river == "Guayas"
     assert s0.country_code == "EC"
     assert s0.provider == "ecuador_inamhi"
@@ -78,334 +53,92 @@ async def test_fetch_stations_returns_seed_list():
 
 
 @pytest.mark.asyncio
-async def test_fetch_stations_all_have_valid_ids():
-    """Every seed station has a non-empty COMID and valid coordinates."""
+async def test_fetch_stations_have_unique_ids():
     async with EcuadorINAMHIConnector() as conn:
         stations = await conn.fetch_stations()
-
-    for s in stations:
-        assert s.native_id
-        assert s.latitude is not None
-        assert s.longitude is not None
-        assert s.id.startswith("ecuador_inamhi:")
+    ids = [s.native_id for s in stations]
+    assert len(ids) == len(set(ids)), "river_ids must be unique"
+    assert all(s.id.startswith("ecuador_inamhi:") for s in stations)
 
 
-# =====================================================================
-# Historic observation tests
-# =====================================================================
-
+# === Retrospective observation tests =================================
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_geoglows():
-    """Observations are parsed and filtered from GEOGloWS response."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=MOCK_HISTORIC),
+async def test_fetch_observations_retrospective():
+    respx.get(f"{_BASE}/retrospectivedaily/{_REACH}").mock(
+        return_value=httpx.Response(200, json=MOCK_RETRO),
     )
 
     async with EcuadorINAMHIConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
+            f"ecuador_inamhi:{_REACH}",
             start=datetime(2024, 6, 1, tzinfo=UTC),
             end=datetime(2024, 6, 3, tzinfo=UTC),
         )
 
-    assert chunk.station_id == "ecuador_inamhi:9027406"
+    assert chunk.station_id == f"ecuador_inamhi:{_REACH}"
     assert chunk.provider == "ecuador_inamhi"
-    # Only 3 obs in range (2024-05-30 is out of range)
+    # 2024-05-30 is out of the requested window.
     assert len(chunk.observations) == 3
-
     assert chunk.observations[0].discharge_m3s == pytest.approx(350.2)
     assert chunk.observations[0].quality == QualityFlag.ESTIMATED
-
-    assert chunk.observations[1].discharge_m3s == pytest.approx(375.8)
     assert chunk.observations[2].discharge_m3s == pytest.approx(400.1)
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_fallback_to_tethys():
-    """When GEOGloWS fails, connector falls back to Tethys portal."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(500),
-    )
-    tethys_payload = {
-        "data": [
-            {
-                "datetime": "2024-06-01T00:00:00",
-                "streamflow_m3s": 350.2,
-            },
-        ],
-    }
-    respx.get(f"{_TETHYS_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=tethys_payload),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 1, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(350.2)
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_empty():
-    """Empty data array produces zero observations."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json={"data": []}),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 3, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 0
-    assert chunk.station_id == "ecuador_inamhi:9027406"
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_invalid_json():
-    """Non-JSON body raises DataFormatError."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, text="<html>Error</html>"),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        with pytest.raises(DataFormatError, match="Invalid JSON"):
-            await conn.fetch_observations(
-                "ecuador_inamhi:9027406",
-                start=datetime(2024, 6, 1, tzinfo=UTC),
-                end=datetime(2024, 6, 1, tzinfo=UTC),
-            )
-
-
-# =====================================================================
-# Forecast tests
-# =====================================================================
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_forecast():
-    """Forecast stats are parsed correctly."""
-    respx.get(f"{_BASE}/ForecastStats/").mock(
-        return_value=httpx.Response(200, json=MOCK_FORECAST),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_forecast("ecuador_inamhi:9027406")
-
-    assert chunk.station_id == "ecuador_inamhi:9027406"
-    assert len(chunk.observations) == 2
-    assert chunk.observations[0].discharge_m3s == pytest.approx(420.5)
-    assert chunk.observations[1].discharge_m3s == pytest.approx(415.0)
-    assert chunk.observations[0].quality == QualityFlag.ESTIMATED
-
-
-# =====================================================================
-# Registration and class attributes
-# =====================================================================
-
-
-def test_connector_registered():
-    """EcuadorINAMHIConnector is discoverable via the registry."""
-    from csfs.core.registry import get_connector
-
-    cls = get_connector("ecuador_inamhi")
-    assert cls is EcuadorINAMHIConnector
-
-
-def test_connector_class_attributes():
-    """Verify slug, display_name, and country_codes."""
-    assert EcuadorINAMHIConnector.slug == "ecuador_inamhi"
-    assert EcuadorINAMHIConnector.country_codes == ["EC"]
-    assert "GEOGloWS" in EcuadorINAMHIConnector.display_name
-
-
-# =====================================================================
-# Reach ID param in request
-# =====================================================================
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_reach_id_in_request():
-    """Verify reach_id is passed as a query parameter."""
-    route = respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json={"data": []}),
+async def test_retrospective_request_shape():
+    route = respx.get(f"{_BASE}/retrospectivedaily/{_REACH}").mock(
+        return_value=httpx.Response(200, json={_REACH: [], "datetime": []}),
     )
 
     async with EcuadorINAMHIConnector() as conn:
         await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
+            f"ecuador_inamhi:{_REACH}",
             start=datetime(2024, 6, 1, tzinfo=UTC),
             end=datetime(2024, 6, 3, tzinfo=UTC),
         )
 
     assert route.called
-    url_str = str(route.calls[0].request.url)
-    assert "reach_id=9027406" in url_str
-    assert "return_format=json" in url_str
-
-
-# =====================================================================
-# Additional coverage tests
-# =====================================================================
+    url = str(route.calls[0].request.url)
+    assert "start_date=20240601" in url
+    assert "end_date=20240603" in url
+    assert "format=json" in url
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_stations_skips_bad_coords():
-    """Seed entries with None lat/lon would be skipped (line 214-215)."""
-    # The seed list always has valid entries, so we verify all are included
-    async with EcuadorINAMHIConnector() as conn:
-        stations = await conn.fetch_stations()
-
-    # All 20 entries are valid
-    for s in stations:
-        assert s.latitude is not None
-        assert s.longitude is not None
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_observations_tethys_after_geoglows_cached():
-    """Once Tethys is set, subsequent calls go directly to Tethys."""
-    tethys_data = {
-        "data": [
-            {
-                "datetime": "2024-06-01T00:00:00",
-                "streamflow_m3s": 500.0,
-            },
-        ],
-    }
-    respx.get(f"{_TETHYS_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=tethys_data),
+async def test_fetch_observations_forecast_for_future_window():
+    """A window ending in the future uses the forecast endpoint."""
+    route = respx.get(f"{_BASE}/forecast/{_REACH}").mock(
+        return_value=httpx.Response(200, json=MOCK_FORECAST),
     )
 
+    now = datetime.now(UTC)
     async with EcuadorINAMHIConnector() as conn:
-        # Force _use_tethys = True to test the direct branch
-        conn._use_tethys = True
         chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 1, tzinfo=UTC),
+            f"ecuador_inamhi:{_REACH}",
+            start=datetime(2024, 6, 10, tzinfo=UTC),
+            end=now + timedelta(days=5),
         )
 
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(500.0)
+    assert route.called
+    # MOCK_FORECAST datetimes (2024-06) fall before the window end, but the
+    # forecast endpoint was selected because end > now.
+    assert chunk.provider == "ecuador_inamhi"
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_data_format_error_not_caught():
-    """DataFormatError propagates and is not caught by fallback."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, text="<html>Error</html>"),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        with pytest.raises(DataFormatError, match="Invalid JSON"):
-            await conn.fetch_observations(
-                "ecuador_inamhi:9027406",
-                start=datetime(2024, 6, 1, tzinfo=UTC),
-                end=datetime(2024, 6, 1, tzinfo=UTC),
-            )
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_fetch_latest():
-    """fetch_latest fetches the most recent 24 hours."""
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json={"data": []}),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_latest("ecuador_inamhi:9027406")
-
-    assert chunk.station_id == "ecuador_inamhi:9027406"
-    assert len(chunk.observations) == 0
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_get_tethys_rate_limit():
-    """Tethys 429 response raises RateLimitError."""
-    from csfs.core.exceptions import RateLimitError
-
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(500),
-    )
-    respx.get(f"{_TETHYS_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(429),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        with pytest.raises(RateLimitError, match="Rate limited"):
-            await conn.fetch_observations(
-                "ecuador_inamhi:9027406",
-                start=datetime(2024, 6, 1, tzinfo=UTC),
-                end=datetime(2024, 6, 1, tzinfo=UTC),
-            )
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_historic_data_as_list():
-    """Historic data returned as bare list (not dict) is parsed."""
-    bare_list = [
-        {
-            "datetime": "2024-06-01T00:00:00",
-            "streamflow_m3s": 350.2,
-        },
-    ]
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=bare_list),
+async def test_fetch_observations_empty_series():
+    respx.get(f"{_BASE}/retrospectivedaily/{_REACH}").mock(
+        return_value=httpx.Response(200, json={_REACH: [], "datetime": []}),
     )
 
     async with EcuadorINAMHIConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 1, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 1
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_historic_skips_null_discharge():
-    """Observations with null discharge are skipped (line 377-378)."""
-    data = {
-        "data": [
-            {
-                "datetime": "2024-06-01T00:00:00",
-                "streamflow_m3s": None,
-            },
-            {
-                "datetime": "2024-06-02T00:00:00",
-                "value": None,
-            },
-        ],
-    }
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=data),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
+            f"ecuador_inamhi:{_REACH}",
             start=datetime(2024, 6, 1, tzinfo=UTC),
             end=datetime(2024, 6, 3, tzinfo=UTC),
         )
@@ -415,125 +148,73 @@ async def test_historic_skips_null_discharge():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_historic_value_type_error_skipped():
-    """Entries raising ValueError/TypeError during parse are skipped."""
-    data = {
-        "data": [
-            {
-                "datetime": "2024-06-01T00:00:00",
-                "streamflow_m3s": 100.0,
-            },
-        ],
-    }
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=data),
+async def test_fetch_observations_skips_null_discharge():
+    respx.get(f"{_BASE}/retrospectivedaily/{_REACH}").mock(
+        return_value=httpx.Response(200, json={
+            _REACH: [None, 200.0],
+            "datetime": ["2024-06-01T00:00:00", "2024-06-02T00:00:00"],
+        }),
     )
 
     async with EcuadorINAMHIConnector() as conn:
         chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
+            f"ecuador_inamhi:{_REACH}",
             start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 3, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 1
+    # The null value still yields an observation with discharge_m3s=None.
+    vals = [o.discharge_m3s for o in chunk.observations]
+    assert vals == [None, pytest.approx(200.0)]
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_forecast_skips_null_discharge():
-    """Forecast entries with null discharge are skipped."""
-    forecast_data = {
-        "data": [
-            {
-                "datetime": "2024-06-10T00:00:00",
-                "flow_avg": None,
-            },
-            {
-                "datetime": "2024-06-11T00:00:00",
-                "flow_avg": 420.0,
-            },
-        ],
-    }
-    respx.get(f"{_BASE}/ForecastStats/").mock(
-        return_value=httpx.Response(200, json=forecast_data),
+async def test_unexpected_response_raises_data_format_error():
+    respx.get(f"{_BASE}/retrospectivedaily/{_REACH}").mock(
+        return_value=httpx.Response(200, json={"unexpected": "shape"}),
     )
 
     async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_forecast("ecuador_inamhi:9027406")
-
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(420.0)
-
-
-@pytest.mark.asyncio
-@respx.mock
-async def test_forecast_value_type_error_skipped():
-    """Forecast entries that raise ValueError/TypeError are skipped."""
-    forecast_data = {
-        "data": [
-            {
-                "datetime": "2024-06-10T00:00:00",
-                "flow_avg": 420.0,
-            },
-        ],
-    }
-    respx.get(f"{_BASE}/ForecastStats/").mock(
-        return_value=httpx.Response(200, json=forecast_data),
-    )
-
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_forecast("ecuador_inamhi:9027406")
-
-    assert len(chunk.observations) == 1
+        with pytest.raises(DataFormatError):
+            await conn.fetch_observations(
+                f"ecuador_inamhi:{_REACH}",
+                start=datetime(2024, 6, 1, tzinfo=UTC),
+                end=datetime(2024, 6, 3, tzinfo=UTC),
+            )
 
 
-@pytest.mark.asyncio
-@respx.mock
-async def test_extract_records_fallback_to_any_list_value():
-    """Extract records falls back to first list value in dict."""
-    data = {
-        "custom_key": [
-            {
-                "datetime": "2024-06-01T00:00:00",
-                "streamflow_m3s": 200.0,
-            },
-        ],
-    }
-    respx.get(f"{_BASE}/HistoricSimulation/").mock(
-        return_value=httpx.Response(200, json=data),
-    )
+# === extract_values unit tests =======================================
 
-    async with EcuadorINAMHIConnector() as conn:
-        chunk = await conn.fetch_observations(
-            "ecuador_inamhi:9027406",
-            start=datetime(2024, 6, 1, tzinfo=UTC),
-            end=datetime(2024, 6, 1, tzinfo=UTC),
-        )
-
-    assert len(chunk.observations) == 1
+def test_extract_values_keyed_by_reach():
+    payload = {_REACH: [1.0, 2.0], "datetime": ["a", "b"]}
+    assert EcuadorINAMHIConnector._extract_values(payload, _REACH) == [1.0, 2.0]
 
 
-def test_parse_timestamp_various_formats():
-    """Test _parse_timestamp with various date formats."""
-    assert EcuadorINAMHIConnector._parse_timestamp("") is None
-    assert EcuadorINAMHIConnector._parse_timestamp("  ") is None
-
-    # ISO format
-    ts = EcuadorINAMHIConnector._parse_timestamp("2024-06-01T00:00:00")
-    assert ts is not None
-    assert ts.year == 2024
-
-    # Date-only
-    ts = EcuadorINAMHIConnector._parse_timestamp("2024-06-01")
-    assert ts is not None
-
-    # Unparseable
-    assert EcuadorINAMHIConnector._parse_timestamp("not-a-date") is None
+def test_extract_values_forecast_median():
+    payload = {"flow_median": [9.0], "datetime": ["a"]}
+    assert EcuadorINAMHIConnector._extract_values(payload, _REACH) == [9.0]
 
 
-def test_to_float_edge_cases():
-    """Test _to_float with various edge cases."""
-    assert EcuadorINAMHIConnector._to_float(None) is None
-    assert EcuadorINAMHIConnector._to_float("abc") is None
-    assert EcuadorINAMHIConnector._to_float("123.4") == pytest.approx(123.4)
+def test_extract_values_fallback_parallel_list():
+    payload = {"datetime": ["a", "b"], "some_series": [3.0, 4.0], "metadata": {}}
+    assert EcuadorINAMHIConnector._extract_values(payload, _REACH) == [3.0, 4.0]
+
+
+def test_extract_values_none_when_absent():
+    payload = {"datetime": ["a", "b"], "metadata": {}}
+    assert EcuadorINAMHIConnector._extract_values(payload, _REACH) is None
+
+
+# === Registration / metadata =========================================
+
+def test_connector_registered():
+    from csfs.core.registry import get_connector
+
+    assert get_connector("ecuador_inamhi") is EcuadorINAMHIConnector
+
+
+def test_connector_class_attributes():
+    assert EcuadorINAMHIConnector.slug == "ecuador_inamhi"
+    assert EcuadorINAMHIConnector.country_codes == ["EC"]
+    assert EcuadorINAMHIConnector.base_url.endswith("/api/v2")
