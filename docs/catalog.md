@@ -53,7 +53,6 @@ In code, **86 connectors are registered**: the 78 `implemented` entries plus 8 w
 | DGA Chile (SNIA) (`chile_dga`) | CL | `implemented` | yes |  |
 | Ministry of Water Resources (`china_mwr`) | CN | `implemented` | — | Limited public access; flood data intermittently available. |
 | CAMELS-COL (`camels_co`) | CO | `implemented` | no |  |
-| IDEAM (Colombia) (`colombia_ideam`) | CO | `implemented` | no | Uses Socrata SODA API on datos.gov.co. |
 | Czech Hydrometeorological Institute (`czechia_chmu`) | CZ | `implemented` | no |  |
 | CAMELS-DE (`camels_de`) | DE | `implemented` | no |  |
 | GKD Bayern (`germany_bavaria`) | DE | `implemented` | yes | Discharge (m3/s) via HTML table scraping of the GKD portal; the CSV path is email/ToS-gated. ~610 stations; lat/lon not exposed by these... |

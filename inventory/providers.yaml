@@ -1008,19 +1008,6 @@
   stations: ~500
   status: implemented
 
-- slug: colombia_ideam
-  name: IDEAM (Colombia)
-  country: CO
-  region: south_america
-  api_type: socrata_soda
-  base_url: https://www.datos.gov.co/resource
-  format: [json]
-  access: open
-  realtime: false
-  stations: ~2000
-  status: implemented
-  notes: Uses Socrata SODA API on datos.gov.co.
-
 - slug: geoglows
   name: GEOGloWS ECMWF V2
   country: global
