@@ -16,7 +16,7 @@ MOCK_HYDRO_RESPONSE = [
         "województwo": "mazowieckie",
         "stan_wody": "210",
         "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-        "przepływ": "450.5",
+        "przeplyw": "450.5",
         "data_pomiaru": "2024-06-01T10:00:00",
         "temperatura_wody": "18.5",
     },
@@ -27,7 +27,7 @@ MOCK_HYDRO_RESPONSE = [
         "województwo": "małopolskie",
         "stan_wody": "180",
         "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-        "przepływ": None,
+        "przeplyw": None,
         "data_pomiaru": "2024-06-01T10:00:00",
         "temperatura_wody": "17.0",
     },
@@ -38,7 +38,7 @@ MOCK_HYDRO_RESPONSE = [
         "województwo": "pomorskie",
         "stan_wody": "95",
         "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-        "przepływ": "12.3",
+        "przeplyw": "12.3",
         "data_pomiaru": "2024-06-01T10:00:00",
         "temperatura_wody": "16.0",
     },
@@ -199,7 +199,7 @@ async def test_fetch_observations_empty_discharge_string():
             "rzeka": "WISŁA",
             "stan_wody": "210",
             "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-            "przepływ": "",
+            "przeplyw": "",
             "data_pomiaru": "2024-06-01T10:00:00",
         },
     ]
@@ -230,7 +230,7 @@ async def test_fetch_stations_no_river():
             "rzeka": "",
             "stan_wody": "100",
             "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-            "przepływ": "5.0",
+            "przeplyw": "5.0",
             "data_pomiaru": "2024-06-01T10:00:00",
         },
     ]
@@ -312,7 +312,7 @@ async def test_observation_timestamp_fallback_field():
             "stan_wody": "210",
             "stan_wody_data_pomiaru": None,
             "data_pomiaru": "2024-06-01T10:00:00",
-            "przepływ": "450.5",
+            "przeplyw": "450.5",
         },
     ]
     respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
@@ -342,7 +342,7 @@ async def test_observation_no_timestamp_skipped():
             "stan_wody": "210",
             "stan_wody_data_pomiaru": None,
             "data_pomiaru": None,
-            "przepływ": "450.5",
+            "przeplyw": "450.5",
         },
     ]
     respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
@@ -370,7 +370,7 @@ async def test_observation_invalid_timestamp_skipped():
             "rzeka": "WISŁA",
             "stan_wody": "210",
             "stan_wody_data_pomiaru": "not-a-date",
-            "przepływ": "450.5",
+            "przeplyw": "450.5",
         },
     ]
     respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
@@ -398,7 +398,7 @@ async def test_observation_non_numeric_discharge():
             "rzeka": "WISŁA",
             "stan_wody": "210",
             "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
-            "przepływ": "abc",
+            "przeplyw": "abc",
         },
     ]
     respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
@@ -415,6 +415,36 @@ async def test_observation_non_numeric_discharge():
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s is None
     assert chunk.observations[0].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_observation_prefers_discharge_timestamp():
+    """When discharge is present, its own przeplyw_data timestamp is used."""
+    data = [
+        {
+            "id_stacji": "150190330",
+            "stacja": "WARSZAWA",
+            "rzeka": "WISŁA",
+            "stan_wody_data_pomiaru": "2024-06-01T10:00:00",
+            "przeplyw": "450.5",
+            "przeplyw_data": "2024-06-01T11:30:00",
+        },
+    ]
+    respx.get("https://danepubliczne.imgw.pl/api/data/hydro/").mock(
+        return_value=httpx.Response(200, json=data),
+    )
+
+    async with PolandImgwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "poland_imgw:150190330",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 11, 30)
+    assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
 
 
 @pytest.mark.asyncio
