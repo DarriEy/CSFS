@@ -11,17 +11,17 @@ and an inventory entry.
 
 ## Status breakdown
 
-Of the **104 cataloged sources**:
+Of the **103 cataloged sources**:
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| `implemented` | 78 | Registered connector exists in `csfs/connectors/`, with tests |
+| `implemented` | 77 | Registered connector exists in `csfs/connectors/`, with tests |
 | `research` | 17 | API exists but needs investigation (8 of these already have a connector under validation) |
 | `fallback` | 5 | Community/research dataset used for gap-filling |
 | `manual` | 3 | No API; requires scraping or manual download |
 | `deprecated` | 1 | Source retired or superseded |
 
-In code, **86 connectors are registered**: the 78 `implemented` entries plus 8 whose inventory entries remain `research` while their upstream data paths are validated. **41 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
+In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 whose inventory entries remain `research` while their upstream data paths are validated. **41 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 
 !!! note "Live providers wobble"
     A connector being `implemented` means the code path is real and tested
@@ -53,7 +53,6 @@ In code, **86 connectors are registered**: the 78 `implemented` entries plus 8 w
 | DGA Chile (SNIA) (`chile_dga`) | CL | `implemented` | yes |  |
 | Ministry of Water Resources (`china_mwr`) | CN | `implemented` | — | Limited public access; flood data intermittently available. |
 | CAMELS-COL (`camels_co`) | CO | `implemented` | no |  |
-| IDEAM (Colombia) (`colombia_ideam`) | CO | `implemented` | no | Uses Socrata SODA API on datos.gov.co. |
 | Czech Hydrometeorological Institute (`czechia_chmu`) | CZ | `implemented` | no |  |
 | CAMELS-DE (`camels_de`) | DE | `implemented` | no |  |
 | GKD Bayern (`germany_bavaria`) | DE | `implemented` | yes | Discharge (m3/s) via HTML table scraping of the GKD portal; the CSV path is email/ToS-gated. ~610 stations; lat/lon not exposed by these... |
