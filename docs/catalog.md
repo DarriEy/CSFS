@@ -11,17 +11,17 @@ and an inventory entry.
 
 ## Status breakdown
 
-Of the **104 cataloged sources**:
+Of the **103 cataloged sources**:
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| `implemented` | 78 | Registered connector exists in `csfs/connectors/`, with tests |
+| `implemented` | 77 | Registered connector exists in `csfs/connectors/`, with tests |
 | `research` | 17 | API exists but needs investigation (8 of these already have a connector under validation) |
 | `fallback` | 5 | Community/research dataset used for gap-filling |
 | `manual` | 3 | No API; requires scraping or manual download |
 | `deprecated` | 1 | Source retired or superseded |
 
-In code, **86 connectors are registered**: the 78 `implemented` entries plus 8 whose inventory entries remain `research` while their upstream data paths are validated. **41 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
+In code, **85 connectors are registered**: the 77 `implemented` entries plus 8 whose inventory entries remain `research` while their upstream data paths are validated. **41 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 
 !!! note "Live providers wobble"
     A connector being `implemented` means the code path is real and tested
