@@ -422,56 +422,6 @@
   status: implemented
   notes: "Scrapes the daily Danube hydrology bulletin (/hidrology-en) for current discharge (m3/s) at 6 gauges (Novo Selo, Lom, Oryahovo, Svishtov, Ruse, Silistra). Snapshot-only - one value per day, no historical API. Live-verified 2026-06."
 
-- slug: romania_inhga
-  name: INHGA Romania
-  country: RO
-  region: europe
-  api_type: rest
-  base_url: http://www.hidro.ro
-  format: [json]
-  access: open
-  realtime: true
-  status: research
-  notes: "UNVERIFIED (2026-06): 1-station stub, RoWaterAPI endpoint unverified, returns no discharge."
-
-- slug: indonesia_pupr
-  name: PUPR SDA Indonesia
-  country: ID
-  region: asia
-  api_type: arcgis_rest
-  base_url: https://sigi.pu.go.id/portalpupr
-  format: [json]
-  access: open
-  realtime: true
-  stations: ~2000
-  status: research
-  notes: "UNVERIFIED (2026-06): SIGI ArcGIS endpoint returns HTTP 500; fetch_stations fails."
-
-- slug: philippines_pagasa
-  name: PAGASA Philippines
-  country: PH
-  region: asia
-  api_type: arcgis_rest
-  base_url: https://georisk.gov.ph
-  format: [json]
-  access: open
-  realtime: true
-  stations: ~100
-  status: research
-  notes: "UNVERIFIED (2026-06): fetch_stations fails (connection/retry error); returns no discharge."
-
-- slug: italy_ispra_wof
-  name: ISPRA HIS-Central Italy
-  country: IT
-  region: europe
-  api_type: soap_wof
-  base_url: http://hiscentral.isprambiente.gov.it
-  format: [waterml]
-  access: open
-  realtime: true
-  status: research
-  notes: "UNVERIFIED (2026-06): 1-station stub; HIS-Central WaterOneFlow endpoints unverified; returns no discharge."
-
 - slug: italy_ispra
   name: ISPRA SINTAI
   country: IT
@@ -707,20 +657,6 @@
   stability: moderate
   status: implemented
   notes: "Discharge (m3/s) from the ARPAE open-data instantaneous-flow feed (dati-simc.arpae.it). Only ~7 Po-river discharge gauges are public; rolling ~10-day window. Live-verified 2026-06."
-
-- slug: italy_piedmont
-  name: ARPA Piemonte
-  country: IT
-  region: europe
-  api_type: rest
-  base_url: https://webgis.arpa.piemonte.it/rest/services/
-  format: [json]
-  access: open
-  realtime: true
-  stations: ~150
-  stability: moderate
-  status: research
-  notes: "ARPA Piemonte public API exposes only water LEVEL (m), no discharge; connector returns the catalogue with discharge_m3s=None. Verified 2026-06."
 
 - slug: italy_tuscany
   name: SIR Toscana
@@ -1021,19 +957,6 @@
   status: implemented
   notes: "GEOGLOWS ECMWF V2 global simulated streamflow (keyless REST). Reach-based model exposed as 7 curated major-river virtual stations (Amazon, Mekong, Yenisei, Lena, Ob, Mackenzie, Danube); discharge m3/s flagged ESTIMATED; retrospective lags ~2-3 weeks; extend via config virtual_stations. Live-verified 2026-06."
 
-- slug: peru_senamhi
-  name: SENAMHI Peru
-  country: PE
-  region: south_america
-  api_type: rest
-  base_url: https://www.senamhi.gob.pe
-  format: [json]
-  access: open
-  realtime: true
-  stations: ~500
-  status: research
-  notes: "UNVERIFIED (2026-06): 1-station stub (PHISIS); returns no discharge."
-
 - slug: wmo_whos_plata
   name: WMO WHOS-Plata
   country: AR, BO, BR, PY, UY
@@ -1058,18 +981,6 @@
   status: implemented
   notes: Federated access for Africa RA1 (including Rwanda/Ethiopia).
 
-- slug: peru_senamhi_legacy
-  name: Ecuador INAMHI (via GEOGloWS)
-  country: EC
-  region: south_america
-  api_type: rest
-  base_url: https://geoglows.ecmwf.int/api
-  format: [json]
-  access: open
-  realtime: false
-  stations: ~20 (seed, modeled reaches)
-  status: research
-  notes: "Legacy/duplicate entry, superseded by ecuador_inamhi and peru_senamhi; no connector. (name field is stale.)"
 
 - slug: turkey_dsi
   name: DSI Turkey (FACE Portal)
@@ -1200,18 +1111,6 @@
   status: implemented
   notes: Pan-African monthly discharge series and hydrometric statistics.
 
-- slug: afghanistan_usgs
-  name: Afghanistan (USGS NWIS)
-  country: AF
-  region: asia
-  api_type: rest
-  base_url: https://waterservices.usgs.gov/nwis
-  format: [rdb]
-  access: open
-  realtime: false
-  status: implemented
-  notes: Historical digitized records. Discharge param 00060 (cfs), convert to m3/s.
-
 - slug: bolivia_ine
   name: INE Bolivia (Caudales y Niveles)
   country: BO
@@ -1236,30 +1135,6 @@
   status: implemented
   notes: Daily water runoff data.
 
-- slug: danube_his
-  name: DanubeHIS
-  country: BG, RS, UA, HU, RO, SK, AT, DE, CZ, HR, SI, BA, MD
-  region: europe
-  api_type: rest
-  base_url: https://www.danubehis.org
-  format: [csv, waterml2]
-  access: registration
-  realtime: true
-  status: implemented
-  notes: Covers the entire Danube River basin.
-
-- slug: elsalvador_marn
-  name: MARN / SNET (El Salvador)
-  country: SV
-  region: north_america
-  api_type: aquarius_rest
-  base_url: https://www.snet.gob.sv
-  format: [json]
-  access: open
-  realtime: true
-  status: implemented
-  notes: Uses AQUARIUS Time-Series platform.
-
 - slug: iran_iwrmc
   name: IWRMC Iran (stu.wrm.ir)
   country: IR
@@ -1282,28 +1157,6 @@
   realtime: false
   status: implemented
   notes: Zenodo record 15003600.
-
-- slug: jamaica_wra
-  name: WRA (Jamaica)
-  country: JM
-  region: north_america
-  api_type: rest
-  base_url: https://www.wra.gov.jm
-  format: [json]
-  access: open
-  realtime: false
-  status: implemented
-
-- slug: kazakhstan_kazhydromet
-  name: Kazhydromet (Kazakhstan)
-  country: KZ
-  region: asia
-  api_type: rest
-  base_url: https://meteo.kazhydromet.kz
-  format: [json]
-  access: open
-  realtime: true
-  status: implemented
 
 - slug: malaysia_did
   name: DID Malaysia (Public Infobanjir)
