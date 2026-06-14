@@ -113,8 +113,27 @@ class PolandImgwConnector(BaseConnector):
             if entry.get("id_stacji") != native_id:
                 continue
 
-            # Parse measurement timestamp
-            raw_ts = entry.get("stan_wody_data_pomiaru") or entry.get("data_pomiaru")
+            # Discharge — the IMGW API key is "przeplyw" (ASCII, no Polish ł);
+            # it is null for water-level-only gauges.
+            raw_discharge = entry.get("przeplyw")
+            if raw_discharge is None or str(raw_discharge).strip() == "":
+                discharge = None
+                quality = QualityFlag.MISSING
+            else:
+                try:
+                    discharge = float(raw_discharge)
+                    quality = QualityFlag.RAW
+                except (ValueError, TypeError):
+                    discharge = None
+                    quality = QualityFlag.MISSING
+
+            # Prefer the discharge reading's own timestamp; fall back to the
+            # water-level timestamp for level-only gauges.
+            raw_ts = (
+                (entry.get("przeplyw_data") if discharge is not None else None)
+                or entry.get("stan_wody_data_pomiaru")
+                or entry.get("data_pomiaru")
+            )
             if not raw_ts:
                 continue
             try:
@@ -128,19 +147,6 @@ class PolandImgwConnector(BaseConnector):
                     error=str(exc),
                 )
                 continue
-
-            # Discharge (przepływ) — may be null for water-level-only stations
-            raw_discharge = entry.get("przepływ")
-            if raw_discharge is None or str(raw_discharge).strip() == "":
-                discharge = None
-                quality = QualityFlag.MISSING
-            else:
-                try:
-                    discharge = float(raw_discharge)
-                    quality = QualityFlag.RAW
-                except (ValueError, TypeError):
-                    discharge = None
-                    quality = QualityFlag.MISSING
 
             observations.append(Observation(
                 station_id=station_id,
