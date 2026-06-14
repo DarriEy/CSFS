@@ -72,7 +72,7 @@ class ChileDgaConnector(BaseConnector):
         max_pages = 50
         path = "/arcgis/rest/services/DGA/Red_Hidrometrica/MapServer/0/query"
 
-        for page in range(max_pages):
+        for _page in range(max_pages):
             params = {
                 "where": "1=1",
                 "outFields": "*",
