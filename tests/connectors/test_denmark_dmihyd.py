@@ -16,6 +16,7 @@ MOCK_STATIONS_RESPONSE = [
         "stationUid": "bf0a311a-7d17-4dd6-a008-c65866195529",
         "stationId": "70000590",
         "name": "Nykærvej",
+        "location": {"x": 555962, "y": 6321399, "srid": "25832"},
         "measurementPoints": [
             {
                 "examinations": [
@@ -39,16 +40,25 @@ MOCK_STATIONS_RESPONSE = [
     }
 ]
 
+# /water-flows returns per-station objects with readings nested in 'results'.
 MOCK_FLOWS_RESPONSE = [
     {
-        "measurementDateTime": "2024-06-01T12:00:00.00Z",
-        "result": 1500.0,
-        "unit": "l/s"
-    },
-    {
-        "measurementDateTime": "2024-06-01T13:00:00.00Z",
-        "result": None,
-        "unit": "l/s"
+        "stationId": "70000590",
+        "operatorStationId": "",
+        "results": [
+            {
+                "parameter": "Vandføring",
+                "measurementDateTime": "2024-06-01T12:00:00.00Z",
+                "result": 1500.0,
+                "unit": "l/s",
+            },
+            {
+                "parameter": "Vandføring",
+                "measurementDateTime": "2024-06-01T13:00:00.00Z",
+                "result": None,
+                "unit": "l/s",
+            },
+        ],
     }
 ]
 
@@ -69,6 +79,9 @@ async def test_fetch_stations():
     assert s.native_id == "70000590"
     assert s.name == "Nykærvej"
     assert s.provider == "denmark_dmihyd"
+    # UTM 32N (555962, 6321399) converts to ~northern Denmark, not (0, 0).
+    assert 57.0 < s.latitude < 57.1
+    assert 9.9 < s.longitude < 10.1
 
 
 @pytest.mark.asyncio
