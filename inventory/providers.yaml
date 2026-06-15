@@ -247,19 +247,6 @@
   stability: moderate
   status: research
 
-- slug: south_africa_dws
-  name: Department of Water and Sanitation
-  country: ZA
-  region: africa
-  api_type: web_portal
-  base_url: https://www.dws.gov.za/Hydrology/
-  format: [csv, txt]
-  access: open
-  realtime: partial
-  stations: ~1200
-  stability: moderate
-  status: implemented
-
 - slug: newzealand_hilltop
   name: New Zealand Regional Councils (Hilltop)
   country: NZ
@@ -395,20 +382,6 @@
   stations: ~800
   stability: fragile
   status: manual
-
-- slug: china_mwr
-  name: Ministry of Water Resources
-  country: CN
-  region: asia
-  api_type: web_portal
-  base_url: http://xxfb.mwr.cn/
-  format: [html]
-  access: restricted
-  realtime: partial
-  stations: ~3000 (public subset)
-  stability: fragile
-  status: implemented
-  notes: Limited public access; flood data intermittently available.
 
 - slug: bulgaria_eaemdr
   name: EAEMDR Bulgaria
@@ -658,19 +631,6 @@
   status: implemented
   notes: "Discharge (m3/s) from the ARPAE open-data instantaneous-flow feed (dati-simc.arpae.it). Only ~7 Po-river discharge gauges are public; rolling ~10-day window. Live-verified 2026-06."
 
-- slug: italy_tuscany
-  name: SIR Toscana
-  country: IT
-  region: europe
-  api_type: web_portal
-  base_url: http://www.sir.toscana.it/
-  format: [csv]
-  access: open
-  realtime: true
-  stations: unknown
-  stability: fragile
-  status: research
-  notes: "SIR Toscana exposes only hydrometric LEVEL (m), no discharge (verified 2026-06). Returns no discharge."
 #  GLOBAL / SATELLITE / FORECAST
 # ──────────────────────────────────────────────
 
@@ -1135,17 +1095,6 @@
   status: implemented
   notes: Daily water runoff data.
 
-- slug: iran_iwrmc
-  name: IWRMC Iran (stu.wrm.ir)
-  country: IR
-  region: asia
-  api_type: web_portal
-  base_url: https://stu.wrm.ir
-  format: [html]
-  access: open
-  realtime: partial
-  status: implemented
-
 - slug: israel_caravan
   name: Caravan-Israel Extension (Zenodo)
   country: IL
@@ -1157,28 +1106,6 @@
   realtime: false
   status: implemented
   notes: Zenodo record 15003600.
-
-- slug: malaysia_did
-  name: DID Malaysia (Public Infobanjir)
-  country: MY
-  region: asia
-  api_type: web_portal
-  base_url: https://publicinfobanjir.water.gov.my
-  format: [html, json]
-  access: open
-  realtime: true
-  status: implemented
-
-- slug: nepal_icimod
-  name: ICIMOD RDS Nepal
-  country: NP
-  region: asia
-  api_type: web_portal
-  base_url: https://rds.icimod.org
-  format: [csv]
-  access: open
-  realtime: false
-  status: implemented
 
 - slug: pakistan_wapda
   name: Pakistan IRSA/WAPDA
@@ -1198,17 +1125,6 @@
   api_type: bulk_download
   base_url: https://biogeodb.stri.si.edu/physical_monitoring
   format: [csv, zip]
-  access: open
-  realtime: true
-  status: implemented
-
-- slug: philippines_dpwh
-  name: DPWH Philippines (Bureau of Design)
-  country: PH
-  region: asia
-  api_type: web_scraping
-  base_url: https://apps.dpwh.gov.ph/streams_public
-  format: [html]
   access: open
   realtime: true
   status: implemented

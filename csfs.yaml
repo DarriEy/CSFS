@@ -44,9 +44,6 @@ providers:
   adhi:
     data_dir: data/datasets/adhi
 
-  nepal_icimod:
-    data_dir: data/datasets/nepal_icimod
-
   pakistan_wapda:
     data_dir: data/datasets/pakistan_wapda
 
