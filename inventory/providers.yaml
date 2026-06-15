@@ -602,18 +602,18 @@
   notes: "Discharge (m3/s) parsed from the HVZ JS catalogue (hvz_peg_stmn.js). LATEST-VALUE ONLY - no historical series; ~260 discharge stations. Live-verified 2026-06."
 
 - slug: germany_nrw
-  name: ELWAS NRW
+  name: OpenGeodata.NRW
   country: DE
   region: europe
-  api_type: web_portal
-  base_url: https://www.elwasweb.nrw.de/
+  api_type: csv_download
+  base_url: https://www.opengeodata.nrw.de
   format: [csv]
   access: open
-  realtime: true
-  stations: unknown
-  stability: fragile
-  status: research
-  notes: "No open discharge API - NRW portals expose only level/temperature/precip (verified 2026-06). germany_pegelonline already covers the major NRW federal-waterway Q stations."
+  realtime: false
+  stations: ~240
+  stability: moderate
+  status: implemented
+  notes: "Open discharge (Abfluss, m3/s) from the OpenGeodata.NRW CSV archive (q/index.json -> per-catchment, per-decade zips of 15-min series). Bulk/periodic (not realtime); weekly tier. No coordinates in the source files."
 #  TIER 5 — Italian regional agencies (from EStreams)
 # ──────────────────────────────────────────────
 
