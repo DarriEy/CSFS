@@ -43,7 +43,7 @@ In code, **67 connectors are registered** -- the 67 `implemented` entries. **36 
 | Waterinfo Flanders (`belgium_waterinfo`) | BE | `implemented` | yes |  |
 | SIEREM (IRD African Hydrology) (`sierem`) | BF, BJ, CF, CG, CI, CM, GA, GN, ML, MR, NE, SN, TD, TG | `implemented` | no | IRD database focused on West and Central Africa. |
 | EAEMDR Bulgaria (`bulgaria_eaemdr`) | BG | `implemented` | yes | Scrapes the daily Danube hydrology bulletin (/hidrology-en) for current discharge (m3/s) at 6 gauges (Novo Selo, Lom, Oryahovo, Svishtov,... |
-| NIMH Bulgaria (open data) (`bulgaria_nimh`) | BG | `implemented` | no | Daily water runoff data. |
+| NIMH Bulgaria (open data) (`bulgaria_nimh`) | BG | `implemented` | no | Daily discharge (Q, m3/s) scraped from the NIMH river-runoff page (POST mydate -> HTML table); ~68 gauges. |
 | INE Bolivia (Caudales y Niveles) (`bolivia_ine`) | BO | `implemented` | no | NADA catalog dataset |
 | ANA HidroWeb / Telemetria (`brazil_ana`) | BR | `implemented` | yes |  |
 | Environment Canada Hydrometric Data (`environment_canada`) | CA | `implemented` | yes |  |
