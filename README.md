@@ -153,3 +153,9 @@ See [CITATION.cff](CITATION.cff).
 ## License
 
 GPL-3.0-or-later. See [LICENSE](LICENSE).
+
+## Data licensing & clearance
+
+This service *acquires and subsets* third-party data on request; it does **not** redistribute or host that data, and the `LICENSE` covering this code grants **no rights to the data** it retrieves. Each provider's data carries its own upstream terms — you are responsible for complying with them.
+
+Per-provider commercial-use and redistribution clearance is in [`DATA_CLEARANCE.md`](DATA_CLEARANCE.md), with machine-readable detail in [`inventory/clearance.csv`](inventory/clearance.csv) (tiers A–E; `tier in {A,B}` = commercially clearable with attribution). Sources tagged `C`/`D`/`E` are non-commercial, no-redistribution, or unverified and must not be treated as cleared.

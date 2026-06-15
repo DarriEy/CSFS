@@ -1,0 +1,85 @@
+slug,name,tier,commercial_use,redistribution,attribution_required,share_alike,license_spdx,confidence,source
+camels_dk,CAMELS-DK,A,yes,yes,false,false,CC0-1.0,high,essd.copernicus.org/articles/17/1551/2025
+germany_nrw,OpenGeodata.NRW,A,yes,yes,false,false,DL-DE-Zero-2.0,high,opengeodata.nrw.de
+germany_pegelonline,PEGELONLINE (BfG),A,yes,yes,false,false,DL-DE-Zero-2.0,high,pegelonline.wsv.de
+netherlands_rws,Rijkswaterstaat,A,yes,yes,false,false,CC0-1.0,high,waterinfo-extra.rws.nl
+sweden_smhi,SMHI Open Data — Hydrology,A,yes,yes,False,False,public-domain,high,auto-classified
+usgs,USGS National Water Information System (NWIS),A,yes,yes,False,False,public-domain,high,auto-classified
+adhi,ADHI (African Database of Hydrometric Indices),B,yes,conditional,true,false,CC-BY-4.0,high,dataverse.ird.fr
+italy_emilia,ARPAE Emilia-Romagna,B,yes,conditional,true,false,CC-BY-4.0,medium,dati.arpae.it
+slovenia_arso,ARSO (Slovenia),B,yes,conditional,true,false,CC-BY-4.0,high,podatki.gov.si
+switzerland_bafu,BAFU Hydrodaten,B,yes,conditional,true,false,BAFU-custom,medium,bafu.admin.ch
+australia_bom,Bureau of Meteorology Water Data Online,B,yes,conditional,true,false,CC-BY-3.0-AU,high,data.gov.au
+ca_discharge,CA-discharge (Central Asian Discharge Dataset),B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/8147591
+camels_us,CAMELS (Catchment Attributes and Meteorology for Large-sample Studies),B,yes,conditional,true,false,CC-BY-4.0,medium,gdex.ucar.edu/dataset/camels
+camels_aus,CAMELS-AUS,B,yes,conditional,true,false,CC-BY-4.0,high,doi.pangaea.de/10.1594/PANGAEA.921850
+camels_br,CAMELS-BR,B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/3964745
+camels_cl,CAMELS-CL,B,yes,conditional,true,false,CC-BY-4.0,high,doi.pangaea.de/10.1594/PANGAEA.894885
+camels_co,CAMELS-COL,B,yes,conditional,true,false,CC-BY-4.0,medium,essd.copernicus.org/preprints/essd-2025-200
+camels_de,CAMELS-DE,B,yes,conditional,true,false,CC-BY-4.0,high,essd.copernicus.org/articles/16/5625/2024
+camels_gb,CAMELS-GB,B,yes,conditional,true,false,OGL-UK-3.0,high,catalogue.ceh.ac.uk
+camels_in,CAMELS-IND,B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/14999580
+camelsh,CAMELSH (Hourly US),B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/15413207
+spain_cedex,CEDEX Anuario de Aforos,B,yes,conditional,true,false,RISP-ES,medium,datos.gob.es
+caravan,Caravan (unified large-sample hydrology),B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/6578598
+caravan_grdc,Caravan-GRDC Extension,B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/15349031
+israel_caravan,Caravan-Israel Extension (Zenodo),B,yes,conditional,true,false,CC-BY-4.0,medium,zenodo.org/records/15003600
+czechia_chmu,Czech Hydrometeorological Institute,B,yes,conditional,true,false,CC-BY-4.0,high,chmi.cz
+bulgaria_eaemdr,EAEMDR Bulgaria,B,yes,conditional,true,false,EU-PSI,medium,appd-bg.org
+ireland_epa,EPA Ireland HydroNet,B,yes,conditional,true,false,CC-BY-4.0,high,waterlevel.ie
+estreams,EStreams (European Streamflow Dataset),B,yes,conditional,true,false,CC-BY-4.0,high,zenodo.org/records/13255133
+ecuador_inamhi,Ecuador INAMHI (GEOGLOWS),B,yes,yes,true,false,CC-BY-4.0,high,data.geoglows.org
+environment_canada,Environment Canada Hydrometric Data,B,yes,conditional,true,false,OGL-Canada-2.0,high,eccc-msc.github.io/open-data
+geoglows,GEOGloWS ECMWF V2,B,yes,conditional,True,False,Copernicus,high,auto-classified
+germany_bavaria,GKD Bayern,B,yes,conditional,true,false,CC-BY-4.0,high,gkd.bayern.de
+gsim,GSIM (Global Streamflow Indices and Metadata),B,yes,conditional,true,false,CC-BY-4.0,high,doi.pangaea.de/10.1594/PANGAEA.887477
+glofas,GloFAS (ECMWF/Copernicus),B,yes,conditional,True,False,Copernicus,high,auto-classified
+france_hubeau,Hub'Eau Hydrométrie,B,yes,conditional,true,false,etalab-2.0,high,hubeau.eaufrance.fr
+italy_ispra,ISPRA SINTAI,B,yes,conditional,true,false,CC-BY-4.0,medium,isprambiente.gov.it
+estonia_ilmateenistus,Ilmateenistus (Estonia),B,yes,conditional,true,false,CC-BY-4.0,high,ilmateenistus.ee
+lamah_ce,LamaH-CE (Central Europe),B,yes,conditional,true,false,CC-BY-4.0,high,essd.copernicus.org/articles/13/4529/2021
+norway_nve,Norwegian Water Resources (NVE),B,yes,conditional,true,false,NLOD-2.0,high,hydapi.nve.no
+hungary_ovf,OVF (Hungary),B,yes,conditional,true,false,attribution-custom,medium,vizugy.hu
+russia_arcticnet,R-ArcticNET v4.0 (Russian Arctic),B,yes,conditional,true,false,CC-BY-3.0,high,doi.pangaea.de/10.1594/PANGAEA.859422
+robin,ROBIN (Reference Observatory of Basins),B,yes,conditional,true,false,OGL-UK-3.0,high,catalogue.ceh.ac.uk
+spain_saih,SAIH (regional real-time networks),B,yes,conditional,true,false,RISP-ES,medium,chguadalquivir.es
+scotland_sepa,SEPA (Scotland),B,yes,conditional,true,false,OGL-UK-3.0,high,timeseriesdoc.sepa.org.uk
+argentina_snih,SNIH Argentina,B,yes,yes,true,false,SNIH-open,high,snih.hidricosargentina.gob.ar/Terminos
+portugal_snirh,SNIRH Portugal,B,yes,conditional,true,false,CC-BY-4.0,medium,dados.gov.pt
+finland_syke,SYKE (Finnish Environment Institute),B,yes,conditional,true,false,CC-BY-4.0,high,syke.fi
+uk_ea,UK Environment Agency Hydrology API,B,yes,conditional,true,false,OGL-UK-3.0,high,environment.data.gov.uk
+denmark_dmihyd,VanDa Hydro (Denmark),B,yes,conditional,true,false,CC-BY-4.0,high,miljoeportal.dk
+vietnam_mekong,Vietnam Mekong Delta (EIDC),B,yes,conditional,true,false,OGL-UK-3.0,high,catalogue.ceh.ac.uk
+taiwan_wra,WRA (Taiwan Water Resources Agency),B,yes,conditional,true,false,OGDL-Taiwan-1.0,high,data.gov.tw/en/license
+belgium_waterinfo,Waterinfo Flanders,B,yes,conditional,true,false,Flanders-Model,medium,opendata.wewis.vlaanderen.be
+austria_ehyd,eHYD Austria (BMLUK),B,yes,conditional,true,false,CC-BY-4.0,high,bmluk.gv.at
+brazil_ana,ANA HidroWeb / Telemetria,B-SA,yes,conditional,true,true,ODbL-1.0,medium,gov.br/ana/dados-abertos
+lithuania_lhmt,LHMT (Lithuania),B-SA,yes,conditional,true,true,CC-BY-SA-4.0,high,api.meteo.lt
+greece_openhi,OpenHI Greece,B-SA,yes,conditional,true,true,CC-BY-SA-4.0,high,openhi.net/licence
+poland_imgw,IMGW Public Data,C,conditional,conditional,true,false,IMGW-custom,medium,danepubliczne.imgw.pl
+iceland_lamahice,LamaH-Ice,C,no,conditional,true,false,CC-BY-NC-4.0,high,hydroshare.org/resource/86117a5f
+sierem,SIEREM (IRD African Hydrology),C,no,conditional,true,false,CC-BY-NC-4.0,high,dataverse.ird.fr
+india_cwc,CWC India (WRIS),D,unknown,no,false,false,all-rights-reserved,medium,indiawris.gov.in
+croatia_dhz,DHMZ (Croatia),D,unknown,no,true,false,permission-gated,low,hidro.dhz.hr
+grdc,Global Runoff Data Centre,D,no,no,true,false,GRDC-policy,high,grdc.bafg.de/about/data_policy
+thailand_hii,HII (Hydro-Informatics Institute Thailand),D,unknown,no,false,false,permission-gated,medium,hii.or.th
+bolivia_ine,INE Bolivia (Caudales y Niveles),D,no,no,true,false,ANDA-restricted,high,anda.ine.gob.bo
+india_wris,India WRIS / CWC,D,unknown,no,false,false,all-rights-reserved,medium,cwc.gov.in
+germany_bw,LUBW Baden-Württemberg,D,unknown,no,true,false,permission-required,high,hvz.baden-wuerttemberg.de
+japan_mlit,MLIT Water Information System,D,unknown,no,true,false,permission-gated,medium,www1.river.go.jp
+slovakia_shmu,SHMU (Slovakia),D,no,no,true,false,permission-required,high,shmu.sk
+belgium_spw,SPW Wallonia,D,no,no,true,false,permission-required,high,hydrometrie.wallonie.be
+uk_nrfa,UK National River Flow Archive,D,yes,no,true,false,NRFA-API-ToS,high,eidc.ceh.ac.uk/licences/nrfa
+wmo_whos,WMO WHOS (Hydrological Observing System),D,no,no,true,false,WMO-terms,high,whos.geodab.eu
+wmo_whos_africa,WMO WHOS-Africa (HydroSOS),D,no,no,true,false,WMO-terms,medium,whos.geodab.eu
+wmo_whos_plata,WMO WHOS-Plata,D,no,no,true,false,WMO-terms,medium,whos.geodab.eu
+mexico_conagua,CONAGUA BANDAS,E,unknown,unknown,false,false,none-found,low,imta.gob.mx
+chile_dga,DGA Chile (SNIA),E,unknown,unknown,false,false,none-found,low,snia.mop.gob.cl
+turkey_dsi,DSI Turkey (FACE Portal),E,unknown,unknown,false,false,none-found,medium,akim.faceteknoloji.com.tr
+bangladesh_ffwc,FFWC Bangladesh (BWDB),E,unknown,unknown,false,false,none-found,low,ffwc.bwdb.gov.bd
+bosnia_fhmz,FHMZ Bosnia,E,unknown,unknown,false,false,none-found,medium,fhmzbih.gov.ba
+bulgaria_nimh,NIMH Bulgaria (open data),E,unknown,unknown,unknown,false,none-found,low,info.meteo.bg
+newzealand_hilltop,New Zealand Regional Councils (Hilltop),E,unknown,conditional,true,false,mixed-per-council,medium,data.ecan.govt.nz
+pakistan_wapda,Pakistan IRSA/WAPDA,E,unknown,unknown,true,false,none-found,medium,wapda.gov.pk
+panama_stri,STRI Panama Canal Watershed (ACP),E,unknown,conditional,true,false,STRI-DUA,medium,striresearch.si.edu/data-policy
+south_korea_wamis,WAMIS (Water Management Information System),E,unknown,unknown,false,false,none-found,low,wamis.go.kr
