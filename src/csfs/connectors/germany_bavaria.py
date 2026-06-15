@@ -10,23 +10,23 @@ portal exposes two scrapeable HTML surfaces that this connector relies on:
   ``/de/fluesse/abfluss/kelheim/achsheim-11944004`` (id ``11944004``).
 
 * The per-station measurement table
-  ``/de/fluesse/abfluss/{region}/{slug}-{id}/messwerte/tabelle`` renders an
-  inline HTML table of ``Datum`` / ``Abfluss [m³/s]`` rows. It accepts
-  ``zr=individuell&beginn=DD.MM.YYYY&ende=DD.MM.YYYY`` query parameters to pull
-  an arbitrary (up to ~5 year) window. Values are already in m³/s and use a
-  German decimal comma.
+  ``/de/fluesse/abfluss/{region}/{slug}-{id}/messwerte?method=tabellen``
+  renders an inline HTML table of ``Datum`` / ``Abfluss [m³/s]`` rows (the most
+  recent measurements). Timestamps render in German local time (CET/CEST) with
+  a trailing " Uhr"; values are already in m³/s and use a German decimal comma.
 
 References
 ----------
 - Portal: https://www.gkd.bayern.de/
 - Catalogue: https://www.gkd.bayern.de/de/fluesse/abfluss/tabellen
-- Station data: https://www.gkd.bayern.de/de/fluesse/abfluss/{region}/{slug}-{id}/messwerte/tabelle
+- Station data: https://www.gkd.bayern.de/de/fluesse/abfluss/{region}/{slug}-{id}/messwerte?method=tabellen
 """
 
 from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -42,6 +42,9 @@ from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
+# GKD renders timestamps in German local time (CET/CEST); convert to UTC.
+_BERLIN_TZ = ZoneInfo("Europe/Berlin")
+
 _GKD_BASE_URL = "https://www.gkd.bayern.de"
 _CATALOGUE_PATH = "/de/fluesse/abfluss/tabellen"
 
@@ -53,16 +56,21 @@ _CATALOGUE_PATH = "/de/fluesse/abfluss/tabellen"
 _ROW_RE = re.compile(
     r'<tr[^>]*>'
     r'<td[^>]*data-text="(?P<name>[^"]*)"[^>]*>'
+    # The station link is now wrapped in <ul class="linkliste"><li>, and the
+    # href carries a trailing /messwerte?method=tabellen path.
+    r'<ul[^>]*>\s*<li[^>]*>\s*'
     r'<a href="https://www\.gkd\.bayern\.de'
-    r'/de/fluesse/abfluss/(?P<region>[a-z_]+)/(?P<slug>[a-z0-9-]+)-(?P<id>\d+)">'
-    r'.*?</a></td>'
+    r'/de/fluesse/abfluss/(?P<region>[a-z_]+)/(?P<slug>[a-z0-9-]+)-(?P<id>\d+)'
+    r'[^"]*">'
+    r'.*?</a>\s*</li>\s*</ul>\s*</td>'
     r'<td[^>]*data-text="[^"]*">(?P<river>[^<]*)</td>',
     re.DOTALL,
 )
 
 # Matches a (timestamp, value) pair inside the per-station measurement table.
+# Timestamps render with a trailing " Uhr"; values use a German decimal comma.
 _OBS_RE = re.compile(
-    r'<td[^>]*>(?P<ts>\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})</td>'
+    r'<td[^>]*>(?P<ts>\d{2}\.\d{2}\.\d{4} \d{2}:\d{2})(?:\s*Uhr)?</td>'
     r'\s*<td[^>]*class="center"[^>]*>(?P<val>[^<]*)</td>',
 )
 
@@ -100,12 +108,13 @@ class GermanyBavariaConnector(BaseConnector):
         path = await self._resolve_path(native_id)
 
         params = {
+            "method": "tabellen",
             "zr": "individuell",
             "beginn": start.strftime("%d.%m.%Y"),
             "ende": end.strftime("%d.%m.%Y"),
         }
         try:
-            resp = await self._get(f"{path}/messwerte/tabelle", params=params)
+            resp = await self._get(f"{path}/messwerte", params=params)
         except Exception as exc:  # noqa: BLE001 - normalise to ConnectorError
             raise ConnectorError(
                 self.slug, f"Failed to fetch GKD data for {native_id}: {exc}"
@@ -169,7 +178,9 @@ class GermanyBavariaConnector(BaseConnector):
             ts_str = m.group("ts")
             val_str = m.group("val").strip()
             try:
-                ts = datetime.strptime(ts_str, "%d.%m.%Y %H:%M").replace(tzinfo=UTC)
+                ts = datetime.strptime(ts_str, "%d.%m.%Y %H:%M").replace(
+                    tzinfo=_BERLIN_TZ
+                ).astimezone(UTC)
             except ValueError:
                 continue
             if ts < start or ts > end:

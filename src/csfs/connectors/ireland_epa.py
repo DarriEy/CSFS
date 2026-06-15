@@ -215,29 +215,40 @@ class IrelandEPAConnector(BaseConnector):
             raise DataFormatError(self.slug, f"Failed to unzip/read CSV: {exc}") from exc
 
         observations: list[Observation] = []
-        # EPA CSVs often have header metadata lines starting with '#'
-        reader = csv.DictReader(
-            [line for line in csv_text.splitlines() if line and not line.startswith("#")]
+        # EPA HydroNet CSVs are SEMICOLON-delimited: several `#`-prefixed
+        # metadata lines, then a `#`-prefixed column header
+        # (`#Timestamp;Value;Quality Code Name`), then the data rows. Locate
+        # that header, strip the leading `#`, and parse the rows after it.
+        lines = csv_text.splitlines()
+        header_idx = next(
+            (i for i, ln in enumerate(lines) if ln.lstrip("#").startswith("Timestamp")),
+            None,
         )
-        
+        if header_idx is None:
+            return self._empty_chunk(station_id)
+        fieldnames = [c.strip() for c in lines[header_idx].lstrip("#").split(";")]
+        data_lines = [
+            ln for ln in lines[header_idx + 1:] if ln and not ln.startswith("#")
+        ]
+        reader = csv.DictReader(data_lines, fieldnames=fieldnames, delimiter=";")
+
         for row in reader:
             try:
-                # Column names can vary slightly
-                ts_str = row.get("datetime") or row.get("timestamp") or row.get("date")
+                ts_str = row.get("Timestamp")
                 if not ts_str:
                     continue
-                    
+
                 ts = datetime.fromisoformat(ts_str.strip())
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=UTC)
-                    
+
                 if ts < start or ts > end:
                     continue
-                    
-                val_str = row.get("value")
+
+                val_str = row.get("Value")
                 discharge = None if not val_str or val_str.strip() == "" else float(val_str.strip())
-                    
-                quality_raw = row.get("quality")
+
+                quality_raw = row.get("Quality Code Name")
                 quality = (
                     QualityFlag.MISSING
                     if discharge is None

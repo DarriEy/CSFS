@@ -39,10 +39,15 @@ def create_mock_zip(csv_content: str) -> bytes:
         zf.writestr("data.csv", csv_content)
     return buf.getvalue()
 
-MOCK_CSV = """datetime,value,quality
-2024-06-01T12:00:00,1.234,Good
-2024-06-01T12:15:00,1.235,Valid
-2024-06-01T12:30:00,,Missing
+# Real EPA HydroNet shape: `#`-prefixed metadata, a `#`-prefixed semicolon
+# column header, then semicolon-delimited data rows.
+MOCK_CSV = """#Station Name;BALLYMAN
+#Station Number;10017
+#Unit Symbol;m³/s
+#Timestamp;Value;Quality Code Name
+2024-06-01 12:00:00;1.234;Good
+2024-06-01 12:15:00;1.235;Valid
+2024-06-01 12:30:00;;Missing
 """
 
 @pytest.mark.asyncio

@@ -16,8 +16,8 @@ _CATALOGUE_URL = "https://www.gkd.bayern.de/de/fluesse/abfluss/tabellen"
 MOCK_CATALOGUE_HTML = """
 <table id="abfluss">
 <tr><th class="left" data-sorter="text">Messstelle</th><th class="left">Gew&auml;sser</th><th class="left">Lkr.</th><th class="center sorter-numberSorter">Abfluss [m³/s]</th></tr>
-<tr class="row2" data-messnetze="ap dp"><td class="left" data-text="Achsheim"><a href="https://www.gkd.bayern.de/de/fluesse/abfluss/kelheim/achsheim-11944004"><img src="x.gif" alt="Symbol">Achsheim</a></td><td class="left" data-text="Schmutter11944004">Schmutter</td><td class="left" data-text="A11944004">A</td><td class="left" data-text="02.06.2026 07:00">02.06.2026 07:00</td><td class="center sorter-numberSorter" data-text="1,63">1,63</td></tr>
-<tr class="row" data-messnetze="ap dp"><td class="left" data-text="Adlerh&uuml;tte"><a href="https://www.gkd.bayern.de/de/fluesse/abfluss/elbe/adlerhuette-24118000"><img src="x.gif" alt="Symbol">Adlerh&uuml;tte</a></td><td class="left" data-text="Koserbach24118000">Koserbach</td><td class="left" data-text="KU24118000">KU</td><td class="left" data-text="02.06.2026 07:00">02.06.2026 07:00</td><td class="center sorter-numberSorter" data-text="0,306">0,306</td></tr>
+<tr class="row2" data-messnetze="ap dp"><td class="left" data-text="Achsheim"><ul class="linkliste"><li class="intern"><a href="https://www.gkd.bayern.de/de/fluesse/abfluss/kelheim/achsheim-11944004/messwerte?method=tabellen">Achsheim</a></li></ul></td><td class="left" data-text="Schmutter11944004">Schmutter</td><td class="left" data-text="A11944004">A</td><td class="left" data-text="02.06.2026 07:00">02.06.2026 07:00 Uhr</td><td class="center sorter-numberSorter" data-text="1,63">1,63</td></tr>
+<tr class="row" data-messnetze="ap dp"><td class="left" data-text="Adlerh&uuml;tte"><ul class="linkliste"><li class="intern"><a href="https://www.gkd.bayern.de/de/fluesse/abfluss/elbe/adlerhuette-24118000/messwerte?method=tabellen">Adlerh&uuml;tte</a></li></ul></td><td class="left" data-text="Koserbach24118000">Koserbach</td><td class="left" data-text="KU24118000">KU</td><td class="left" data-text="02.06.2026 07:00">02.06.2026 07:00 Uhr</td><td class="center sorter-numberSorter" data-text="0,306">0,306</td></tr>
 </table>
 """
 
@@ -25,15 +25,15 @@ MOCK_CATALOGUE_HTML = """
 MOCK_OBS_HTML = """
 <table id="messwerte">
 <tr><th data-sorter="shortDate">Datum</th><th class="center sorter-numberSorter">Abfluss [m³/s]</th></tr>
-<tr><td >01.06.2026 00:00</td><td  class="center">1,63</td></tr>
-<tr><td >01.06.2026 00:15</td><td  class="center">1,750</td></tr>
-<tr><td >01.06.2026 00:30</td><td  class="center">-</td></tr>
+<tr><td >01.06.2026 00:00 Uhr</td><td  class="center">1,63</td></tr>
+<tr><td >01.06.2026 00:15 Uhr</td><td  class="center">1,750</td></tr>
+<tr><td >01.06.2026 00:30 Uhr</td><td  class="center">-</td></tr>
 </table>
 """
 
 
 def _obs_url(path: str) -> str:
-    return f"https://www.gkd.bayern.de{path}/messwerte/tabelle"
+    return f"https://www.gkd.bayern.de{path}/messwerte"
 
 
 def test_registration():
@@ -123,13 +123,15 @@ async def test_fetch_observations_filters_out_of_range():
     ).mock(return_value=httpx.Response(200, text=MOCK_OBS_HTML))
 
     async with conn:
+        # Mock rows are German local time (CEST = UTC+2 in June); 00:15 local
+        # is 22:15 UTC the previous day.
         chunk = await conn.fetch_observations(
             "germany_bavaria:11944004",
-            start=datetime(2026, 6, 1, 0, 15, tzinfo=UTC),
-            end=datetime(2026, 6, 1, 0, 20, tzinfo=UTC),
+            start=datetime(2026, 5, 31, 22, 15, tzinfo=UTC),
+            end=datetime(2026, 5, 31, 22, 20, tzinfo=UTC),
         )
 
-    # Only the 00:15 row falls inside the narrow window.
+    # Only the 00:15 (local) row falls inside the narrow window.
     assert len(chunk.observations) == 1
     assert chunk.observations[0].discharge_m3s == pytest.approx(1.75)
 
