@@ -1087,13 +1087,13 @@
   name: NIMH Bulgaria (open data)
   country: BG
   region: europe
-  api_type: open_data
+  api_type: html_scrape
   base_url: https://info.meteo.bg
-  format: [csv, txt]
+  format: [html]
   access: open
   realtime: false
   status: implemented
-  notes: Daily water runoff data.
+  notes: "Daily discharge (Q, m3/s) from the NIMH river-runoff page (POST mydate=YYYY-MM-DD -> HTML table, one row/gauge). ~68 gauges; comma decimals; no coordinates. Observations iterate the window day-by-day."
 
 - slug: israel_caravan
   name: Caravan-Israel Extension (Zenodo)
