@@ -84,10 +84,13 @@ class GermanyNRWConnector(BaseConnector):
     @staticmethod
     def _latest_file(file_names: list[str]) -> str | None:
         """Pick the most recent decade zip among a catchment's file names."""
-        dated = [n for n in file_names if _DECADE_RE.search(n)]
-        if not dated:
-            return None
-        return max(dated, key=lambda n: int(_DECADE_RE.search(n).group(2)))
+        best: str | None = None
+        best_year = -1
+        for name in file_names:
+            m = _DECADE_RE.search(name)
+            if m and int(m.group(2)) > best_year:
+                best, best_year = name, int(m.group(2))
+        return best
 
     async def fetch_stations(self) -> list[Station]:
         """Enumerate gauges from the latest-decade zip of each catchment."""
