@@ -30,7 +30,6 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "belgium_waterinfo", "netherlands_rws", "thailand_hii",
         "slovenia_arso", "denmark_dmihyd", "croatia_dhz",
         "germany_bw", "germany_bavaria", "italy_emilia",
-        "germany_nrw",
         "wmo_whos_plata", "wmo_whos_africa",
         "bulgaria_eaemdr",
     ],
@@ -58,6 +57,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "spain_cedex", "brazil_ana", "uk_nrfa", "ireland_epa",
         "camels_de", "camels_in", "camels_co",
         "camels_dk", "robin", "caravan_grdc",
+        "germany_nrw",
     ],
 }
 

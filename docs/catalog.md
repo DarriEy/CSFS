@@ -15,13 +15,13 @@ Of the **84 cataloged sources**:
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| `implemented` | 66 | Registered connector exists in `csfs/connectors/`, with tests |
-| `research` | 9 | API exists but needs investigation (1 of these already has a connector under validation) |
+| `implemented` | 67 | Registered connector exists in `csfs/connectors/`, with tests |
+| `research` | 8 | API exists but needs investigation |
 | `fallback` | 5 | Community/research dataset used for gap-filling |
 | `manual` | 3 | No API; requires scraping or manual download |
 | `deprecated` | 1 | Source retired or superseded |
 
-In code, **67 connectors are registered**: the 66 `implemented` entries plus 1 whose inventory entry remains `research` while its upstream data path is validated. **36 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
+In code, **67 connectors are registered** -- the 67 `implemented` entries. **36 of the implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 
 !!! note "Live providers wobble"
     A connector being `implemented` means the code path is real and tested
@@ -100,7 +100,7 @@ In code, **67 connectors are registered**: the 66 `implemented` entries plus 1 w
 | ROBIN (Reference Observatory of Basins) (`robin`) | global | `implemented` | no | ROBIN near-natural reference basins (CEH/EIDC). Offline archive: seed catalogue only; observations require local downloaded files. No obs... |
 | WMO WHOS (Hydrological Observing System) (`wmo_whos`) | global | `implemented` | — | Federated WHOS / GEO DAB broker. Uses the public anonymous token; fetch_stations bounded by config['countries'] x limit. Discharge in m3/... |
 | FFWC Bangladesh (BWDB) (`bangladesh_ffwc`) | BD | `research` | yes |  |
-| ELWAS NRW (`germany_nrw`) | DE | `research` | yes | No open discharge API - NRW portals expose only level/temperature/precip (verified 2026-06). germany_pegelonline already covers the major... |
+| OpenGeodata.NRW (`germany_nrw`) | DE | `implemented` | no | Open discharge (Abfluss, m3/s) from the OpenGeodata.NRW CSV archive (per-catchment, per-decade zips of 15-min series). Bulk/periodic; ~240 gauges. |
 | Ecuador INAMHI (via GEOGloWS) (`peru_senamhi_legacy`) | EC | `research` | no | Legacy/duplicate entry, superseded by ecuador_inamhi and peru_senamhi; no connector. (name field is stale.) |
 | Ilmateenistus (Estonia) (`estonia_ilmateenistus`) | EE | `research` | no |  |
 | OVF (Hungary) (`hungary_ovf`) | HU | `research` | yes |  |
