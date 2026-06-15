@@ -137,29 +137,53 @@ class ArgentinaSnihConnector(BaseConnector):
         )
 
     async def _build_series_cache(self) -> None:
-        """Fetch the series metadata and cache station -> series mappings.
+        """Fetch the (paginated) series metadata and cache station -> series.
 
-        We look for series whose variable name contains 'caudal'
-        (discharge) — case-insensitive.
+        Two things the SNIH catalogue forces:
+          * It is PAGINATED (~5000 features/page, 10k+ total). Fetching only
+            page 1 misses every discharge series on later pages.
+          * A station usually has several 'caudal' (discharge) variants, and
+            the plain "Caudal" series is frequently empty while a daily-mean
+            ("Caudal medio diario") variant carries the data -- so prefer the
+            daily-mean variant rather than the first one seen.
         """
-        resp = await self._get(
-            "/obs/puntual/series",
-            params={"format": "geojson"},
-        )
-        data = resp.json()
-        features = data.get("features", [])
-        for feat in features:
-            props = feat.get("properties", {})
-            var_name = (props.get("var_nombre") or "").lower()
-            if not any(kw in var_name for kw in _DISCHARGE_VAR_NAMES):
-                continue
-            estacion_id = props.get("estacion_id")
-            series_id = props.get("id")
-            if estacion_id is not None and series_id is not None:
+        # estacion_id -> (priority, series_id); higher priority wins.
+        best: dict[str, tuple[int, int]] = {}
+
+        def _priority(var_name: str) -> int:
+            v = var_name.lower()
+            if "diario" in v:   # daily mean -- most reliably populated
+                return 3
+            if "medio" in v:
+                return 2
+            return 1
+
+        next_url: str | None = "/obs/puntual/series"
+        params: dict | None = {"format": "geojson"}
+        while next_url:
+            resp = await self._get(next_url, params=params)
+            data = resp.json()
+            for feat in data.get("features", []):
+                props = feat.get("properties", {})
+                var_name = props.get("var_nombre") or ""
+                if not any(kw in var_name.lower() for kw in _DISCHARGE_VAR_NAMES):
+                    continue
+                estacion_id = props.get("estacion_id")
+                series_id = props.get("id")
+                if estacion_id is None or series_id is None:
+                    continue
                 key = str(estacion_id)
-                # Keep the first discharge series found per station
-                if key not in self._station_to_series:
-                    self._station_to_series[key] = int(series_id)
+                prio = _priority(var_name)
+                if key not in best or prio > best[key][0]:
+                    best[key] = (prio, int(series_id))
+            if data.get("is_last_page"):
+                break
+            # next_page_url already carries its own query string.
+            next_url = data.get("next_page_url") or None
+            params = None
+
+        for key, (_prio, series_id) in best.items():
+            self._station_to_series[key] = series_id
 
     async def _resolve_series_id(self, native_id: str) -> int:
         """Return the discharge series_id for a station.
