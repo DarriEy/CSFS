@@ -433,6 +433,15 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    "camels_gb": ProviderBackend(
+        slug="camels_gb",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
     "camels_us": ProviderBackend(
         slug="camels_us",
         station_keys=(
@@ -1032,6 +1041,25 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5065/D6MW2F4D",
         dataset_version="1.2; daily",
         dataset_checksum="md5:8e9a466710e8270b58f01d332a87184f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_GB",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="NRFA gauge id (e.g. 41004; 'camels_gb:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-GB daily observed discharge (discharge_vol, m3/s) from the published "
+              "CEH archive via the CSFS camels_gb connector — a dataset artifact. CEH "
+              "regenerates the zip per request, so integrity is a CONTENT checksum over the "
+              "extracted data (verified on download).",
+        # CAMELS-GB is Open Government Licence (UK), redistributable with attribution.
+        redistribution="attribution",
+        data_license="OGL-UK-3.0",
+        attribution="Coxon et al. (2020), CAMELS-GB (NERC EDS / CEH EIDC)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
+        dataset_version="daily",
+        dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

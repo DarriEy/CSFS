@@ -86,6 +86,34 @@ def test_extract_archive_leaves_bare_file(tmp_path):
     assert bare.is_file()
 
 
+def test_content_hash_is_stable_and_layout_independent(tmp_path):
+    # The content hash depends only on file contents + relative paths, so two
+    # extractions of the same data (even written in a different order) match —
+    # the property that lets CEH-style dynamically-rezipped archives be gated.
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    for root in (a, b):
+        (root / "sub").mkdir(parents=True)
+    (a / "sub" / "x.csv").write_text("1,2\n", encoding="utf-8")
+    (a / "y.txt").write_text("hello", encoding="utf-8")
+    # Same content, written in a different order into b.
+    (b / "y.txt").write_text("hello", encoding="utf-8")
+    (b / "sub" / "x.csv").write_text("1,2\n", encoding="utf-8")
+    ha = downloads._content_hash(a)
+    hb = downloads._content_hash(b)
+    assert ha == hb
+    assert ha.startswith("content-sha256:")
+
+
+def test_content_hash_changes_with_content(tmp_path):
+    a = tmp_path / "a"
+    a.mkdir()
+    (a / "x.csv").write_text("1,2\n", encoding="utf-8")
+    h1 = downloads._content_hash(a)
+    (a / "x.csv").write_text("1,3\n", encoding="utf-8")  # changed byte
+    assert downloads._content_hash(a) != h1
+
+
 def test_extract_archive_detects_zip_by_content_not_extension(tmp_path):
     # Extension-less download (e.g. Dataverse .../datafile/<id>) that is really a
     # zip must still be extracted — detection is by magic bytes, not filename.

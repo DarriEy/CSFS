@@ -88,10 +88,10 @@ async def test_download_tar_gz_extracts(tmp_path, monkeypatch):
     """A .tar.gz dataset (LamaH-CE) downloads and extracts via tarfile.
 
     Exercises the extraction path; the synthetic archive cannot match the real
-    recorded checksum, so verification is neutralized here (the checksum gate
-    itself is covered by test_download_checksum.py).
+    recorded checksum, so archive verification is neutralized here (the checksum
+    gate itself is covered by test_download_checksum.py).
     """
-    monkeypatch.setattr(downloads, "_checksum_for", lambda slug: None)
+    monkeypatch.setattr(downloads, "_verify_archive_checksum", lambda *a, **k: None)
     url = next(d["url"] for d in DATASETS if d["slug"] == "lamah_ce")
     respx.get(url).mock(
         return_value=httpx.Response(200, content=_make_test_tar_gz()),

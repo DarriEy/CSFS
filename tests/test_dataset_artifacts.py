@@ -104,6 +104,15 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_GB": _Artifact(
+        provider_id="CAMELS_GB",
+        connector_slug="camels_gb",
+        doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
+        # CEH regenerates the zip per request -> content checksum, not archive md5.
+        checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        data_license="OGL-UK-3.0",
+        noncommercial=False,
+    ),
     "CAMELS_DK": _Artifact(
         provider_id="CAMELS_DK",
         connector_slug="camels_dk",  # primary (streamflow) archive slug

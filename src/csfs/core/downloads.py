@@ -155,6 +155,19 @@ DATASETS: list[dict] = [
         "checksum": "md5:8e9a466710e8270b58f01d332a87184f",
     },
     {
+        # CAMELS-GB — single CEH bundle (timeseries + attributes incl. coords).
+        # CEH regenerates the zip per request, so the archive md5 is NOT
+        # reproducible; integrity is a CONTENT checksum over the extracted data,
+        # excluding the readme.html (carries a per-download generation timestamp).
+        "slug": "camels_gb",
+        "name": "CAMELS-GB — Great Britain large-sample hydrology (CEH EIDC)",
+        "auto": True,
+        "size": "~256 MB",
+        "url": "https://data-package.ceh.ac.uk/data/8344e4f3-d2ea-44f5-8afa-86d2987543a9.zip",
+        "content_checksum": "content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        "content_exclude": ["readme.html"],
+    },
+    {
         # CAMELS-AUS streamflow matrix (ML/day) — the observation source.
         "slug": "camels_aus",
         "name": "CAMELS-AUS — Australia large-sample hydrology, daily streamflow (Zenodo)",
@@ -401,9 +414,48 @@ async def _stream_to_file(
 
 
 def _checksum_for(slug: str) -> str | None:
-    """The recorded content hash for *slug* (``algo:hexdigest``), or None."""
+    """The recorded integrity hash for *slug*, or None.
+
+    Returns the archive ``checksum`` when present, else the ``content_checksum``
+    (for sources whose archive bytes are non-reproducible). This is the value
+    the dataset-artifact capability declares.
+    """
     entry = next((d for d in DATASETS if d["slug"] == slug), None)
-    return entry.get("checksum") if entry else None
+    if entry is None:
+        return None
+    return entry.get("checksum") or entry.get("content_checksum")
+
+
+def _content_hash(dest: Path, exclude: tuple[str, ...] = ()) -> str:
+    """Canonical ``content-sha256:`` hash of the extracted file set under *dest*.
+
+    Hashes a sorted manifest of ``(relative_posix_path, sha256-of-file)`` for
+    every file, so the value depends only on file *contents* and layout — not on
+    archive compression or timestamps. This is the stable integrity anchor for
+    sources whose server regenerates the zip per request (e.g. CEH's CAMELS-GB,
+    where every download yields a different archive md5).
+
+    ``exclude`` is a tuple of ``fnmatch`` globs (matched against the relative
+    posix path) for files whose contents legitimately vary per download — e.g.
+    a ``readme.html`` carrying a generation timestamp. Excluding them keeps the
+    hash stable over the actual data without weakening it for the data files.
+    """
+    import fnmatch
+
+    entries: list[str] = []
+    for p in sorted(dest.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(dest).as_posix()
+        if any(fnmatch.fnmatch(rel, pat) for pat in exclude):
+            continue
+        h = hashlib.sha256()
+        with p.open("rb") as fh:
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                h.update(block)
+        entries.append(f"{rel}\0{h.hexdigest()}")
+    manifest = "\n".join(entries).encode("utf-8")
+    return "content-sha256:" + hashlib.sha256(manifest).hexdigest()
 
 
 def _verify_archive_checksum(archive_path: Path, expected: str) -> None:
@@ -449,14 +501,16 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
                 size_mb=round(archive_path.stat().st_size / 1e6, 1),
             )
 
-        # Provenance gate: verify the published content hash before extraction.
-        # Recorded datasets are fail-closed; unrecorded ones warn (the
-        # dataset-artifact tier requires a checksum on the capability side).
-        expected = _checksum_for(slug)
-        if expected:
-            _verify_archive_checksum(archive_path, expected)
-            logger.info("checksum_verified", slug=slug, checksum=expected)
-        else:
+        # Provenance gate: verify the published ARCHIVE hash before extraction
+        # (fail-closed). Datasets whose server regenerates the zip per request
+        # (e.g. CEH) use a content-checksum instead — verified after extraction.
+        entry = next((d for d in DATASETS if d["slug"] == slug), {})
+        archive_ck = entry.get("checksum")
+        content_ck = entry.get("content_checksum")
+        if archive_ck:
+            _verify_archive_checksum(archive_path, archive_ck)
+            logger.info("checksum_verified", slug=slug, checksum=archive_ck)
+        elif not content_ck:
             logger.warning("checksum_unverified", slug=slug, reason="no recorded checksum")
 
         extracted = _extract_archive(archive_path, dest)
@@ -466,6 +520,18 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
         # and must be kept in place.
         if extracted:
             archive_path.unlink(missing_ok=True)
+
+        # Content-checksum gate: stable across archive re-zips because it hashes
+        # the extracted file set, not the archive wrapper. Must run AFTER the
+        # archive is removed so it does not hash the spent archive.
+        if content_ck:
+            got = _content_hash(dest, tuple(entry.get("content_exclude", ())))
+            if got != content_ck:
+                raise ValueError(
+                    f"content checksum mismatch for {slug}: expected {content_ck}, got {got}"
+                )
+            logger.info("content_checksum_verified", slug=slug, checksum=content_ck)
+
         logger.info("dataset_extracted", slug=slug, files=len(list(dest.iterdir())))
         return True
     except Exception as exc:
