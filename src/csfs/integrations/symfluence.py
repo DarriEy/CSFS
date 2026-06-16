@@ -470,6 +470,33 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,  # keyed by the Hydro3 station code (sta_code_h3)
     ),
+    "camels_nz": ProviderBackend(
+        slug="camels_nz",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the NZ hydrological station id
+    ),
+    "camels_fi": ProviderBackend(
+        slug="camels_fi",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the SYKE gauge id (hyphenated for virtual gauges)
+    ),
+    "camels_lux": ProviderBackend(
+        slug="camels_lux",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the zero-padded id (ID_01 … ID_56)
+    ),
     "camels_dk": ProviderBackend(
         slug="camels_dk",
         station_keys=(
@@ -1078,6 +1105,60 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
         dataset_version="daily",
         dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_NZ",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="NZ hydrological station id (e.g. 29605; 'camels_nz:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-NZ daily observed streamflow (flow, m3/s) from the published University "
+              "of Canterbury (figshare) archive via the CSFS camels_nz connector — a dataset "
+              "artifact, checksum-verified on download (gauge coordinates already WGS84). 14 of "
+              "369 stations are permission-gated by the data owner and ship empty (all-NA) files.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Bushra et al. (2025), CAMELS-NZ (University of Canterbury)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.26021/canterburynz.28827644",
+        dataset_version="daily",
+        dataset_checksum="md5:089757d4b019487fefd8f20d7099403d",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_FI",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="SYKE gauge id (e.g. 896; hyphenated for virtual gauges; 'camels_fi:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-FI daily observed discharge (discharge_vol, m3/s) from the published "
+              "Zenodo archive via the CSFS camels_fi connector — a dataset artifact, checksum-"
+              "verified on download. Gauge coordinates reprojected from EPSG:3067 (the lat/lon "
+              "columns have a documented description swap). ESSD preprint under review.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Seppä et al. (2025), CAMELS-FI (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.15853357",
+        dataset_version="1.2.0; daily",
+        dataset_checksum="md5:f50bf2d972f42b6fc4db690ce201482f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_LUX",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="zero-padded id (e.g. ID_01; 'camels_lux:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-LUX daily streamflow (Q, m3/s) from the published Zenodo archive via the "
+              "CSFS camels_lux connector — a dataset artifact, checksum-verified on download. "
+              "Gap-filled values (Qflag != 0) are surfaced with an 'estimated' quality flag; "
+              "gauge coordinates from the bundled WGS84 shapefile. ESSD preprint under review.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Nijzink et al. (2025), CAMELS-LUX (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.13846619",
+        dataset_version="2.1; daily",
+        dataset_checksum="md5:6c4a14a0feed08382a6b565a798d8fdc",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

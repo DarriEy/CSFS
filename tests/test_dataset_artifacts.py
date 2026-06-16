@@ -129,6 +129,30 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_NZ": _Artifact(
+        provider_id="CAMELS_NZ",
+        connector_slug="camels_nz",
+        doi="10.26021/canterburynz.28827644",
+        checksum="md5:089757d4b019487fefd8f20d7099403d",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
+    "CAMELS_FI": _Artifact(
+        provider_id="CAMELS_FI",
+        connector_slug="camels_fi",
+        doi="10.5281/zenodo.15853357",
+        checksum="md5:f50bf2d972f42b6fc4db690ce201482f",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
+    "CAMELS_LUX": _Artifact(
+        provider_id="CAMELS_LUX",
+        connector_slug="camels_lux",
+        doi="10.5281/zenodo.13846619",
+        checksum="md5:6c4a14a0feed08382a6b565a798d8fdc",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
     "CAMELS_DK": _Artifact(
         provider_id="CAMELS_DK",
         connector_slug="camels_dk",  # primary (streamflow) archive slug

@@ -831,6 +831,42 @@
   status: implemented
   notes: "Dataset artifact (CAMELS-FR, Recherche Data Gouv doi:10.57745/WH7FJR, CC-BY-4.0). Auto-downloads two archives via ensure_dataset: per-station daily streamflow (tsd_q_l, L/s -> m3/s) and the gauge outlet GeoPackage (coords in EPSG:27572, reprojected to WGS84). Access endpoint redirects to an INRAE object store."
 
+- slug: camels_nz
+  name: CAMELS-NZ
+  country: NZ
+  region: oceania
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 369
+  status: implemented
+  notes: "Dataset artifact (CAMELS-NZ, U. Canterbury figshare doi:10.26021/canterburynz.28827644, CC-BY-4.0). Auto-downloads daily streamflow (flow, m3/s) + catchment info (WGS84 coords). figshare URLs carry no filename and redirect to signed S3; 14/369 stations are permission-gated and ship empty files."
+
+- slug: camels_fi
+  name: CAMELS-FI
+  country: FI
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 320
+  status: implemented
+  notes: "Dataset artifact (CAMELS-FI, Zenodo doi:10.5281/zenodo.15853357, CC-BY-4.0; ESSD preprint under review). Single bundle: per-gauge timeseries (discharge_vol, m3/s, CAMELS-GB layout) + meta attributes; coords reprojected from EPSG:3067."
+
+- slug: camels_lux
+  name: CAMELS-LUX
+  country: LU
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 56
+  status: implemented
+  notes: "Dataset artifact (CAMELS-LUX, Zenodo doi:10.5281/zenodo.13846619, CC-BY-4.0; ESSD preprint under review). Auto-downloads the timeseries bundle (daily Q, m3/s; Qflag != 0 -> estimated) + the WGS84 gauge shapefile for coordinates."
+
 - slug: camelsh
   name: CAMELSH (Hourly US)
   country: US

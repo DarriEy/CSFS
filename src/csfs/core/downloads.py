@@ -187,6 +187,55 @@ DATASETS: list[dict] = [
         "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
     },
     {
+        # CAMELS-NZ daily streamflow — per-station obs (flow, m3/s). figshare
+        # access URLs carry no filename and redirect to a signed S3 link; the
+        # download layer content-sniffs the archive and httpx follows the 30x.
+        "slug": "camels_nz",
+        "name": "CAMELS-NZ — New Zealand large-sample hydrology, daily streamflow (figshare)",
+        "auto": True,
+        "size": "~38 MB",
+        "url": "https://ndownloader.figshare.com/files/56902373",
+        "checksum": "md5:089757d4b019487fefd8f20d7099403d",
+    },
+    {
+        # CAMELS-NZ catchment information — gauge coords (already WGS84).
+        "slug": "camels_nz_attributes",
+        "name": "CAMELS-NZ — catchment attributes incl. WGS84 gauge coordinates (figshare)",
+        "auto": True,
+        "size": "~0.1 MB",
+        "url": "https://ndownloader.figshare.com/files/56902355",
+        "checksum": "md5:00f877983df4be56fe490e98ed44fa84",
+    },
+    {
+        # CAMELS-FI — single bundle (per-gauge timeseries + meta incl. coords).
+        # ESSD preprint under review; CC-BY-4.0.
+        "slug": "camels_fi",
+        "name": "CAMELS-FI — Finland large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~382 MB",
+        "url": "https://zenodo.org/records/20225368/files/CAMELS-FI.zip?download=1",
+        "checksum": "md5:f50bf2d972f42b6fc4db690ce201482f",
+    },
+    {
+        # CAMELS-LUX — bundle (daily/hourly/15-min timeseries; daily used here).
+        # ESSD preprint under review; CC-BY-4.0.
+        "slug": "camels_lux",
+        "name": "CAMELS-LUX — Luxembourg large-sample hydrology, time series (Zenodo)",
+        "auto": True,
+        "size": "~872 MB",
+        "url": "https://zenodo.org/records/18776538/files/CAMELS-LUX.zip?download=1",
+        "checksum": "md5:6c4a14a0feed08382a6b565a798d8fdc",
+    },
+    {
+        # CAMELS-LUX geometry — WGS84 gauge point shapefile (station coords).
+        "slug": "camels_lux_shapefiles",
+        "name": "CAMELS-LUX — catchment & gauge shapefiles incl. WGS84 gauge points (Zenodo)",
+        "auto": True,
+        "size": "~9 MB",
+        "url": "https://zenodo.org/records/18776538/files/CAMELS-LUX_shapefiles.zip?download=1",
+        "checksum": "md5:572e8691c0681f28942adb43a91cf060",
+    },
+    {
         # CAMELS-FR streamflow — per-station daily obs (tsd_q_l, L/s). Served
         # from INRAE / Recherche Data Gouv (Dataverse); the access endpoint
         # 30x-redirects to an INRAE object store (httpx/certifi follows it).
