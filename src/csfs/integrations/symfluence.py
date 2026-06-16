@@ -360,6 +360,28 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    # Dataset-artifact provider: LamaH-CE gauges from the published Zenodo
+    # archive via the lamah_ce connector (checksum-verified on download).
+    "lamah_ce": ProviderBackend(
+        slug="lamah_ce",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact provider: CAMELS-BR (ANA gauges) from the published
+    # Zenodo archive via the camels_br connector (checksum-verified).
+    "camels_br": ProviderBackend(
+        slug="camels_br",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -795,6 +817,44 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_version="daily; HydroShare snapshot 2024-05-30",
         dataset_checksum="md5:6246f7300c77ead2c9f097ad5da89ba9",
         noncommercial=True,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="LAMAH_CE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="LamaH-CE gauge id (e.g. 1; 'lamah_ce:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="LamaH-CE daily discharge from the published Zenodo archive via the CSFS "
+              "lamah_ce connector. A static, DOI-pinned dataset artifact — admitted by "
+              "the provenance gate (DOI + version + checksum), archive checksum-verified "
+              "on download.",
+        # LamaH-CE is CC-BY-4.0 throughout (no NonCommercial clause).
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Klingler, Schulz & Herrnegger (2021), LamaH-CE (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.5153305",
+        dataset_version="1.0; daily",
+        dataset_checksum="md5:69fd2733e969513403f923ecc5eaa3dc",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_BR",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="ANA gauge code (e.g. 10100000; 'camels_br:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-BR daily discharge from the published Zenodo archive via the CSFS "
+              "camels_br connector. A static, DOI-pinned dataset artifact — admitted by "
+              "the provenance gate; the streamflow archive is checksum-verified on "
+              "download (the attributes archive supplies gauge coordinates).",
+        # CAMELS-BR is CC-BY-4.0 throughout.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Chagas et al. (2020), CAMELS-BR (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.3964745",
+        dataset_version="1.1; daily",
+        dataset_checksum="md5:599b96f48ec78e25751cf1cc691a22bb",
+        noncommercial=False,
     ),
     ObservationCapabilitySpec(
         provider_id="CSFS",

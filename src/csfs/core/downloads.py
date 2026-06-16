@@ -62,6 +62,29 @@ DATASETS: list[dict] = [
         "auto": True,
         "size": "~1.5 GB",
         "url": "https://zenodo.org/api/records/5153305/files/2_LamaH-CE_daily.tar.gz/content",
+        # Zenodo-published content hash for 2_LamaH-CE_daily.tar.gz (record
+        # 5153305, 1477248617 bytes). Verified before extraction (fail-closed).
+        "checksum": "md5:69fd2733e969513403f923ecc5eaa3dc",
+    },
+    {
+        # CAMELS-BR streamflow (primary archive; the observation source). The
+        # attributes archive below carries the station coordinates.
+        "slug": "camels_br",
+        "name": "CAMELS-BR — Brazil large-sample hydrology, daily streamflow (Zenodo)",
+        "auto": True,
+        "size": "~135 MB",
+        "url": "https://zenodo.org/api/records/3964745/files/02_CAMELS_BR_streamflow_m3s.zip/content",
+        # Zenodo-published md5 for 02_CAMELS_BR_streamflow_m3s.zip (135342171 bytes).
+        "checksum": "md5:599b96f48ec78e25751cf1cc691a22bb",
+    },
+    {
+        "slug": "camels_br_attributes",
+        "name": "CAMELS-BR — catchment attributes incl. gauge coordinates (Zenodo)",
+        "auto": True,
+        "size": "~0.3 MB",
+        "url": "https://zenodo.org/api/records/3964745/files/01_CAMELS_BR_attributes.zip/content",
+        # Zenodo-published md5 for 01_CAMELS_BR_attributes.zip (271002 bytes).
+        "checksum": "md5:8bdb80831ce0ceb64ae14618e46cfae6",
     },
     {
         "slug": "iceland_lamahice",
