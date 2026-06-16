@@ -121,6 +121,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_FR": _Artifact(
+        provider_id="CAMELS_FR",
+        connector_slug="camels_fr",
+        doi="10.57745/WH7FJR",
+        checksum="md5:dd48efe7cca89e86d8435a9888ebcdca",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
     "CAMELS_DK": _Artifact(
         provider_id="CAMELS_DK",
         connector_slug="camels_dk",  # primary (streamflow) archive slug

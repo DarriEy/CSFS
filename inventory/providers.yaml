@@ -819,6 +819,18 @@
   status: implemented
   notes: "Dataset artifact (CAMELS-SE, SND 2023-173, CC-BY-4.0). Auto-downloads two archives via ensure_dataset: per-catchment daily Qobs_m3s timeseries and the WGS84 gauge point shapefile (station coordinates). SND publishes no archive checksum; pinned md5 is self-computed."
 
+- slug: camels_fr
+  name: CAMELS-FR
+  country: FR
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 654
+  status: implemented
+  notes: "Dataset artifact (CAMELS-FR, Recherche Data Gouv doi:10.57745/WH7FJR, CC-BY-4.0). Auto-downloads two archives via ensure_dataset: per-station daily streamflow (tsd_q_l, L/s -> m3/s) and the gauge outlet GeoPackage (coords in EPSG:27572, reprojected to WGS84). Access endpoint redirects to an INRAE object store."
+
 - slug: camelsh
   name: CAMELSH (Hourly US)
   country: US

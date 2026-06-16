@@ -187,6 +187,26 @@ DATASETS: list[dict] = [
         "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
     },
     {
+        # CAMELS-FR streamflow — per-station daily obs (tsd_q_l, L/s). Served
+        # from INRAE / Recherche Data Gouv (Dataverse); the access endpoint
+        # 30x-redirects to an INRAE object store (httpx/certifi follows it).
+        "slug": "camels_fr",
+        "name": "CAMELS-FR — France large-sample hydrology, time series (Recherche Data Gouv)",
+        "auto": True,
+        "size": "~361 MB",
+        "url": "https://entrepot.recherche.data.gouv.fr/api/access/datafile/343470",
+        "checksum": "md5:dd48efe7cca89e86d8435a9888ebcdca",
+    },
+    {
+        # CAMELS-FR geography — gauge outlet GeoPackage (coords in EPSG:27572).
+        "slug": "camels_fr_geography",
+        "name": "CAMELS-FR — geography incl. gauge outlet GeoPackage (Recherche Data Gouv)",
+        "auto": True,
+        "size": "~1.4 MB",
+        "url": "https://entrepot.recherche.data.gouv.fr/api/access/datafile/343465",
+        "checksum": "md5:c26de61c61f12ccfd9cc4c09a89796b3",
+    },
+    {
         # CAMELS-SE streamflow — per-catchment daily obs (Qobs_m3s). SND
         # publishes no checksum; md5 self-computed on the fetched bytes.
         "slug": "camels_se",

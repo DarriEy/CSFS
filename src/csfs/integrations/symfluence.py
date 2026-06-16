@@ -461,6 +461,15 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,  # keyed by the SMHI catchment id
     ),
+    "camels_fr": ProviderBackend(
+        slug="camels_fr",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the Hydro3 station code (sta_code_h3)
+    ),
     "camels_dk": ProviderBackend(
         slug="camels_dk",
         station_keys=(
@@ -1069,6 +1078,24 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
         dataset_version="daily",
         dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_FR",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="Hydro3 station code (e.g. A105003001; 'camels_fr:<code>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-FR daily observed streamflow (tsd_q_l, L/s converted to m3/s on read) "
+              "from the published Recherche Data Gouv archive via the CSFS camels_fr "
+              "connector — a dataset artifact, checksum-verified on download. Gauge outlet "
+              "coordinates from the bundled GeoPackage (EPSG:27572 reprojected to WGS84).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Delaigue et al. (2024), CAMELS-FR (INRAE / Recherche Data Gouv)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.57745/WH7FJR",
+        dataset_version="3.2; daily",
+        dataset_checksum="md5:dd48efe7cca89e86d8435a9888ebcdca",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(
