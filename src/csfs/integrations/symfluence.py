@@ -673,17 +673,33 @@ PROVIDER_HANDLERS: dict[str, type[CSFSStreamflowHandler]] = {
 #: read from the installed framework) so that a contract bump on the
 #: SYMFLUENCE side is *detected* as skew by the selection layer instead of
 #: silently claimed compatible (pre-1.0, minor bumps are breaking).
-TARGET_INTERFACE_VERSION = "0.2.0"
+#:
+#: 0.4.0: the backend now declares the source-data license posture
+#: (``redistribution`` / ``data_license`` / ``attribution`` on every
+#: capability). These fields exist only on the contract-0.4.0 ObservationCapability,
+#: so targeting an older minor while populating them would break against a
+#: pre-0.4.0 framework — hence the bump.
+TARGET_INTERFACE_VERSION = "0.4.0"
 
 
 class ObservationCapabilitySpec(NamedTuple):
-    """Pure (framework-free) capability facts for one served provider."""
+    """Pure (framework-free) capability facts for one served provider.
+
+    ``redistribution`` is the SOURCE-data posture (contract 0.4.0), as a plain
+    string mirroring the framework's ``Redistribution`` enum values
+    ("open" | "attribution" | "restricted" | "unknown"); kept framework-free so
+    this module still imports without symfluence. ``data_license`` /
+    ``attribution`` carry the obligation that must propagate to end users.
+    """
 
     provider_id: str
     kinds: frozenset[str]
     station_id_scheme: str
     parity_grade: str | None
     notes: str
+    redistribution: str = "unknown"
+    data_license: str = ""
+    attribution: str = ""
 
 
 #: Providers the community observation backend claims. Parity grades record
@@ -699,6 +715,11 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="bit-identical",
         notes="USGS NWIS via the CSFS usgs connector; processed CSV bit-identical "
               "to the native handler per the parity work.",
+        # USGS/NWIS data are produced by a US federal agency and are public
+        # domain (17 U.S.C. §105) — free to mirror; courtesy citation only.
+        redistribution="open",
+        data_license="public-domain",
+        attribution="U.S. Geological Survey, National Water Information System (NWIS)",
     ),
     ObservationCapabilitySpec(
         provider_id="WSC",
@@ -707,6 +728,11 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="value-identical:float-repr",
         notes="Environment Canada real-time/historical via CSFS; values identical, "
               "byte differences limited to float representation.",
+        # Environment and Climate Change Canada data: Open Government Licence –
+        # Canada. Redistributable with attribution.
+        redistribution="attribution",
+        data_license="OGL-Canada-2.0",
+        attribution="Environment and Climate Change Canada, Water Survey of Canada",
     ),
     ObservationCapabilitySpec(
         provider_id="SMHI",
@@ -715,6 +741,11 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="value-identical:rounding",
         notes="SMHI 15-minute discharge (hydroobs parameter 2) pinned to match the "
               "native handler; values identical up to provider rounding.",
+        # SMHI open data: Creative Commons Attribution 4.0. Redistributable
+        # with attribution.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Swedish Meteorological and Hydrological Institute (SMHI)",
     ),
     ObservationCapabilitySpec(
         provider_id="CSFS",
@@ -724,6 +755,14 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         notes="Ungated generic access to every CSFS provider connector; refused by "
               "the parity gate unless ALLOW_UNGATED_BACKENDS: true (the registry-"
               "handler tier and ADDITIONAL_OBSERVATIONS: csfs remain available).",
+        # Generic entry spans 80+ providers with heterogeneous terms (some
+        # restricted, e.g. GRDC), so the posture cannot be asserted per-provider
+        # here. Left 'unknown' — already refused by the parity gate
+        # (parity_grade=None); a future per-provider capability split can
+        # declare each source's true posture.
+        redistribution="unknown",
+        data_license="",
+        attribution="",
     ),
 )
 
@@ -782,6 +821,9 @@ class CommunityObservationBackend:
                 auth=frozenset(),
                 parity_grade=spec.parity_grade,
                 notes=spec.notes,
+                data_license=spec.data_license,
+                attribution=spec.attribution,
+                redistribution=contract.Redistribution(spec.redistribution),
             )
             for spec in OBSERVATION_CAPABILITIES
         )
@@ -869,6 +911,13 @@ class CommunityObservationBackend:
 
         import csfs
 
+        # Propagate the SOURCE-data license posture into the delivery so the
+        # obligation survives into the manifest and downstream provenance.
+        spec = next(
+            (s for s in OBSERVATION_CAPABILITIES
+             if s.provider_id.lower() == str(request.provider_id).lower()),
+            None,
+        )
         result = contract.AcquisitionResult(
             paths=tuple(paths),
             schema=contract.SchemaId.OBS_CSV_V1,
@@ -883,6 +932,9 @@ class CommunityObservationBackend:
                 "acquired_at": datetime.now(UTC).isoformat(),
             },
             variables_delivered=frozenset({"streamflow"}),
+            data_license=spec.data_license if spec else "",
+            attribution=spec.attribution if spec else "",
+            redistribution=contract.Redistribution(spec.redistribution if spec else "unknown"),
         )
         contract.write_manifest(result, target_dir)
         return result
