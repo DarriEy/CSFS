@@ -187,6 +187,25 @@ DATASETS: list[dict] = [
         "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
     },
     {
+        # CAMELS-SE streamflow — per-catchment daily obs (Qobs_m3s). SND
+        # publishes no checksum; md5 self-computed on the fetched bytes.
+        "slug": "camels_se",
+        "name": "CAMELS-SE — Sweden large-sample hydrology, catchment time series (SND)",
+        "auto": True,
+        "size": "~15 MB",
+        "url": "https://api.researchdata.se/dataset/2023-173/1/file/data?filePath=catchment%20time%20series.zip",
+        "checksum": "md5:5e6972cf29c9220e547bc00dddd7b03a",
+    },
+    {
+        # CAMELS-SE GIS — WGS84 gauge point shapefile (station coordinates).
+        "slug": "camels_se_gis",
+        "name": "CAMELS-SE — catchment GIS shapefiles incl. WGS84 gauge points (SND)",
+        "auto": True,
+        "size": "~1 MB",
+        "url": "https://api.researchdata.se/dataset/2023-173/1/file/data?filePath=catchment_GIS_shapefiles.zip",
+        "checksum": "md5:2983f5e255b74e01da656c671519163a",
+    },
+    {
         # CAMELS-CH — single bundle (observation-based timeseries + attributes).
         "slug": "camels_ch",
         "name": "CAMELS-CH — Switzerland large-sample hydrology (Zenodo)",

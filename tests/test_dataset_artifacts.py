@@ -113,6 +113,14 @@ ARTIFACTS = {
         data_license="OGL-UK-3.0",
         noncommercial=False,
     ),
+    "CAMELS_SE": _Artifact(
+        provider_id="CAMELS_SE",
+        connector_slug="camels_se",
+        doi="10.57804/t3rm-v029",
+        checksum="md5:5e6972cf29c9220e547bc00dddd7b03a",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
     "CAMELS_DK": _Artifact(
         provider_id="CAMELS_DK",
         connector_slug="camels_dk",  # primary (streamflow) archive slug

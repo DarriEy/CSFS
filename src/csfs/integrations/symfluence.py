@@ -452,6 +452,15 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,  # CAMELS-US is keyed by the exact 8-digit USGS id
     ),
+    "camels_se": ProviderBackend(
+        slug="camels_se",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the SMHI catchment id
+    ),
     "camels_dk": ProviderBackend(
         slug="camels_dk",
         station_keys=(
@@ -1060,6 +1069,24 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
         dataset_version="daily",
         dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_SE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="SMHI catchment id (e.g. 1069; 'camels_se:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-SE daily observed discharge (Qobs_m3s) from the published SND archive "
+              "via the CSFS camels_se connector — a dataset artifact, checksum-verified on "
+              "download (gauge coordinates from the bundled WGS84 station shapefile). SND "
+              "publishes no archive checksum; the pinned md5 is self-computed.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Teutschbein et al. (2024), CAMELS-SE (SND 2023-173)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.57804/t3rm-v029",
+        dataset_version="v1; daily",
+        dataset_checksum="md5:5e6972cf29c9220e547bc00dddd7b03a",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(
