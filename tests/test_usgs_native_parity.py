@@ -10,14 +10,17 @@ SYMFLUENCE's native USGS handler, given the same underlying observations — the
 Hermetic by construction: a single canonical dataset (UTC timestamps + cfs
 discharge) is rendered into each pipeline's raw input — an NWIS RDB for the
 native handler, a CSFS raw CSV for the community handler — and the two
-``process()`` outputs are compared for VALUE parity (same timesteps, same
-discharge to floating-point tolerance). Not a byte comparison: the two are
-independent implementations, so the cfs->cms multiply and pandas' float-to-text
-formatting leave ~1-ULP representation noise on the CSV text even when the
-numbers are equal. Value parity is the meaningful regression gate — units,
-resampling, windowing, or tz divergence all fail it. The ``bit-identical``
-grade on the capability is the separately live-measured property against real
-NWIS payloads; this harness guards the hydrologically-meaningful equivalence.
+``process()`` outputs are compared **byte-for-byte**. CSFS's input is
+pre-converted to m3/s using the SAME ``CFS_TO_CMS`` constant the native handler
+applies, and CSFS reads its raw CSV with ``float_precision="round_trip"`` so the
+re-read floats are exact; an identical pipeline therefore yields identical bytes.
+Any divergence — units, resampling, windowing, tz, or float precision — fails
+the gate. This is the automated guard behind the ``bit-identical`` parity grade
+declared on the USGS capability.
+
+(Historical note: with pandas' DEFAULT ``read_csv`` float parser, CSFS lost
+~1 ULP re-reading high-precision values, so this comparison was once value-only;
+the ``round_trip`` fix restored true byte parity.)
 
 Requires symfluence (the native reference). Skipped where it is absent, so it
 never makes CSFS depend on the framework — it is the framework-side gate run in
@@ -74,8 +77,8 @@ def _write_csfs_raw(path, cfs_to_cms):
     """Render the same data as a CSFS raw CSV (discharge already in m3/s)."""
     rows = ["timestamp,discharge_m3s"]
     for ts, cfs in zip(_TIMESTAMPS, _CFS_VALUES):
-        # Pre-convert with the SAME constant the native handler applies, so the
-        # only remaining differences are independent-pipeline float noise.
+        # Pre-convert with the SAME constant the native handler applies; CSFS
+        # reads this back with round_trip precision, so the floats are exact.
         rows.append(f"{ts.strftime('%Y-%m-%dT%H:%M:%SZ')},{cfs * cfs_to_cms!r}")
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return path
@@ -87,7 +90,7 @@ def _requires_symfluence():
     pytest.importorskip("pandas")
 
 
-def test_usgs_processed_csv_value_parity_native_vs_community(tmp_path):
+def test_usgs_processed_csv_is_bit_identical_native_vs_community(tmp_path):
     import symfluence  # noqa: F401 — bootstrap registers handlers + the csfs plugin
     from symfluence.core.constants import UnitConversion
 
@@ -113,32 +116,23 @@ def test_usgs_processed_csv_value_parity_native_vs_community(tmp_path):
     csfs_raw = _write_csfs_raw(tmp_path / "csfs_usgs_01646500_raw.csv", cfs_to_cms)
     csfs_csv = csfs_handler.process(csfs_raw)
 
-    import numpy as np
-    import pandas as pd
+    # Byte-for-byte parity: identical input through equivalent pipelines must
+    # yield identical processed CSVs (the bit-identical grade). The structural
+    # read below is only for a readable diff if the byte assertion ever fails.
+    native_text = native_csv.read_text()
+    csfs_text = csfs_csv.read_text()
+    if native_text != csfs_text:
+        import pandas as pd
 
-    native_df = pd.read_csv(native_csv, parse_dates=["datetime"], index_col="datetime")
-    csfs_df = pd.read_csv(csfs_csv, parse_dates=["datetime"], index_col="datetime")
-
-    # Structural parity: same column, same timesteps, same row count.
-    assert list(native_df.columns) == list(csfs_df.columns) == ["discharge_cms"]
-    assert native_df.index.equals(csfs_df.index), (
-        f"timestep mismatch:\nnative={list(native_df.index)}\ncsfs={list(csfs_df.index)}"
-    )
-
-    # Value parity: identical discharge to floating-point tolerance. NOT a byte
-    # comparison — the two pipelines are independent implementations, so the
-    # cfs->cms multiply and pandas' float-to-text formatting leave ~1-ULP
-    # representation noise on some values (the processed CSVs agree numerically
-    # but are not byte-identical). Value parity is the meaningful regression
-    # gate; ~1-ULP text noise is not a hydrological difference.
-    np.testing.assert_allclose(
-        csfs_df["discharge_cms"].to_numpy(),
-        native_df["discharge_cms"].to_numpy(),
-        rtol=1e-9, atol=0.0,
-        err_msg=(
-            "USGS value-parity regression: CSFS discharge diverged from native.\n"
-            f"--- native ---\n{native_csv.read_text()}\n--- csfs ---\n{csfs_csv.read_text()}"
-        ),
+        native_df = pd.read_csv(native_csv, parse_dates=["datetime"], index_col="datetime")
+        csfs_df = pd.read_csv(csfs_csv, parse_dates=["datetime"], index_col="datetime")
+        assert list(native_df.columns) == list(csfs_df.columns) == ["discharge_cms"]
+        assert native_df.index.equals(csfs_df.index), (
+            f"timestep mismatch:\nnative={list(native_df.index)}\ncsfs={list(csfs_df.index)}"
+        )
+    assert native_text == csfs_text, (
+        "USGS parity regression: CSFS processed CSV diverged from native.\n"
+        f"--- native ---\n{native_text}\n--- csfs ---\n{csfs_text}"
     )
 
 
@@ -148,6 +142,6 @@ def test_usgs_capability_declares_open_and_graded():
     import csfs.integrations.symfluence as integration
 
     usgs = next(s for s in integration.OBSERVATION_CAPABILITIES if s.provider_id == "USGS")
-    assert usgs.parity_grade == "bit-identical"  # live-measured; harness above guards value parity
+    assert usgs.parity_grade == "bit-identical"  # the harness above guards this byte-for-byte
     assert usgs.redistribution == "open"
     assert usgs.data_license == "public-domain"

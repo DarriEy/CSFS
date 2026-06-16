@@ -546,7 +546,10 @@ class CSFSStreamflowHandler(_Base):
 
         frames: list[pd.DataFrame] = []
         for csv_file in csv_files:
-            standardized = standardize_frame(pd.read_csv(csv_file))
+            # round_trip float parsing: re-reading the raw CSV must recover the
+            # exact float written, not pandas' default ~1-ULP-lossy parse, so the
+            # processed values match the native handler's in-memory result bitwise.
+            standardized = standardize_frame(pd.read_csv(csv_file, float_precision="round_trip"))
             if standardized.empty:
                 self.logger.warning(f"No usable records in {csv_file.name}")
                 continue
@@ -904,7 +907,9 @@ class CommunityObservationBackend:
         end = request.window[1] if request.window else None
         paths: list[Path] = []
         for raw_file in raw_files:
-            obs = obs_csv_v1_frame(pd.read_csv(raw_file), start=start, end=end)
+            # round_trip float parsing (see process()): exact recovery of the
+            # written floats keeps the OBS_CSV_V1 delivery bitwise-faithful.
+            obs = obs_csv_v1_frame(pd.read_csv(raw_file, float_precision="round_trip"), start=start, end=end)
             out = target_dir / f"{raw_file.stem.removesuffix('_raw')}_obs_v1.csv"
             obs.to_csv(out, index=False)
             paths.append(out)
