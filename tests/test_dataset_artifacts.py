@@ -87,6 +87,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_AUS": _Artifact(
+        provider_id="CAMELS_AUS",
+        connector_slug="camels_aus",  # primary (streamflow) archive slug
+        doi="10.5281/zenodo.13350616",
+        checksum="md5:28113b991387796fe374aa0d1f4d4a4f",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
 }
 
 _IDS = list(ARTIFACTS)

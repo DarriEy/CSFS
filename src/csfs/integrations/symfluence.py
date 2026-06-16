@@ -424,6 +424,15 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    "camels_aus": ProviderBackend(
+        slug="camels_aus",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -969,6 +978,24 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5281/zenodo.15025258",
         dataset_version="daily",
         dataset_checksum="md5:04f909d9904375647d030c4ab8ddfdbe",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_AUS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="AWRC station id (e.g. 912101A; 'camels_aus:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-AUS v2 daily streamflow (wide matrix, ML/day converted to m3/s on "
+              "read) from the published Zenodo archive via the CSFS camels_aus connector — "
+              "a dataset artifact, checksum-verified on download (outlet coordinates from "
+              "the bare attributes master-table CSV).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Fowler et al. (2024), CAMELS-AUS v2 (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.13350616",
+        dataset_version="2.02; daily",
+        dataset_checksum="md5:28113b991387796fe374aa0d1f4d4a4f",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

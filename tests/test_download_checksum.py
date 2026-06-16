@@ -66,3 +66,21 @@ def test_lamah_ice_has_a_recorded_checksum():
 
 def test_unrecorded_dataset_returns_no_checksum():
     assert downloads._checksum_for("panama_stri") is None
+
+
+def test_extract_archive_extracts_zip(tmp_path):
+    import zipfile
+    arc = tmp_path / "d.zip"
+    with zipfile.ZipFile(arc, "w") as zf:
+        zf.writestr("inner.csv", "a,b\n1,2\n")
+    assert downloads._extract_archive(arc, tmp_path) is True
+    assert (tmp_path / "inner.csv").is_file()
+
+
+def test_extract_archive_leaves_bare_file(tmp_path):
+    # A bare published .csv is the data itself: not extracted, kept in place
+    # (the download flow must NOT delete it). Returns False so the caller knows.
+    bare = tmp_path / "MasterTable.csv"
+    bare.write_text("station_id,lat\nX,1.0\n", encoding="utf-8")
+    assert downloads._extract_archive(bare, tmp_path) is False
+    assert bare.is_file()

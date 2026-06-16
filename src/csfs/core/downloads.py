@@ -127,6 +127,25 @@ DATASETS: list[dict] = [
         "checksum": "md5:3993c25ba7d7b86df0541de91e094f39",
     },
     {
+        # CAMELS-AUS streamflow matrix (ML/day) — the observation source.
+        "slug": "camels_aus",
+        "name": "CAMELS-AUS — Australia large-sample hydrology, daily streamflow (Zenodo)",
+        "auto": True,
+        "size": "~287 MB",
+        "url": "https://zenodo.org/api/records/13350616/files/03_streamflow.zip/content",
+        "checksum": "md5:28113b991387796fe374aa0d1f4d4a4f",
+    },
+    {
+        # CAMELS-AUS attributes master table — a BARE published CSV (no zip);
+        # the download layer keeps non-archive files in place.
+        "slug": "camels_aus_attributes",
+        "name": "CAMELS-AUS — attributes & indices master table incl. outlet coords (Zenodo)",
+        "auto": True,
+        "size": "~0.8 MB",
+        "url": "https://zenodo.org/api/records/13350616/files/CAMELS_AUS_Attributes%26Indices_MasterTable.csv/content",
+        "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
+    },
+    {
         # CAMELS-CH — single bundle (observation-based timeseries + attributes).
         "slug": "camels_ch",
         "name": "CAMELS-CH — Switzerland large-sample hydrology (Zenodo)",
@@ -229,15 +248,23 @@ def _has_extracted_content(dest: Path) -> bool:
     )
 
 
-def _extract_archive(archive_path: Path, dest: Path) -> None:
-    """Extract a ZIP or tar.gz archive into ``dest`` safely."""
+def _extract_archive(archive_path: Path, dest: Path) -> bool:
+    """Extract a ZIP or tar.gz archive into ``dest`` safely.
+
+    Returns True if *archive_path* was an archive and was extracted; False if it
+    is a bare published file (e.g. a ``.csv`` master table) that needs no
+    extraction and is left in place as the dataset's data.
+    """
     name = archive_path.name.lower()
     if name.endswith((".tar.gz", ".tgz", ".tar")):
         with tarfile.open(archive_path) as tf:
             _safe_extract_tar(tf, dest)
-    else:
+        return True
+    if name.endswith(".zip"):
         with zipfile.ZipFile(archive_path) as zf:
             _safe_extractall(zf, dest)
+        return True
+    return False  # bare non-archive download: keep the file as-is
 
 
 async def download_dataset(slug: str, base_dir: Path) -> bool:
@@ -403,10 +430,13 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
         else:
             logger.warning("checksum_unverified", slug=slug, reason="no recorded checksum")
 
-        _extract_archive(archive_path, dest)
+        extracted = _extract_archive(archive_path, dest)
         # Drop the archive once extracted — saves significant disk (Caravan is
         # ~12.5 GB) and stops a leftover archive from masking a failed extract.
-        archive_path.unlink(missing_ok=True)
+        # A bare non-archive download (e.g. a published .csv) is the data itself
+        # and must be kept in place.
+        if extracted:
+            archive_path.unlink(missing_ok=True)
         logger.info("dataset_extracted", slug=slug, files=len(list(dest.iterdir())))
         return True
     except Exception as exc:
