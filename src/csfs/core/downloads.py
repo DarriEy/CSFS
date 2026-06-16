@@ -118,6 +118,24 @@ DATASETS: list[dict] = [
         "checksum": "md5:5ee2f89f6204e8eafdbc11b491d34afb",
     },
     {
+        # CAMELS-IND v2.2 — single bundle (streamflow matrix + attributes).
+        "slug": "camels_ind",
+        "name": "CAMELS-IND — India large-sample hydrology, v2.2 (Zenodo)",
+        "auto": True,
+        "size": "~178 MB",
+        "url": "https://zenodo.org/api/records/14999580/files/CAMELS_IND_Catchments_Streamflow_Sufficient.zip/content",
+        "checksum": "md5:3993c25ba7d7b86df0541de91e094f39",
+    },
+    {
+        # CAMELS-CH — single bundle (observation-based timeseries + attributes).
+        "slug": "camels_ch",
+        "name": "CAMELS-CH — Switzerland large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~247 MB",
+        "url": "https://zenodo.org/api/records/15025258/files/camels_ch.zip/content",
+        "checksum": "md5:04f909d9904375647d030c4ab8ddfdbe",
+    },
+    {
         "slug": "iceland_lamahice",
         "name": "LamaH-Ice — Iceland large-sample hydrology (HydroShare, daily)",
         "auto": True,

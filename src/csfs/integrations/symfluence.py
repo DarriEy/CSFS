@@ -404,6 +404,26 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    # Dataset-artifact providers: CAMELS-IND (CWC gauges) and CAMELS-CH (BAFU
+    # gauges) from their Zenodo archives via the respective connectors.
+    "camels_ind": ProviderBackend(
+        slug="camels_ind",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "camels_ch": ProviderBackend(
+        slug="camels_ch",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -914,6 +934,41 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.1594/PANGAEA.894885",
         dataset_version="2018; daily",
         dataset_checksum="md5:3457bc87e444e1e7d84a1b703965708d",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_IND",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CWC gauge code (e.g. 3002; 'camels_ind:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-IND v2.2 daily observed discharge (wide-matrix streamflow_observed.csv) "
+              "from the published Zenodo archive via the CSFS camels_ind connector — a "
+              "DOI-pinned dataset artifact, checksum-verified on download. Authoritative "
+              "standalone (distinct from the Caravan-derived camels_in alias).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Mangukiya et al. (2025), CAMELS-IND (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.14999580",
+        dataset_version="2.2; daily",
+        dataset_checksum="md5:3993c25ba7d7b86df0541de91e094f39",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_CH",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="BAFU gauge id (e.g. 2004; 'camels_ch:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-CH daily observation-based discharge (discharge_vol(m3/s)) from the "
+              "published Zenodo archive via the CSFS camels_ch connector — a DOI-pinned "
+              "dataset artifact, checksum-verified on download.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Höge et al. (2023), CAMELS-CH (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.15025258",
+        dataset_version="daily",
+        dataset_checksum="md5:04f909d9904375647d030c4ab8ddfdbe",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

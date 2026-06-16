@@ -71,6 +71,22 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_IND": _Artifact(
+        provider_id="CAMELS_IND",
+        connector_slug="camels_ind",
+        doi="10.5281/zenodo.14999580",
+        checksum="md5:3993c25ba7d7b86df0541de91e094f39",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
+    "CAMELS_CH": _Artifact(
+        provider_id="CAMELS_CH",
+        connector_slug="camels_ch",
+        doi="10.5281/zenodo.15025258",
+        checksum="md5:04f909d9904375647d030c4ab8ddfdbe",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
 }
 
 _IDS = list(ARTIFACTS)

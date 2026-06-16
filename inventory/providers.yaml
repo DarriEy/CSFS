@@ -718,6 +718,28 @@
   stations: 516
   status: fallback
 
+- slug: camels_ind
+  name: CAMELS-IND
+  country: IN
+  region: asia
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 472
+  status: implemented
+
+- slug: camels_ch
+  name: CAMELS-CH
+  country: CH
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 331
+  status: implemented
+
 - slug: camels_br
   name: CAMELS-BR
   country: BR
