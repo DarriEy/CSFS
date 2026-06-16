@@ -14,6 +14,7 @@ Two layers live here:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import tarfile
 import zipfile
 from pathlib import Path
@@ -68,6 +69,10 @@ DATASETS: list[dict] = [
         "auto": True,
         "size": "~636 MB",
         "url": "https://www.hydroshare.org/resource/86117a5f36cc4b7c90a5d54e18161c91/data/contents/lamah_ice.zip",
+        # HydroShare-published content hash for lamah_ice.zip (hsapi files
+        # endpoint, resource 86117a5f…, 636283348 bytes). The download is
+        # verified against this before extraction (fail-closed on mismatch).
+        "checksum": "md5:6246f7300c77ead2c9f097ad5da89ba9",
     },
     {
         "slug": "grdc",
@@ -267,6 +272,38 @@ async def _stream_to_file(
         attempt = 0
 
 
+def _checksum_for(slug: str) -> str | None:
+    """The recorded content hash for *slug* (``algo:hexdigest``), or None."""
+    entry = next((d for d in DATASETS if d["slug"] == slug), None)
+    return entry.get("checksum") if entry else None
+
+
+def _verify_archive_checksum(archive_path: Path, expected: str) -> None:
+    """Verify *archive_path* against ``algo:hexdigest``; raise on mismatch.
+
+    Provenance gate enforcement (contract 0.5.0, dataset-artifact tier): a
+    published artifact is only authentic if its bytes match the hash recorded
+    from the source's record. Fail-closed — a mismatch means tampering, a
+    truncated download, or a moved/re-published archive, none of which should
+    silently become a calibration input.
+    """
+    algo, _, want = expected.partition(":")
+    if not want:  # tolerate a bare hexdigest; default to sha256
+        algo, want = "sha256", expected
+    try:
+        hasher = hashlib.new(algo)
+    except ValueError as exc:
+        raise ValueError(f"unsupported checksum algorithm {algo!r} for {archive_path.name}") from exc
+    with archive_path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            hasher.update(block)
+    got = hasher.hexdigest()
+    if got.lower() != want.lower():
+        raise ValueError(
+            f"checksum mismatch for {archive_path.name}: expected {algo}:{want}, got {algo}:{got}"
+        )
+
+
 async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
     """Download an archive (streaming, resumable) and extract it into dest."""
     archive_name = _archive_name_from_url(url, slug)
@@ -283,6 +320,16 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
                 slug=slug,
                 size_mb=round(archive_path.stat().st_size / 1e6, 1),
             )
+
+        # Provenance gate: verify the published content hash before extraction.
+        # Recorded datasets are fail-closed; unrecorded ones warn (the
+        # dataset-artifact tier requires a checksum on the capability side).
+        expected = _checksum_for(slug)
+        if expected:
+            _verify_archive_checksum(archive_path, expected)
+            logger.info("checksum_verified", slug=slug, checksum=expected)
+        else:
+            logger.warning("checksum_unverified", slug=slug, reason="no recorded checksum")
 
         _extract_archive(archive_path, dest)
         # Drop the archive once extracted — saves significant disk (Caravan is
