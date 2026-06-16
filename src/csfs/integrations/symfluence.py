@@ -347,6 +347,19 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={"resolution": "15min"},
         normalize=None,
     ),
+    # Dataset-artifact provider (not a live API): LamaH-Ice gauges read from the
+    # published HydroShare archive via the iceland_lamahice connector
+    # (checksum-verified on download). Same handler machinery as the live
+    # drop-ins — the connector abstracts static-archive vs live-API fetch.
+    "lamah_ice": ProviderBackend(
+        slug="iceland_lamahice",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -677,12 +690,14 @@ PROVIDER_HANDLERS: dict[str, type[CSFSStreamflowHandler]] = {
 #: SYMFLUENCE side is *detected* as skew by the selection layer instead of
 #: silently claimed compatible (pre-1.0, minor bumps are breaking).
 #:
-#: 0.4.0: the backend now declares the source-data license posture
-#: (``redistribution`` / ``data_license`` / ``attribution`` on every
-#: capability). These fields exist only on the contract-0.4.0 ObservationCapability,
-#: so targeting an older minor while populating them would break against a
-#: pre-0.4.0 framework — hence the bump.
-TARGET_INTERFACE_VERSION = "0.4.0"
+#: 0.4.0: declares the source-data license posture (``redistribution`` /
+#: ``data_license`` / ``attribution``). 0.5.0: declares the source-kind tier —
+#: ``source_kind`` + ``dataset_doi`` / ``dataset_version`` /
+#: ``dataset_checksum`` / ``noncommercial`` — so the LamaH-Ice DATASET_ARTIFACT
+#: capability is admitted by the framework's provenance gate. These fields exist
+#: only on the contract-0.5.0 ObservationCapability, so populating them while
+#: targeting an older minor would break against a pre-0.5.0 framework.
+TARGET_INTERFACE_VERSION = "0.5.0"
 
 
 class ObservationCapabilitySpec(NamedTuple):
@@ -703,6 +718,16 @@ class ObservationCapabilitySpec(NamedTuple):
     redistribution: str = "unknown"
     data_license: str = ""
     attribution: str = ""
+    # Source-kind tier + provenance (contract 0.5.0). DATASET_ARTIFACT entries
+    # are admitted by the framework's provenance gate (DOI + version + checksum
+    # + license) instead of the parity gate; PROVIDER_API entries ignore these.
+    # ``source_kind`` mirrors the SourceKind enum values ("provider_api" |
+    # "dataset_artifact"); ``noncommercial`` flags a CC-BY-NC-style use clause.
+    source_kind: str = "provider_api"
+    dataset_doi: str = ""
+    dataset_version: str = ""
+    dataset_checksum: str = ""
+    noncommercial: bool = False
 
 
 #: Providers the community observation backend claims. Parity grades record
@@ -749,6 +774,27 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         redistribution="attribution",
         data_license="CC-BY-4.0",
         attribution="Swedish Meteorological and Hydrological Institute (SMHI)",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="LAMAH_ICE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="LamaH-Ice gauge id (e.g. 1; 'iceland_lamahice:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: admitted by the provenance gate, not parity
+        notes="LamaH-Ice daily discharge from the published HydroShare archive via the "
+              "CSFS iceland_lamahice connector. A static, DOI-pinned dataset artifact — "
+              "admitted by the framework's provenance gate (DOI + version + checksum), "
+              "not the parity gate. The archive is checksum-verified on download.",
+        # Streamflow is CC-BY-NC-4.0 (attributes are CC-BY-4.0). Redistributable
+        # WITH attribution, but NOT for commercial use — hence noncommercial=True.
+        redistribution="attribution",
+        data_license="CC-BY-NC-4.0",
+        attribution="Helgason & Nijssen (2024), LamaH-Ice (HydroShare); "
+                    "streamflow data CC-BY-NC-4.0",
+        source_kind="dataset_artifact",
+        dataset_doi="10.4211/hs.86117a5f36cc4b7c90a5d54e18161c91",
+        dataset_version="daily; HydroShare snapshot 2024-05-30",
+        dataset_checksum="md5:6246f7300c77ead2c9f097ad5da89ba9",
+        noncommercial=True,
     ),
     ObservationCapabilitySpec(
         provider_id="CSFS",
@@ -827,6 +873,11 @@ class CommunityObservationBackend:
                 data_license=spec.data_license,
                 attribution=spec.attribution,
                 redistribution=contract.Redistribution(spec.redistribution),
+                source_kind=contract.SourceKind(spec.source_kind),
+                dataset_doi=spec.dataset_doi,
+                dataset_version=spec.dataset_version,
+                dataset_checksum=spec.dataset_checksum,
+                noncommercial=spec.noncommercial,
             )
             for spec in OBSERVATION_CAPABILITIES
         )
@@ -923,19 +974,30 @@ class CommunityObservationBackend:
              if s.provider_id.lower() == str(request.provider_id).lower()),
             None,
         )
+        provenance = {
+            "integration": f"{__name__}.CommunityObservationBackend",
+            "csfs_version": getattr(csfs, "__version__", "unknown"),
+            "provider_id": str(request.provider_id),
+            "stations": ",".join(request.station_ids),
+            "processed_path": str(processed),
+            "acquired_at": datetime.now(UTC).isoformat(),
+        }
+        # Dataset-artifact provenance: record the DOI/version/verified checksum
+        # in the manifest so the delivery is traceable to the published archive.
+        if spec and spec.source_kind == "dataset_artifact":
+            provenance.update(
+                source_kind=spec.source_kind,
+                dataset_doi=spec.dataset_doi,
+                dataset_version=spec.dataset_version,
+                dataset_checksum=spec.dataset_checksum,
+                noncommercial=str(spec.noncommercial).lower(),
+            )
         result = contract.AcquisitionResult(
             paths=tuple(paths),
             schema=contract.SchemaId.OBS_CSV_V1,
             dataset_id=request.provider_id,
             backend=self.name,
-            provenance={
-                "integration": f"{__name__}.CommunityObservationBackend",
-                "csfs_version": getattr(csfs, "__version__", "unknown"),
-                "provider_id": str(request.provider_id),
-                "stations": ",".join(request.station_ids),
-                "processed_path": str(processed),
-                "acquired_at": datetime.now(UTC).isoformat(),
-            },
+            provenance=provenance,
             variables_delivered=frozenset({"streamflow"}),
             data_license=spec.data_license if spec else "",
             attribution=spec.attribution if spec else "",

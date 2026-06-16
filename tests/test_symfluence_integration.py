@@ -270,9 +270,14 @@ def test_chunk_round_trip_through_csv(tmp_path):
 
 def test_provider_backends_cover_the_native_streamflow_providers():
     """Drop-in keys mirror SYMFLUENCE's lowercased STREAMFLOW_DATA_PROVIDER values."""
-    assert set(integration.PROVIDER_BACKENDS) == {"usgs", "wsc", "smhi"}
+    assert set(integration.PROVIDER_BACKENDS) == {"usgs", "wsc", "smhi", "lamah_ice"}
     slugs = {key: backend.slug for key, backend in integration.PROVIDER_BACKENDS.items()}
-    assert slugs == {"usgs": "usgs", "wsc": "environment_canada", "smhi": "sweden_smhi"}
+    assert slugs == {
+        "usgs": "usgs",
+        "wsc": "environment_canada",
+        "smhi": "sweden_smhi",
+        "lamah_ice": "iceland_lamahice",  # dataset-artifact provider (not a live API)
+    }
 
 
 def test_smhi_backend_pins_the_15min_product():
@@ -785,11 +790,11 @@ def test_obs_csv_v1_frame_missing_columns_is_a_helpful_error():
 
 
 def test_observation_capability_table_is_well_formed():
-    """Pure capability facts: the four providers, parity grammar, csfs ungated."""
+    """Pure capability facts: live drop-ins + LamaH-Ice artifact, parity grammar, csfs ungated."""
     import re
 
     specs = {spec.provider_id: spec for spec in integration.OBSERVATION_CAPABILITIES}
-    assert set(specs) == {"USGS", "WSC", "SMHI", "CSFS"}
+    assert set(specs) == {"USGS", "WSC", "SMHI", "LAMAH_ICE", "CSFS"}
     grade_re = re.compile(r"^(bit-identical|value-identical:.+)$")
     for spec in specs.values():
         assert spec.kinds == frozenset({"streamflow"})
@@ -864,12 +869,12 @@ class TestCommunityObservationBackend:
         assert registered.__qualname__ == "CommunityObservationBackend"
         assert registered.__module__ == "csfs.integrations.symfluence"
         # Handler-tier registrations stay (the documented fallthrough).
-        for key in ("csfs", "usgs", "wsc", "smhi"):
+        for key in ("csfs", "usgs", "wsc", "smhi", "lamah_ice"):
             assert key in R.observation_handlers, key
 
     def test_capabilities_map_the_pure_table(self, tmp_path):
         caps = {cap.provider_id: cap for cap in self._backend(tmp_path).capabilities()}
-        assert set(caps) == {"USGS", "WSC", "SMHI", "CSFS"}
+        assert set(caps) == {"USGS", "WSC", "SMHI", "LAMAH_ICE", "CSFS"}
         assert caps["USGS"].parity_grade == "bit-identical"
         assert caps["CSFS"].parity_grade is None
         for cap in caps.values():
