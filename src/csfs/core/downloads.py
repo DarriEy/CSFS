@@ -87,6 +87,26 @@ DATASETS: list[dict] = [
         "checksum": "md5:8bdb80831ce0ceb64ae14618e46cfae6",
     },
     {
+        # CAMELS-CL streamflow matrix (the observation source). PANGAEA serves
+        # direct store.pangaea.de zips with no auth/bot-protection. PANGAEA
+        # publishes no per-file hash, so the checksum is self-recorded from a
+        # verified download (md5 confirmed against the bytes).
+        "slug": "camels_cl",
+        "name": "CAMELS-CL — Chile large-sample hydrology, daily streamflow (PANGAEA)",
+        "auto": True,
+        "size": "~13 MB",
+        "url": "https://store.pangaea.de/Publications/Alvarez-Garreton-etal_2018/2_CAMELScl_streamflow_m3s.zip",
+        "checksum": "md5:3457bc87e444e1e7d84a1b703965708d",
+    },
+    {
+        "slug": "camels_cl_attributes",
+        "name": "CAMELS-CL — catchment attributes incl. gauge coordinates (PANGAEA)",
+        "auto": True,
+        "size": "~0.2 MB",
+        "url": "https://store.pangaea.de/Publications/Alvarez-Garreton-etal_2018/1_CAMELScl_attributes.zip",
+        "checksum": "md5:5cdfa46b675201068d5fc7f42470770c",
+    },
+    {
         # CAMELS-DE: single bundle (timeseries + attributes) — the authoritative
         # standalone dataset (replaces the former Caravan-derived camels_de alias).
         "slug": "camels_de",

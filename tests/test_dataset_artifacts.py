@@ -63,6 +63,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_CL": _Artifact(
+        provider_id="CAMELS_CL",
+        connector_slug="camels_cl",  # primary (streamflow matrix) archive slug
+        doi="10.1594/PANGAEA.894885",
+        checksum="md5:3457bc87e444e1e7d84a1b703965708d",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
 }
 
 _IDS = list(ARTIFACTS)

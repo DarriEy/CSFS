@@ -393,6 +393,17 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    # Dataset-artifact provider: CAMELS-CL (DGA gauges) from the authoritative
+    # PANGAEA archive via the camels_cl connector (checksum-verified).
+    "camels_cl": ProviderBackend(
+        slug="camels_cl",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -884,6 +895,25 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5281/zenodo.16755906",
         dataset_version="1.1.0; daily",
         dataset_checksum="md5:5ee2f89f6204e8eafdbc11b491d34afb",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_CL",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="DGA gauge code (e.g. 1001001; 'camels_cl:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-CL daily discharge from the published PANGAEA archive via the CSFS "
+              "camels_cl connector. A static, DOI-pinned dataset artifact served from the "
+              "authoritative store.pangaea.de zips — admitted by the provenance gate; the "
+              "streamflow matrix is checksum-verified on download.",
+        # CAMELS-CL (PANGAEA) is CC-BY.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Alvarez-Garreton et al. (2018), CAMELS-CL (PANGAEA)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.1594/PANGAEA.894885",
+        dataset_version="2018; daily",
+        dataset_checksum="md5:3457bc87e444e1e7d84a1b703965708d",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(
