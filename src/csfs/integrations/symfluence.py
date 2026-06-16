@@ -433,6 +433,25 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    "camels_us": ProviderBackend(
+        slug="camels_us",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.usgs_site_code, "USGS_SITE_CODE"),
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # CAMELS-US is keyed by the exact 8-digit USGS id
+    ),
+    "camels_dk": ProviderBackend(
+        slug="camels_dk",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -978,6 +997,41 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5281/zenodo.15025258",
         dataset_version="daily",
         dataset_checksum="md5:04f909d9904375647d030c4ab8ddfdbe",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_DK",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CAMELS-DK catchment id (e.g. 12410011; 'camels_dk:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-DK daily observed discharge (Qobs) from the published GEUS Dataverse "
+              "archive via the CSFS camels_dk connector — a DOI-pinned dataset artifact, "
+              "checksum-verified on download; outlet coords (EPSG:25832) reprojected to WGS84.",
+        # CAMELS-DK is CC0 1.0 (public-domain dedication) — no restriction.
+        redistribution="open",
+        data_license="CC0-1.0",
+        attribution="Liu et al. (2024), CAMELS-DK (GEUS Dataverse)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.22008/FK2/AZXSYP",
+        dataset_version="daily",
+        dataset_checksum="md5:50b6d3957e6abf0017973ac872aea67f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_US",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="8-digit USGS gauge id (e.g. 01013500; 'camels_us:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-US daily USGS discharge (cfs converted to m3/s) from the published "
+              "bundle via the CSFS camels_us connector — a DOI-pinned dataset artifact, "
+              "checksum-verified on download; coords from the bundled gauge_information.txt.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Newman et al. (2015) / Addor et al. (2017), CAMELS-US (NCAR/UCAR)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5065/D6MW2F4D",
+        dataset_version="1.2; daily",
+        dataset_checksum="md5:8e9a466710e8270b58f01d332a87184f",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

@@ -57,7 +57,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "spain_cedex", "brazil_ana", "uk_nrfa", "ireland_epa",
         "camels_de", "camels_in", "camels_co",
         "camels_dk", "camels_br", "camels_cl", "camels_ind", "camels_ch",
-        "camels_aus",
+        "camels_aus", "camels_us",
         "robin", "caravan_grdc",
         "germany_nrw",
     ],

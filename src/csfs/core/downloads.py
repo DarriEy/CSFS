@@ -127,6 +127,34 @@ DATASETS: list[dict] = [
         "checksum": "md5:3993c25ba7d7b86df0541de91e094f39",
     },
     {
+        # CAMELS-DK streamflow (per-catchment obs CSVs) — the observation source.
+        "slug": "camels_dk",
+        "name": "CAMELS-DK — Denmark large-sample hydrology, gauged catchments (GEUS Dataverse)",
+        "auto": True,
+        "size": "~152 MB",
+        "url": "https://dataverse.geus.dk/api/access/datafile/83022",
+        "checksum": "md5:50b6d3957e6abf0017973ac872aea67f",
+    },
+    {
+        # CAMELS-DK topography — a BARE published .csv with outlet coords
+        # (easting/northing in EPSG:25832).
+        "slug": "camels_dk_attributes",
+        "name": "CAMELS-DK — topography incl. outlet coordinates (GEUS Dataverse)",
+        "auto": True,
+        "size": "~0.3 MB",
+        "url": "https://dataverse.geus.dk/api/access/datafile/84631",
+        "checksum": "md5:794bc56a7dfc6d9cf21a472daa25a4cd",
+    },
+    {
+        # CAMELS-US — single bundle (per-basin streamflow + gauge metadata coords).
+        "slug": "camels_us",
+        "name": "CAMELS-US — USA large-sample hydrology, v1.2 (Zenodo/NCAR)",
+        "auto": True,
+        "size": "~3.4 GB",
+        "url": "https://zenodo.org/api/records/15529996/files/basin_timeseries_v1p2_metForcing_obsFlow.zip/content",
+        "checksum": "md5:8e9a466710e8270b58f01d332a87184f",
+    },
+    {
         # CAMELS-AUS streamflow matrix (ML/day) — the observation source.
         "slug": "camels_aus",
         "name": "CAMELS-AUS — Australia large-sample hydrology, daily streamflow (Zenodo)",
@@ -251,18 +279,19 @@ def _has_extracted_content(dest: Path) -> bool:
 def _extract_archive(archive_path: Path, dest: Path) -> bool:
     """Extract a ZIP or tar.gz archive into ``dest`` safely.
 
-    Returns True if *archive_path* was an archive and was extracted; False if it
-    is a bare published file (e.g. a ``.csv`` master table) that needs no
-    extraction and is left in place as the dataset's data.
+    Detection is by CONTENT (magic bytes), not filename — many repository
+    download URLs are extension-less (e.g. Dataverse ``.../datafile/<id>``) or
+    serve a bare published file. Returns True if *archive_path* was an archive
+    and was extracted; False if it is a bare file (e.g. a ``.csv`` master table)
+    that needs no extraction and is left in place as the dataset's data.
     """
-    name = archive_path.name.lower()
-    if name.endswith((".tar.gz", ".tgz", ".tar")):
-        with tarfile.open(archive_path) as tf:
-            _safe_extract_tar(tf, dest)
-        return True
-    if name.endswith(".zip"):
+    if zipfile.is_zipfile(archive_path):
         with zipfile.ZipFile(archive_path) as zf:
             _safe_extractall(zf, dest)
+        return True
+    if tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path) as tf:
+            _safe_extract_tar(tf, dest)
         return True
     return False  # bare non-archive download: keep the file as-is
 

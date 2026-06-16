@@ -28,6 +28,7 @@ class _Artifact(NamedTuple):
     checksum: str
     data_license: str
     noncommercial: bool
+    redistribution: str = "attribution"  # CC0 sources are "open"
 
 
 ARTIFACTS = {
@@ -95,6 +96,23 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_US": _Artifact(
+        provider_id="CAMELS_US",
+        connector_slug="camels_us",
+        doi="10.5065/D6MW2F4D",
+        checksum="md5:8e9a466710e8270b58f01d332a87184f",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
+    "CAMELS_DK": _Artifact(
+        provider_id="CAMELS_DK",
+        connector_slug="camels_dk",  # primary (streamflow) archive slug
+        doi="10.22008/FK2/AZXSYP",
+        checksum="md5:50b6d3957e6abf0017973ac872aea67f",
+        data_license="CC0-1.0",
+        noncommercial=False,
+        redistribution="open",  # CC0 public-domain dedication
+    ),
 }
 
 _IDS = list(ARTIFACTS)
@@ -117,7 +135,7 @@ class TestCapabilityDeclaration:
     def test_license_posture(self, art):
         cap = _spec(art.provider_id)
         assert cap.data_license == art.data_license
-        assert cap.redistribution == "attribution"
+        assert cap.redistribution == art.redistribution
         assert cap.noncommercial is art.noncommercial
 
     def test_declared_checksum_matches_the_download_layer(self, art):
@@ -151,6 +169,6 @@ class TestContractConstruction:
         for art in ARTIFACTS.values():
             cap = caps[art.provider_id]
             assert cap.source_kind is SourceKind.DATASET_ARTIFACT
-            assert cap.redistribution is Redistribution.ATTRIBUTION
+            assert cap.redistribution is Redistribution(art.redistribution)
             assert cap.noncommercial is art.noncommercial
             assert cap.dataset_checksum == art.checksum

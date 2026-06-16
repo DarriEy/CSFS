@@ -84,3 +84,14 @@ def test_extract_archive_leaves_bare_file(tmp_path):
     bare.write_text("station_id,lat\nX,1.0\n", encoding="utf-8")
     assert downloads._extract_archive(bare, tmp_path) is False
     assert bare.is_file()
+
+
+def test_extract_archive_detects_zip_by_content_not_extension(tmp_path):
+    # Extension-less download (e.g. Dataverse .../datafile/<id>) that is really a
+    # zip must still be extracted — detection is by magic bytes, not filename.
+    import zipfile
+    arc = tmp_path / "83022"  # no extension, like a Dataverse datafile id
+    with zipfile.ZipFile(arc, "w") as zf:
+        zf.writestr("sub/data.csv", "a,b\n1,2\n")
+    assert downloads._extract_archive(arc, tmp_path) is True
+    assert (tmp_path / "sub" / "data.csv").is_file()
