@@ -10,18 +10,18 @@ import respx
 from csfs.connectors.caravan import (
     _SEED_STATIONS,
     CAMELSCOConnector,
-    CAMELSDEConnector,
     CAMELSINConnector,
     CaravanConnector,
     CaravanGRDCConnector,
 )
 
-# Registered variant slugs -> their connector classes. All four are thin
-# subclasses of CaravanConnector that only override slug/display_name/
-# country_codes but inherit the full parsing + ID-building behaviour.
+# Registered variant slugs -> their connector classes. Thin subclasses of
+# CaravanConnector that only override slug/display_name/country_codes but
+# inherit the full parsing + ID-building behaviour. (camels_de is no longer a
+# Caravan variant — it is served by the authoritative standalone connector,
+# connectors/camels_de.py, tested in tests/connectors/test_camels_de.py.)
 VARIANTS = [
     ("camels_co", CAMELSCOConnector),
-    ("camels_de", CAMELSDEConnector),
     ("camels_in", CAMELSINConnector),
     ("caravan_grdc", CaravanGRDCConnector),
 ]

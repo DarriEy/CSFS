@@ -382,6 +382,17 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,
     ),
+    # Dataset-artifact provider: CAMELS-DE (authoritative standalone Zenodo
+    # bundle) via the camels_de connector (checksum-verified).
+    "camels_de": ProviderBackend(
+        slug="camels_de",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
 
 
@@ -854,6 +865,25 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5281/zenodo.3964745",
         dataset_version="1.1; daily",
         dataset_checksum="md5:599b96f48ec78e25751cf1cc691a22bb",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_DE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CAMELS-DE gauge id (e.g. DE210480; 'camels_de:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-DE daily observed discharge (discharge_vol_obs) from the published "
+              "Zenodo archive via the CSFS camels_de connector. A static, DOI-pinned "
+              "dataset artifact — admitted by the provenance gate; the bundle is "
+              "checksum-verified on download.",
+        # CAMELS-DE is CC-BY-4.0 throughout.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Loritz et al. (2024), CAMELS-DE (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.16755906",
+        dataset_version="1.1.0; daily",
+        dataset_checksum="md5:5ee2f89f6204e8eafdbc11b491d34afb",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(

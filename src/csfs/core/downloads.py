@@ -87,6 +87,17 @@ DATASETS: list[dict] = [
         "checksum": "md5:8bdb80831ce0ceb64ae14618e46cfae6",
     },
     {
+        # CAMELS-DE: single bundle (timeseries + attributes) — the authoritative
+        # standalone dataset (replaces the former Caravan-derived camels_de alias).
+        "slug": "camels_de",
+        "name": "CAMELS-DE — Germany large-sample hydrology, v1.1.0 (Zenodo)",
+        "auto": True,
+        "size": "~2.2 GB",
+        "url": "https://zenodo.org/api/records/16755906/files/camels_de.zip/content",
+        # Zenodo-published md5 for camels_de.zip (2220260293 bytes).
+        "checksum": "md5:5ee2f89f6204e8eafdbc11b491d34afb",
+    },
+    {
         "slug": "iceland_lamahice",
         "name": "LamaH-Ice — Iceland large-sample hydrology (HydroShare, daily)",
         "auto": True,

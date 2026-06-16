@@ -55,6 +55,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_DE": _Artifact(
+        provider_id="CAMELS_DE",
+        connector_slug="camels_de",
+        doi="10.5281/zenodo.16755906",
+        checksum="md5:5ee2f89f6204e8eafdbc11b491d34afb",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
 }
 
 _IDS = list(ARTIFACTS)
