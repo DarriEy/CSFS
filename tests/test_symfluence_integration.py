@@ -306,7 +306,7 @@ def test_chunk_round_trip_through_csv(tmp_path):
 def test_provider_backends_cover_the_native_streamflow_providers():
     """Drop-in keys mirror SYMFLUENCE's lowercased STREAMFLOW_DATA_PROVIDER values."""
     assert set(integration.PROVIDER_BACKENDS) == {
-        "usgs", "wsc", "smhi", "lamah_ice", "lamah_ce",
+        "usgs", "wsc", "smhi", "hubeau", "lamah_ice", "lamah_ce",
         "camels_br", "camels_de", "camels_cl", "camels_ind", "camels_ch",
         "camels_aus", "camels_us", "camels_dk", "camels_gb", "camels_se", "camels_fr",
         "camels_nz", "camels_fi", "camels_lux", "hysets", "camels_pe",
@@ -316,6 +316,7 @@ def test_provider_backends_cover_the_native_streamflow_providers():
         "usgs": "usgs",
         "wsc": "environment_canada",
         "smhi": "sweden_smhi",
+        "hubeau": "france_hubeau",
         # dataset-artifact providers (not live APIs)
         "lamah_ice": "iceland_lamahice",
         "lamah_ce": "lamah_ce",
@@ -853,7 +854,7 @@ def test_observation_capability_table_is_well_formed():
 
     specs = {spec.provider_id: spec for spec in integration.OBSERVATION_CAPABILITIES}
     assert set(specs) == {
-        "USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+        "USGS", "WSC", "SMHI", "HUBEAU", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
         "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
         "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
         "HYSETS", "CAMELS_PE", "CSFS",
@@ -932,7 +933,7 @@ class TestCommunityObservationBackend:
         assert registered.__qualname__ == "CommunityObservationBackend"
         assert registered.__module__ == "csfs.integrations.symfluence"
         # Handler-tier registrations stay (the documented fallthrough).
-        for key in ("csfs", "usgs", "wsc", "smhi", "lamah_ice", "lamah_ce",
+        for key in ("csfs", "usgs", "wsc", "smhi", "hubeau", "lamah_ice", "lamah_ce",
                     "camels_br", "camels_de", "camels_cl", "camels_ind", "camels_ch",
                     "camels_aus", "camels_us", "camels_dk", "camels_gb", "camels_se", "camels_fr",
                     "camels_nz", "camels_fi", "camels_lux", "hysets", "camels_pe"):
@@ -941,7 +942,7 @@ class TestCommunityObservationBackend:
     def test_capabilities_map_the_pure_table(self, tmp_path):
         caps = {cap.provider_id: cap for cap in self._backend(tmp_path).capabilities()}
         assert set(caps) == {
-            "USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+            "USGS", "WSC", "SMHI", "HUBEAU", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
             "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
             "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
             "HYSETS", "CAMELS_PE", "CSFS",

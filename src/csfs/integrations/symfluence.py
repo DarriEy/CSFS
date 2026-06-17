@@ -368,6 +368,18 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={"resolution": "15min"},
         normalize=None,
     ),
+    # Live national-API drop-in: French Hub'Eau hydrométrie via the france_hubeau
+    # connector. Same source AND same L/s->m3/s conversion as SYMFLUENCE's native
+    # HubEauStreamflowHandler, so it is parity-gated (not provenance-gated).
+    "hubeau": ProviderBackend(
+        slug="france_hubeau",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the Hub'Eau code_station
+    ),
     # Dataset-artifact provider (not a live API): LamaH-Ice gauges read from the
     # published HydroShare archive via the iceland_lamahice connector
     # (checksum-verified on download). Same handler machinery as the live
@@ -960,6 +972,19 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         redistribution="attribution",
         data_license="CC-BY-4.0",
         attribution="Swedish Meteorological and Hydrological Institute (SMHI)",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="HUBEAU",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="Hub'Eau code_station (e.g. M107302001; 'france_hubeau:<code>' also accepted)",
+        parity_grade="value-identical:unit-conversion",
+        notes="French Hub'Eau hydrométrie discharge via the france_hubeau connector. Same "
+              "live source and same L/s->m3/s (/1000) conversion as the native handler; "
+              "values identical up to float representation of the unit conversion.",
+        # Hub'Eau open data: Etalab Licence Ouverte 2.0 (attribution).
+        redistribution="attribution",
+        data_license="Licence-Ouverte-2.0",
+        attribution="Hub'Eau / Eaufrance (French national water information system)",
     ),
     ObservationCapabilitySpec(
         provider_id="LAMAH_ICE",
