@@ -2,10 +2,8 @@
 
 MITECO (Ministerio para la Transicion Ecologica y el Reto Demografico)
 publishes streamflow data through its CEDEX anuario de aforos system.
-Bulk data is available as yearbook ZIP archives via a public download
-portal at https://www.mapama.gob.es/app/descargas.
 
-This connector supports two modes:
+This connector supports three modes (tried in order):
 
 1. **Station catalogue** -- a curated seed list of ~30 major gauging
    stations across Spain's principal river basins (Ebro, Duero, Tajo,
@@ -18,18 +16,27 @@ This connector supports two modes:
    directory configured via ``config["data_dir"]``.  These ZIPs contain
    semicolon-delimited CSV files with daily discharge in m3/s.
 
-If no local data files are found, ``fetch_observations`` logs guidance
-on how to download them and returns an empty ``TimeSeriesChunk``.
+3. **Observations from the CEDEX anuario download portal** -- when no
+   local data is configured, the per-basin daily-discharge CSV
+   (``afliq.csv``, columns ``indroea;fecha;altura;caudal``) is streamed
+   directly from ``https://ceh.cedex.es/anuarioaforos`` and filtered to
+   the requested station and date range.  The CEDEX server only
+   negotiates legacy TLS, so a relaxed SSL context is used for this host.
+
+If a station cannot be served from any of these, ``fetch_observations``
+logs guidance and returns an empty ``TimeSeriesChunk``.
 """
 
 from __future__ import annotations
 
 import csv
 import io
+import ssl
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import structlog
 
 from csfs.connectors.base import BaseConnector
@@ -57,6 +64,18 @@ MITECO_DOWNLOAD_URL = (
     f"{MITECO_BASE_URL}{MITECO_DOWNLOAD_PATH}"
     f"?f=TablaAnuario2020-21.zip"
 )
+
+# CEDEX anuario de aforos public download portal. Each river-basin folder
+# exposes a daily-discharge CSV (``afliq.csv``) keyed by the national
+# ``indroea`` station code. Data spans the full station record up to the
+# yearbook's hydrological year (the 2020-2021 anuario ends 30/09/2021).
+CEDEX_ANUARIO_BASE_URL = "https://ceh.cedex.es/anuarioaforos"
+CEDEX_ANUARIO_FOLDER = "anuario-2020-2021"
+CEDEX_DAILY_FLOW_FILE = "afliq.csv"
+# CEDEX still requires OpenSSL security level 1; the default level rejects
+# the server's handshake. This context is used only for the CEDEX host.
+_CEDEX_SSL_CONTEXT = ssl.create_default_context()
+_CEDEX_SSL_CONTEXT.set_ciphers("DEFAULT@SECLEVEL=1")
 
 # Spanish date format used in yearbook CSVs
 _DATE_FORMAT_DMY = "%d/%m/%Y"
@@ -332,6 +351,35 @@ _SEED_STATIONS: list[dict] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Station -> CEDEX anuario basin folder
+# ---------------------------------------------------------------------------
+# Maps each seed ``indroea`` code to the CEDEX river-basin folder whose
+# ``afliq.csv`` carries that station. Verified against the anuario-2020-2021
+# ``estaf.csv`` station catalogues. Stations whose basin folder token is not
+# resolvable in the anuario portal (e.g. Catalan internal basins, southern
+# Andalusian basins, Canary Islands) are intentionally omitted -- those fall
+# through to an empty chunk rather than guessing a wrong folder.
+_STATION_BASIN: dict[str, str] = {
+    # Ebro
+    "9001": "EBRO", "9002": "EBRO", "9120": "EBRO", "9027": "EBRO",
+    # Duero
+    "2001": "DUERO", "2060": "DUERO", "2102": "DUERO",
+    # Tajo
+    "3001": "TAJO", "3045": "TAJO", "3070": "TAJO", "3170": "TAJO",
+    # Guadiana
+    "4001": "GUADIANA",
+    # Guadalquivir
+    "5001": "GUADALQUIVIR", "5072": "GUADALQUIVIR",
+    # Segura
+    "7001": "SEGURA", "7030": "SEGURA",
+    # Jucar
+    "8001": "JUCAR", "8036": "JUCAR",
+    # Cantabrico (CEDEX groups the Mino/Sil/Nalon gauges here)
+    "1050": "CANTABRICO", "1080": "CANTABRICO", "1301": "CANTABRICO",
+}
+
+
 @register("spain_cedex")
 class SpainCedexConnector(BaseConnector):
     """MITECO/CEDEX connector -- seed catalogue, observations from local files.
@@ -348,6 +396,12 @@ class SpainCedexConnector(BaseConnector):
     display_name = "MITECO/CEDEX Anuario de Aforos (Spain)"
     base_url = MITECO_BASE_URL
     country_codes: list[str] = ["ES"]
+
+    def __init__(self, config: dict | None = None) -> None:
+        super().__init__(config)
+        # Cache downloaded per-basin afliq.csv text so repeated station
+        # fetches within one connector lifetime hit the network once.
+        self._basin_csv_cache: dict[str, str] = {}
 
     async def fetch_stations(self) -> list[Station]:
         """Return Spanish gauging stations from the curated seed list.
@@ -373,34 +427,26 @@ class SpainCedexConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Read observations from local yearbook ZIP or CSV files.
+        """Read observations from local files or the CEDEX download portal.
 
-        If no local data directory is configured or the relevant files
-        do not exist, logs guidance on how to download them and returns
-        an empty chunk.
+        Local yearbook ZIP/CSV files (``config["data_dir"]``) take
+        precedence. When no local data directory is configured, the
+        station's daily-discharge record is streamed from the public CEDEX
+        anuario portal. Returns an empty chunk if neither source yields
+        data for the station.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
         data_dir = self.config.get("data_dir")
 
+        start_aware = start if start.tzinfo else start.replace(tzinfo=UTC)
+        end_aware = end if end.tzinfo else end.replace(tzinfo=UTC)
+
         if not data_dir:
-            logger.info(
-                "miteco_no_data_dir",
-                station=native_id,
-                hint=(
-                    "Set config['data_dir'] to a directory containing "
-                    "MITECO yearbook ZIPs or extracted CSVs. "
-                    f"Download from {MITECO_DOWNLOAD_URL}"
-                ),
+            return await self._fetch_from_cedex(
+                station_id, native_id, start_aware, end_aware,
             )
-            return self._empty_chunk(station_id)
 
         data_path = Path(data_dir)
-        start_aware = (
-            start if start.tzinfo else start.replace(tzinfo=UTC)
-        )
-        end_aware = (
-            end if end.tzinfo else end.replace(tzinfo=UTC)
-        )
 
         # Try extracted CSV files first, then ZIP archives
         observations = self._read_from_csv_files(
@@ -434,6 +480,104 @@ class SpainCedexConnector(BaseConnector):
             observations=observations,
             fetched_at=datetime.now(UTC),
         )
+
+    # ------------------------------------------------------------------
+    # CEDEX anuario download portal
+    # ------------------------------------------------------------------
+
+    async def _fetch_from_cedex(
+        self,
+        station_id: str,
+        native_id: str,
+        start: datetime,
+        end: datetime,
+    ) -> TimeSeriesChunk:
+        """Fetch daily discharge for one station from the CEDEX portal."""
+        basin = _STATION_BASIN.get(native_id)
+        if basin is None:
+            logger.info(
+                "cedex_no_basin_mapping",
+                station=native_id,
+                hint=(
+                    "Station is not mapped to a CEDEX anuario basin folder; "
+                    f"set config['data_dir'] and download from {MITECO_DOWNLOAD_URL}"
+                ),
+            )
+            return self._empty_chunk(station_id)
+
+        try:
+            text = await self._load_basin_csv(basin, native_id)
+        except Exception as exc:  # noqa: BLE001 - network/TLS resilience
+            logger.warning(
+                "cedex_download_failed",
+                station=native_id,
+                basin=basin,
+                error=str(exc)[:200],
+            )
+            return self._empty_chunk(station_id)
+
+        observations = self._parse_csv_text(text, native_id, start, end)
+        logger.info(
+            "cedex_observations_loaded",
+            station=native_id,
+            basin=basin,
+            count=len(observations),
+        )
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=observations,
+            fetched_at=datetime.now(UTC),
+        )
+
+    async def _load_basin_csv(self, basin: str, native_id: str) -> str:
+        """Stream a basin ``afliq.csv`` and return header + station rows.
+
+        The per-basin files are large (tens to >100 MB), so the response is
+        streamed and only the header plus rows for ``native_id`` are
+        retained. The filtered text (per station) is cached for the
+        connector lifetime to avoid re-downloading for repeated calls.
+        """
+        cache_key = f"{basin}:{native_id}"
+        cached = self._basin_csv_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        url = (
+            f"{CEDEX_ANUARIO_BASE_URL}/{CEDEX_ANUARIO_FOLDER}"
+            f"/{basin}/{CEDEX_DAILY_FLOW_FILE}"
+        )
+        # The CEDEX host negotiates only legacy TLS, so use a dedicated
+        # client with the relaxed SSL context rather than the base client
+        # (which targets the MITECO host with default TLS).
+        kept: list[str] = []
+        header: str | None = None
+        prefix = f"{native_id};"
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(120.0, connect=15.0),
+            verify=_CEDEX_SSL_CONTEXT,
+            follow_redirects=True,
+            headers={"User-Agent": "CSFS/0.1 (https://github.com/DarriEy/CSFS)"},
+        )
+        async with client, client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            buf = ""
+            async for raw in resp.aiter_bytes():
+                buf += raw.decode("latin-1", errors="replace")
+                lines = buf.split("\n")
+                buf = lines.pop()  # keep trailing partial line
+                for line in lines:
+                    if header is None:
+                        header = line
+                        continue
+                    if line.startswith(prefix):
+                        kept.append(line)
+            if buf and header is not None and buf.startswith(prefix):
+                kept.append(buf)
+
+        text = "\n".join([header or "", *kept])
+        self._basin_csv_cache[cache_key] = text
+        return text
 
     # ------------------------------------------------------------------
     # Download endpoint verification

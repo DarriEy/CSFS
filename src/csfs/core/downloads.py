@@ -14,6 +14,7 @@ Two layers live here:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import tarfile
 import zipfile
 from pathlib import Path
@@ -61,6 +62,262 @@ DATASETS: list[dict] = [
         "auto": True,
         "size": "~1.5 GB",
         "url": "https://zenodo.org/api/records/5153305/files/2_LamaH-CE_daily.tar.gz/content",
+        # Zenodo-published content hash for 2_LamaH-CE_daily.tar.gz (record
+        # 5153305, 1477248617 bytes). Verified before extraction (fail-closed).
+        "checksum": "md5:69fd2733e969513403f923ecc5eaa3dc",
+    },
+    {
+        # CAMELS-BR streamflow (primary archive; the observation source). The
+        # attributes archive below carries the station coordinates.
+        "slug": "camels_br",
+        "name": "CAMELS-BR — Brazil large-sample hydrology, daily streamflow (Zenodo)",
+        "auto": True,
+        "size": "~135 MB",
+        "url": "https://zenodo.org/api/records/3964745/files/02_CAMELS_BR_streamflow_m3s.zip/content",
+        # Zenodo-published md5 for 02_CAMELS_BR_streamflow_m3s.zip (135342171 bytes).
+        "checksum": "md5:599b96f48ec78e25751cf1cc691a22bb",
+    },
+    {
+        "slug": "camels_br_attributes",
+        "name": "CAMELS-BR — catchment attributes incl. gauge coordinates (Zenodo)",
+        "auto": True,
+        "size": "~0.3 MB",
+        "url": "https://zenodo.org/api/records/3964745/files/01_CAMELS_BR_attributes.zip/content",
+        # Zenodo-published md5 for 01_CAMELS_BR_attributes.zip (271002 bytes).
+        "checksum": "md5:8bdb80831ce0ceb64ae14618e46cfae6",
+    },
+    {
+        # CAMELS-CL streamflow matrix (the observation source). PANGAEA serves
+        # direct store.pangaea.de zips with no auth/bot-protection. PANGAEA
+        # publishes no per-file hash, so the checksum is self-recorded from a
+        # verified download (md5 confirmed against the bytes).
+        "slug": "camels_cl",
+        "name": "CAMELS-CL — Chile large-sample hydrology, daily streamflow (PANGAEA)",
+        "auto": True,
+        "size": "~13 MB",
+        "url": "https://store.pangaea.de/Publications/Alvarez-Garreton-etal_2018/2_CAMELScl_streamflow_m3s.zip",
+        "checksum": "md5:3457bc87e444e1e7d84a1b703965708d",
+    },
+    {
+        "slug": "camels_cl_attributes",
+        "name": "CAMELS-CL — catchment attributes incl. gauge coordinates (PANGAEA)",
+        "auto": True,
+        "size": "~0.2 MB",
+        "url": "https://store.pangaea.de/Publications/Alvarez-Garreton-etal_2018/1_CAMELScl_attributes.zip",
+        "checksum": "md5:5cdfa46b675201068d5fc7f42470770c",
+    },
+    {
+        # CAMELS-DE: single bundle (timeseries + attributes) — the authoritative
+        # standalone dataset (replaces the former Caravan-derived camels_de alias).
+        "slug": "camels_de",
+        "name": "CAMELS-DE — Germany large-sample hydrology, v1.1.0 (Zenodo)",
+        "auto": True,
+        "size": "~2.2 GB",
+        "url": "https://zenodo.org/api/records/16755906/files/camels_de.zip/content",
+        # Zenodo-published md5 for camels_de.zip (2220260293 bytes).
+        "checksum": "md5:5ee2f89f6204e8eafdbc11b491d34afb",
+    },
+    {
+        # CAMELS-IND v2.2 — single bundle (streamflow matrix + attributes).
+        "slug": "camels_ind",
+        "name": "CAMELS-IND — India large-sample hydrology, v2.2 (Zenodo)",
+        "auto": True,
+        "size": "~178 MB",
+        "url": "https://zenodo.org/api/records/14999580/files/CAMELS_IND_Catchments_Streamflow_Sufficient.zip/content",
+        "checksum": "md5:3993c25ba7d7b86df0541de91e094f39",
+    },
+    {
+        # CAMELS-DK streamflow (per-catchment obs CSVs) — the observation source.
+        "slug": "camels_dk",
+        "name": "CAMELS-DK — Denmark large-sample hydrology, gauged catchments (GEUS Dataverse)",
+        "auto": True,
+        "size": "~152 MB",
+        "url": "https://dataverse.geus.dk/api/access/datafile/83022",
+        "checksum": "md5:50b6d3957e6abf0017973ac872aea67f",
+    },
+    {
+        # CAMELS-DK topography — a BARE published .csv with outlet coords
+        # (easting/northing in EPSG:25832).
+        "slug": "camels_dk_attributes",
+        "name": "CAMELS-DK — topography incl. outlet coordinates (GEUS Dataverse)",
+        "auto": True,
+        "size": "~0.3 MB",
+        "url": "https://dataverse.geus.dk/api/access/datafile/84631",
+        "checksum": "md5:794bc56a7dfc6d9cf21a472daa25a4cd",
+    },
+    {
+        # CAMELS-US — single bundle (per-basin streamflow + gauge metadata coords).
+        "slug": "camels_us",
+        "name": "CAMELS-US — USA large-sample hydrology, v1.2 (Zenodo/NCAR)",
+        "auto": True,
+        "size": "~3.4 GB",
+        "url": "https://zenodo.org/api/records/15529996/files/basin_timeseries_v1p2_metForcing_obsFlow.zip/content",
+        "checksum": "md5:8e9a466710e8270b58f01d332a87184f",
+    },
+    {
+        # CAMELS-GB — single CEH bundle (timeseries + attributes incl. coords).
+        # CEH regenerates the zip per request, so the archive md5 is NOT
+        # reproducible; integrity is a CONTENT checksum over the extracted data,
+        # excluding the readme.html (carries a per-download generation timestamp).
+        "slug": "camels_gb",
+        "name": "CAMELS-GB — Great Britain large-sample hydrology (CEH EIDC)",
+        "auto": True,
+        "size": "~256 MB",
+        "url": "https://data-package.ceh.ac.uk/data/8344e4f3-d2ea-44f5-8afa-86d2987543a9.zip",
+        "content_checksum": "content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        "content_exclude": ["readme.html"],
+    },
+    {
+        # CAMELS-AUS streamflow matrix (ML/day) — the observation source.
+        "slug": "camels_aus",
+        "name": "CAMELS-AUS — Australia large-sample hydrology, daily streamflow (Zenodo)",
+        "auto": True,
+        "size": "~287 MB",
+        "url": "https://zenodo.org/api/records/13350616/files/03_streamflow.zip/content",
+        "checksum": "md5:28113b991387796fe374aa0d1f4d4a4f",
+    },
+    {
+        # CAMELS-AUS attributes master table — a BARE published CSV (no zip);
+        # the download layer keeps non-archive files in place.
+        "slug": "camels_aus_attributes",
+        "name": "CAMELS-AUS — attributes & indices master table incl. outlet coords (Zenodo)",
+        "auto": True,
+        "size": "~0.8 MB",
+        "url": "https://zenodo.org/api/records/13350616/files/CAMELS_AUS_Attributes%26Indices_MasterTable.csv/content",
+        "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
+    },
+    {
+        # HYSETS quality-controlled stations — a ~3 GB multi-variable NetCDF whose
+        # discharge(watershed, time) array holds observed daily flow (m3/s). The
+        # OSF download URL is filename-less, so 'filename' pins the real name; the
+        # bare .nc is content-sniffed (not an archive) and kept in place. md5 is
+        # self-computed (OSF/Dropbox publishes no archive hash via the API).
+        "slug": "hysets",
+        "name": "HYSETS — North America large-sample hydrology, QC stations NetCDF (OSF)",
+        "auto": True,
+        "size": "~3 GB",
+        "url": "https://osf.io/download/sbfd2/",
+        "filename": "HYSETS_2023_update_QC_stations.nc",
+        "checksum": "md5:ccacb13ea3436fb8fd2e4dfecb3353d9",
+    },
+    {
+        # HYSETS watershed properties — a bare comma-separated table mapping
+        # Official_ID -> Watershed_ID with WGS84 gauge coordinates.
+        "slug": "hysets_properties",
+        "name": "HYSETS — watershed properties incl. WGS84 gauge coordinates (OSF)",
+        "auto": True,
+        "size": "~3.4 MB",
+        "url": "https://osf.io/download/us795/",
+        "filename": "HYSETS_watershed_properties.txt",
+        "checksum": "md5:d6800908b18317c0eae8462c6e86e15b",
+    },
+    {
+        # CAMELS-PE — single bundle (per-catchment timeseries + attributes +
+        # stations). flow_obs is OBSERVED streamflow in mm/day (converted to
+        # m3/s via catchment area in the connector). CC-BY-4.0.
+        "slug": "camels_pe",
+        "name": "CAMELS-PE — Peru large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~121 MB",
+        "url": "https://zenodo.org/records/20058779/files/CAMELS-PE_v1.0.zip?download=1",
+        "checksum": "md5:13f127d381338eee0e35359c08dba199",
+    },
+    {
+        # CAMELS-NZ daily streamflow — per-station obs (flow, m3/s). figshare
+        # access URLs carry no filename and redirect to a signed S3 link; the
+        # download layer content-sniffs the archive and httpx follows the 30x.
+        "slug": "camels_nz",
+        "name": "CAMELS-NZ — New Zealand large-sample hydrology, daily streamflow (figshare)",
+        "auto": True,
+        "size": "~38 MB",
+        "url": "https://ndownloader.figshare.com/files/56902373",
+        "checksum": "md5:089757d4b019487fefd8f20d7099403d",
+    },
+    {
+        # CAMELS-NZ catchment information — gauge coords (already WGS84).
+        "slug": "camels_nz_attributes",
+        "name": "CAMELS-NZ — catchment attributes incl. WGS84 gauge coordinates (figshare)",
+        "auto": True,
+        "size": "~0.1 MB",
+        "url": "https://ndownloader.figshare.com/files/56902355",
+        "checksum": "md5:00f877983df4be56fe490e98ed44fa84",
+    },
+    {
+        # CAMELS-FI — single bundle (per-gauge timeseries + meta incl. coords).
+        # ESSD preprint under review; CC-BY-4.0.
+        "slug": "camels_fi",
+        "name": "CAMELS-FI — Finland large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~382 MB",
+        "url": "https://zenodo.org/records/20225368/files/CAMELS-FI.zip?download=1",
+        "checksum": "md5:f50bf2d972f42b6fc4db690ce201482f",
+    },
+    {
+        # CAMELS-LUX — bundle (daily/hourly/15-min timeseries; daily used here).
+        # ESSD preprint under review; CC-BY-4.0.
+        "slug": "camels_lux",
+        "name": "CAMELS-LUX — Luxembourg large-sample hydrology, time series (Zenodo)",
+        "auto": True,
+        "size": "~872 MB",
+        "url": "https://zenodo.org/records/18776538/files/CAMELS-LUX.zip?download=1",
+        "checksum": "md5:6c4a14a0feed08382a6b565a798d8fdc",
+    },
+    {
+        # CAMELS-LUX geometry — WGS84 gauge point shapefile (station coords).
+        "slug": "camels_lux_shapefiles",
+        "name": "CAMELS-LUX — catchment & gauge shapefiles incl. WGS84 gauge points (Zenodo)",
+        "auto": True,
+        "size": "~9 MB",
+        "url": "https://zenodo.org/records/18776538/files/CAMELS-LUX_shapefiles.zip?download=1",
+        "checksum": "md5:572e8691c0681f28942adb43a91cf060",
+    },
+    {
+        # CAMELS-FR streamflow — per-station daily obs (tsd_q_l, L/s). Served
+        # from INRAE / Recherche Data Gouv (Dataverse); the access endpoint
+        # 30x-redirects to an INRAE object store (httpx/certifi follows it).
+        "slug": "camels_fr",
+        "name": "CAMELS-FR — France large-sample hydrology, time series (Recherche Data Gouv)",
+        "auto": True,
+        "size": "~361 MB",
+        "url": "https://entrepot.recherche.data.gouv.fr/api/access/datafile/343470",
+        "checksum": "md5:dd48efe7cca89e86d8435a9888ebcdca",
+    },
+    {
+        # CAMELS-FR geography — gauge outlet GeoPackage (coords in EPSG:27572).
+        "slug": "camels_fr_geography",
+        "name": "CAMELS-FR — geography incl. gauge outlet GeoPackage (Recherche Data Gouv)",
+        "auto": True,
+        "size": "~1.4 MB",
+        "url": "https://entrepot.recherche.data.gouv.fr/api/access/datafile/343465",
+        "checksum": "md5:c26de61c61f12ccfd9cc4c09a89796b3",
+    },
+    {
+        # CAMELS-SE streamflow — per-catchment daily obs (Qobs_m3s). SND
+        # publishes no checksum; md5 self-computed on the fetched bytes.
+        "slug": "camels_se",
+        "name": "CAMELS-SE — Sweden large-sample hydrology, catchment time series (SND)",
+        "auto": True,
+        "size": "~15 MB",
+        "url": "https://api.researchdata.se/dataset/2023-173/1/file/data?filePath=catchment%20time%20series.zip",
+        "checksum": "md5:5e6972cf29c9220e547bc00dddd7b03a",
+    },
+    {
+        # CAMELS-SE GIS — WGS84 gauge point shapefile (station coordinates).
+        "slug": "camels_se_gis",
+        "name": "CAMELS-SE — catchment GIS shapefiles incl. WGS84 gauge points (SND)",
+        "auto": True,
+        "size": "~1 MB",
+        "url": "https://api.researchdata.se/dataset/2023-173/1/file/data?filePath=catchment_GIS_shapefiles.zip",
+        "checksum": "md5:2983f5e255b74e01da656c671519163a",
+    },
+    {
+        # CAMELS-CH — single bundle (observation-based timeseries + attributes).
+        "slug": "camels_ch",
+        "name": "CAMELS-CH — Switzerland large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~247 MB",
+        "url": "https://zenodo.org/api/records/15025258/files/camels_ch.zip/content",
+        "checksum": "md5:04f909d9904375647d030c4ab8ddfdbe",
     },
     {
         "slug": "iceland_lamahice",
@@ -68,6 +325,10 @@ DATASETS: list[dict] = [
         "auto": True,
         "size": "~636 MB",
         "url": "https://www.hydroshare.org/resource/86117a5f36cc4b7c90a5d54e18161c91/data/contents/lamah_ice.zip",
+        # HydroShare-published content hash for lamah_ice.zip (hsapi files
+        # endpoint, resource 86117a5f…, 636283348 bytes). The download is
+        # verified against this before extraction (fail-closed on mismatch).
+        "checksum": "md5:6246f7300c77ead2c9f097ad5da89ba9",
     },
     {
         "slug": "grdc",
@@ -75,6 +336,24 @@ DATASETS: list[dict] = [
         "auto": False,
         "size": "varies",
         "url": "https://grdc.bafg.de/data/data_portal/",
+    },
+    {
+        # CAMELS-COL — access-gated (Zenodo files are restricted; HTTP 403 +
+        # manual "Request access" despite CC-BY). Manual: provide a local copy.
+        "slug": "camels_col",
+        "name": "CAMELS-COL — Colombia large-sample hydrology (Zenodo, access-restricted)",
+        "auto": False,
+        "size": "~varies",
+        "url": "https://doi.org/10.5281/zenodo.15554735",
+    },
+    {
+        # CAMELS-SPAT — distribution-gated (FRDR Globus-only; no HTTPS endpoint).
+        # Manual: Globus-transfer locally and point data_dir at it.
+        "slug": "camels_spat",
+        "name": "CAMELS-SPAT — North America spatial hydrology (FRDR, Globus-only)",
+        "auto": False,
+        "size": "~varies",
+        "url": "https://www.frdr-dfdr.ca/repo/dataset/9ca63670-9e40-477c-a8a8-30f61205d668",
     },
     {
         "slug": "spain_cedex",
@@ -152,15 +431,24 @@ def _has_extracted_content(dest: Path) -> bool:
     )
 
 
-def _extract_archive(archive_path: Path, dest: Path) -> None:
-    """Extract a ZIP or tar.gz archive into ``dest`` safely."""
-    name = archive_path.name.lower()
-    if name.endswith((".tar.gz", ".tgz", ".tar")):
-        with tarfile.open(archive_path) as tf:
-            _safe_extract_tar(tf, dest)
-    else:
+def _extract_archive(archive_path: Path, dest: Path) -> bool:
+    """Extract a ZIP or tar.gz archive into ``dest`` safely.
+
+    Detection is by CONTENT (magic bytes), not filename — many repository
+    download URLs are extension-less (e.g. Dataverse ``.../datafile/<id>``) or
+    serve a bare published file. Returns True if *archive_path* was an archive
+    and was extracted; False if it is a bare file (e.g. a ``.csv`` master table)
+    that needs no extraction and is left in place as the dataset's data.
+    """
+    if zipfile.is_zipfile(archive_path):
         with zipfile.ZipFile(archive_path) as zf:
             _safe_extractall(zf, dest)
+        return True
+    if tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path) as tf:
+            _safe_extract_tar(tf, dest)
+        return True
+    return False  # bare non-archive download: keep the file as-is
 
 
 async def download_dataset(slug: str, base_dir: Path) -> bool:
@@ -267,9 +555,84 @@ async def _stream_to_file(
         attempt = 0
 
 
+def _checksum_for(slug: str) -> str | None:
+    """The recorded integrity hash for *slug*, or None.
+
+    Returns the archive ``checksum`` when present, else the ``content_checksum``
+    (for sources whose archive bytes are non-reproducible). This is the value
+    the dataset-artifact capability declares.
+    """
+    entry = next((d for d in DATASETS if d["slug"] == slug), None)
+    if entry is None:
+        return None
+    return entry.get("checksum") or entry.get("content_checksum")
+
+
+def _content_hash(dest: Path, exclude: tuple[str, ...] = ()) -> str:
+    """Canonical ``content-sha256:`` hash of the extracted file set under *dest*.
+
+    Hashes a sorted manifest of ``(relative_posix_path, sha256-of-file)`` for
+    every file, so the value depends only on file *contents* and layout — not on
+    archive compression or timestamps. This is the stable integrity anchor for
+    sources whose server regenerates the zip per request (e.g. CEH's CAMELS-GB,
+    where every download yields a different archive md5).
+
+    ``exclude`` is a tuple of ``fnmatch`` globs (matched against the relative
+    posix path) for files whose contents legitimately vary per download — e.g.
+    a ``readme.html`` carrying a generation timestamp. Excluding them keeps the
+    hash stable over the actual data without weakening it for the data files.
+    """
+    import fnmatch
+
+    entries: list[str] = []
+    for p in sorted(dest.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(dest).as_posix()
+        if any(fnmatch.fnmatch(rel, pat) for pat in exclude):
+            continue
+        h = hashlib.sha256()
+        with p.open("rb") as fh:
+            for block in iter(lambda: fh.read(1 << 20), b""):
+                h.update(block)
+        entries.append(f"{rel}\0{h.hexdigest()}")
+    manifest = "\n".join(entries).encode("utf-8")
+    return "content-sha256:" + hashlib.sha256(manifest).hexdigest()
+
+
+def _verify_archive_checksum(archive_path: Path, expected: str) -> None:
+    """Verify *archive_path* against ``algo:hexdigest``; raise on mismatch.
+
+    Provenance gate enforcement (contract 0.5.0, dataset-artifact tier): a
+    published artifact is only authentic if its bytes match the hash recorded
+    from the source's record. Fail-closed — a mismatch means tampering, a
+    truncated download, or a moved/re-published archive, none of which should
+    silently become a calibration input.
+    """
+    algo, _, want = expected.partition(":")
+    if not want:  # tolerate a bare hexdigest; default to sha256
+        algo, want = "sha256", expected
+    try:
+        hasher = hashlib.new(algo)
+    except ValueError as exc:
+        raise ValueError(f"unsupported checksum algorithm {algo!r} for {archive_path.name}") from exc
+    with archive_path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            hasher.update(block)
+    got = hasher.hexdigest()
+    if got.lower() != want.lower():
+        raise ValueError(
+            f"checksum mismatch for {archive_path.name}: expected {algo}:{want}, got {algo}:{got}"
+        )
+
+
 async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
     """Download an archive (streaming, resumable) and extract it into dest."""
-    archive_name = _archive_name_from_url(url, slug)
+    entry = next((d for d in DATASETS if d["slug"] == slug), {})
+    # A filename-less URL (e.g. OSF ``osf.io/download/<key>/``) would otherwise
+    # be saved under the opaque key; an explicit ``filename`` keeps the real name
+    # so a bare non-archive download (e.g. a ``.nc``) is found by the connector.
+    archive_name = entry.get("filename") or _archive_name_from_url(url, slug)
     archive_path = dest / archive_name
     try:
         async with httpx.AsyncClient(
@@ -284,10 +647,36 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
                 size_mb=round(archive_path.stat().st_size / 1e6, 1),
             )
 
-        _extract_archive(archive_path, dest)
+        # Provenance gate: verify the published ARCHIVE hash before extraction
+        # (fail-closed). Datasets whose server regenerates the zip per request
+        # (e.g. CEH) use a content-checksum instead — verified after extraction.
+        archive_ck = entry.get("checksum")
+        content_ck = entry.get("content_checksum")
+        if archive_ck:
+            _verify_archive_checksum(archive_path, archive_ck)
+            logger.info("checksum_verified", slug=slug, checksum=archive_ck)
+        elif not content_ck:
+            logger.warning("checksum_unverified", slug=slug, reason="no recorded checksum")
+
+        extracted = _extract_archive(archive_path, dest)
         # Drop the archive once extracted — saves significant disk (Caravan is
         # ~12.5 GB) and stops a leftover archive from masking a failed extract.
-        archive_path.unlink(missing_ok=True)
+        # A bare non-archive download (e.g. a published .csv) is the data itself
+        # and must be kept in place.
+        if extracted:
+            archive_path.unlink(missing_ok=True)
+
+        # Content-checksum gate: stable across archive re-zips because it hashes
+        # the extracted file set, not the archive wrapper. Must run AFTER the
+        # archive is removed so it does not hash the spent archive.
+        if content_ck:
+            got = _content_hash(dest, tuple(entry.get("content_exclude", ())))
+            if got != content_ck:
+                raise ValueError(
+                    f"content checksum mismatch for {slug}: expected {content_ck}, got {got}"
+                )
+            logger.info("content_checksum_verified", slug=slug, checksum=content_ck)
+
         logger.info("dataset_extracted", slug=slug, files=len(list(dest.iterdir())))
         return True
     except Exception as exc:

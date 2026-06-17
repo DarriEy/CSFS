@@ -7,25 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> Requires SYMFLUENCE with contract **0.5.0** (the source-kind/provenance and
+> posture-only observation gates). Against an older SYMFLUENCE the new
+> capabilities are declined and CSFS falls through to the native path — the
+> drop-ins simply do not activate until the framework side ships.
+
 ### Added
 
-- `CommunityObservationBackend`: CSFS now also registers under SYMFLUENCE's
-  `R.observation_backends` (acquisition-backend protocol, contract 0.2.0,
-  hardcoded `TARGET_INTERFACE_VERSION = "0.2.0"` for version-skew
-  detection). Under `DATA_ACCESS: community`, SYMFLUENCE's backend-first
-  streamflow dispatch routes USGS/WSC/SMHI (parity-graded capabilities) and
-  the ungated generic `CSFS` provider through this backend, which reuses the
-  existing handler classes internally (same fetch, byte-identical processed
-  CSV) and additionally writes a per-station OBS_CSV_V1 delivery
-  (`datetime,value,quality_flag`, UTC, m³/s, trimmed to the half-open
-  `[start, end)` window) plus an `acquisition_manifest.json` sidecar. CSFS
-  internal failures map onto the protocol error taxonomy
-  (`DatasetUnsupported`/`UpstreamOutage`/`AcquisitionError`/`IntegrityError`).
-  The registry-handler tier (`usgs`/`wsc`/`smhi`/`csfs` keys) is kept as the
-  documented fallthrough and still serves `ADDITIONAL_OBSERVATIONS: csfs`.
-- Pure OBS_CSV_V1 shaping helper `obs_csv_v1_frame()` and the framework-free
-  capability table `OBSERVATION_CAPABILITIES` (unit-tested without
-  SYMFLUENCE installed).
+- **`CommunityObservationBackend`** registers under SYMFLUENCE's
+  `R.observation_backends` (acquisition-backend protocol; `TARGET_INTERFACE_VERSION
+  = "0.5.0"`). Under `DATA_ACCESS: community`, SYMFLUENCE's backend-first
+  streamflow dispatch routes served providers through this backend, which writes
+  a per-station OBS_CSV_V1 delivery (`datetime,value,quality_flag`, UTC, m³/s,
+  half-open `[start, end)`) plus an `acquisition_manifest.json` sidecar, and maps
+  CSFS failures onto the protocol error taxonomy. Pure helpers `obs_csv_v1_frame()`
+  and the framework-free `OBSERVATION_CAPABILITIES` table are unit-tested without
+  SYMFLUENCE installed.
+- **Dataset-artifact tier** — authoritative large-sample datasets served as
+  DOI-pinned, checksum-verified providers admitted by the provenance gate (DOI +
+  version + verified checksum + open/attribution license), not parity:
+  **16 CAMELS** (US, CL, BR, GB, AUS, DE, DK, CH, FR, SE, IND, NZ, FI, LUX, PE),
+  **LamaH-CE**, **LamaH-Ice**, and **HYSETS** (NetCDF, 14,425 North American
+  watersheds). Each ships a connector + auto-download `DATASETS` entry +
+  capability + live round-trip verification. CAMELS-COL and CAMELS-SPAT are
+  registered as manual/gated stubs (access-restricted / Globus-only).
+- **Posture-only `provider_api` tier** — 26 live national/regional streamflow
+  APIs exposed as drop-ins, admitted on an open/attribution source license (no
+  native handler to parity-grade against) and each live round-trip verified
+  (`tests/test_provider_api_verified.py`, network-marked; driven by the
+  `NATIONAL_PROVIDER_APIS` table). Includes uk_ea, uk_nrfa, scotland_sepa,
+  australia_bom, norway_nve, finland_syke, japan_mlit, czechia_chmu, poland_imgw,
+  italy_emilia, greece_openhi, lithuania_lhmt, ireland_epa, denmark_dmihyd,
+  belgium_waterinfo, argentina_snih, germany_pegelonline, germany_bavaria,
+  austria_ehyd, slovenia_arso, bulgaria_eaemdr, taiwan_wra, spain_cedex,
+  vietnam_mekong, plus `netherlands_rws` (CC0) and `germany_nrw` (DL-DE/Zero)
+  as the two `open` providers.
+- **France Hub'Eau** added to the native↔community parity tier
+  (value-identical, L/s→m³/s) — the first live-API parity drop-in beyond
+  usgs/wsc/smhi.
+- **Content-checksum integrity** (`content_checksum` + `content_exclude`) for
+  sources whose server regenerates the archive per request (e.g. CEH's
+  CAMELS-GB), and a `filename` override for filename-less download URLs (OSF).
+  Archive extraction now content-sniffs (magic bytes), keeps bare non-archive
+  downloads in place, and reprojects national-grid coordinates to WGS84.
+
+### Changed
+
+- `TARGET_INTERFACE_VERSION` 0.2.0 → **0.5.0**. Capabilities declare source-data
+  license posture (`redistribution` / `data_license` / `attribution`, contract
+  0.4.0), the source-kind tier (`source_kind` / `dataset_doi` / `dataset_version`
+  / `dataset_checksum`, 0.5.0), and a `noncommercial` flag (CC-BY-NC sources).
+- The acquisition-backend interface modules carry an Apache-2.0 header so
+  third-party backends need not inherit GPL.
+- `spain_cedex` gained a keyless HTTP path to the CEDEX *Anuario de Aforos* (was
+  local-file-only); `vietnam_mekong` now reads NERC EIDC data-package discharge
+  (was reading sediment-flux files).
+
+### Fixed
+
+- `csfs.integrations.symfluence` no longer logs a misleading "Failed to load …
+  skipping" warning when imported before SYMFLUENCE's bootstrap (re-entrant
+  plugin load); registration self-heals regardless of import order.
 
 ## [0.3.0] — 2026-06-11
 

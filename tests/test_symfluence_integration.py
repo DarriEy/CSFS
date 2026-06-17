@@ -93,6 +93,41 @@ def test_csfs_package_has_no_symfluence_dependency():
     assert isinstance(integration.HAVE_SYMFLUENCE, bool)
 
 
+def test_import_before_symfluence_registers_without_warning():
+    """Importing this module BEFORE symfluence must still register cleanly.
+
+    Regression: the symfluence base-class import triggers symfluence's bootstrap,
+    which re-enters to load the csfs plugin entry point while this module is
+    partially initialized. ``register`` is defined ahead of that import and
+    no-ops until the module is ready, so the bootstrap must NOT log
+    "Failed to load … skipping", and the community backend must end up
+    registered (via the module-bottom self-register).
+    """
+    import subprocess
+    import sys
+
+    pytest.importorskip("symfluence")
+    # Fresh interpreter, the pathological order: integration module imported
+    # FIRST, then symfluence's registry is consulted.
+    code = (
+        "import warnings, io, logging\n"
+        "buf = io.StringIO()\n"
+        "logging.getLogger().addHandler(logging.StreamHandler(buf))\n"
+        "logging.getLogger().setLevel(logging.WARNING)\n"
+        "import csfs.integrations.symfluence  # noqa: F401 (import before symfluence)\n"
+        "from symfluence.core.registries import R\n"
+        "assert R.observation_backends.get('community') is not None, 'community backend not registered'\n"
+        "logs = buf.getvalue()\n"
+        "assert 'Failed to load' not in logs and 'skipping' not in logs, logs\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert "OK" in result.stdout
+
+
 # ---------------------------------------------------------------------------
 # 2. Pure helpers (standalone, no symfluence required)
 # ---------------------------------------------------------------------------
@@ -270,9 +305,42 @@ def test_chunk_round_trip_through_csv(tmp_path):
 
 def test_provider_backends_cover_the_native_streamflow_providers():
     """Drop-in keys mirror SYMFLUENCE's lowercased STREAMFLOW_DATA_PROVIDER values."""
-    assert set(integration.PROVIDER_BACKENDS) == {"usgs", "wsc", "smhi"}
+    national = {a.slug for a in integration.NATIONAL_PROVIDER_APIS}
+    assert set(integration.PROVIDER_BACKENDS) == {
+        "usgs", "wsc", "smhi", "hubeau", "lamah_ice", "lamah_ce",
+        "camels_br", "camels_de", "camels_cl", "camels_ind", "camels_ch",
+        "camels_aus", "camels_us", "camels_dk", "camels_gb", "camels_se", "camels_fr",
+        "camels_nz", "camels_fi", "camels_lux", "hysets", "camels_pe",
+    } | national
     slugs = {key: backend.slug for key, backend in integration.PROVIDER_BACKENDS.items()}
-    assert slugs == {"usgs": "usgs", "wsc": "environment_canada", "smhi": "sweden_smhi"}
+    # Every posture-only national-API drop-in is keyed by its own slug.
+    assert all(slugs[a.slug] == a.slug for a in integration.NATIONAL_PROVIDER_APIS)
+    slugs = {k: v for k, v in slugs.items() if k not in national}
+    assert slugs == {
+        "usgs": "usgs",
+        "wsc": "environment_canada",
+        "smhi": "sweden_smhi",
+        "hubeau": "france_hubeau",
+        # dataset-artifact providers (not live APIs)
+        "lamah_ice": "iceland_lamahice",
+        "lamah_ce": "lamah_ce",
+        "camels_br": "camels_br",
+        "camels_de": "camels_de",
+        "camels_cl": "camels_cl",
+        "camels_ind": "camels_ind",
+        "camels_ch": "camels_ch",
+        "camels_aus": "camels_aus",
+        "camels_us": "camels_us",
+        "camels_dk": "camels_dk",
+        "camels_gb": "camels_gb",
+        "camels_se": "camels_se",
+        "camels_fr": "camels_fr",
+        "camels_nz": "camels_nz",
+        "camels_fi": "camels_fi",
+        "camels_lux": "camels_lux",
+        "hysets": "hysets",
+        "camels_pe": "camels_pe",
+    }
 
 
 def test_smhi_backend_pins_the_15min_product():
@@ -785,11 +853,24 @@ def test_obs_csv_v1_frame_missing_columns_is_a_helpful_error():
 
 
 def test_observation_capability_table_is_well_formed():
-    """Pure capability facts: the four providers, parity grammar, csfs ungated."""
+    """Pure capability facts: live drop-ins + LamaH-Ice artifact, parity grammar, csfs ungated."""
     import re
 
     specs = {spec.provider_id: spec for spec in integration.OBSERVATION_CAPABILITIES}
-    assert set(specs) == {"USGS", "WSC", "SMHI", "CSFS"}
+    assert set(specs) == {
+        "USGS", "WSC", "SMHI", "HUBEAU", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+        "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
+        "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
+        "HYSETS", "CAMELS_PE", "CSFS",
+    } | {a.slug.upper() for a in integration.NATIONAL_PROVIDER_APIS}
+    # The posture-only national-API drop-ins are provider_api, ungraded, with an
+    # open/attribution source license (the gate's posture-only admission bar).
+    for a in integration.NATIONAL_PROVIDER_APIS:
+        cap = specs[a.slug.upper()]
+        assert cap.source_kind == "provider_api"
+        assert cap.parity_grade is None
+        assert cap.redistribution in ("open", "attribution")
+        assert cap.data_license
     grade_re = re.compile(r"^(bit-identical|value-identical:.+)$")
     for spec in specs.values():
         assert spec.kinds == frozenset({"streamflow"})
@@ -864,12 +945,20 @@ class TestCommunityObservationBackend:
         assert registered.__qualname__ == "CommunityObservationBackend"
         assert registered.__module__ == "csfs.integrations.symfluence"
         # Handler-tier registrations stay (the documented fallthrough).
-        for key in ("csfs", "usgs", "wsc", "smhi"):
+        for key in ("csfs", "usgs", "wsc", "smhi", "hubeau", "lamah_ice", "lamah_ce",
+                    "camels_br", "camels_de", "camels_cl", "camels_ind", "camels_ch",
+                    "camels_aus", "camels_us", "camels_dk", "camels_gb", "camels_se", "camels_fr",
+                    "camels_nz", "camels_fi", "camels_lux", "hysets", "camels_pe"):
             assert key in R.observation_handlers, key
 
     def test_capabilities_map_the_pure_table(self, tmp_path):
         caps = {cap.provider_id: cap for cap in self._backend(tmp_path).capabilities()}
-        assert set(caps) == {"USGS", "WSC", "SMHI", "CSFS"}
+        assert set(caps) == {
+            "USGS", "WSC", "SMHI", "HUBEAU", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+            "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
+            "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
+            "HYSETS", "CAMELS_PE", "CSFS",
+        } | {a.slug.upper() for a in integration.NATIONAL_PROVIDER_APIS}
         assert caps["USGS"].parity_grade == "bit-identical"
         assert caps["CSFS"].parity_grade is None
         for cap in caps.values():

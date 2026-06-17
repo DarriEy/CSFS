@@ -1099,12 +1099,10 @@ class CaravanGRDCConnector(CaravanConnector):
     country_codes = ["global"]
 
 
-@register("camels_de")
-class CAMELSDEConnector(CaravanConnector):
-    """Alias for Caravan v1.6 (Germany sub-dataset)."""
-    slug = "camels_de"
-    display_name = "CAMELS-DE (Germany)"
-    country_codes = ["DE"]
+# NOTE: camels_de is served by the AUTHORITATIVE standalone connector
+# (connectors/camels_de.py — CAMELS-DE Zenodo archive), not a Caravan alias.
+# camels_in / camels_co remain Caravan-derived until authoritative standalone
+# connectors exist for them.
 
 
 @register("camels_in")

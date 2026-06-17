@@ -1,19 +1,20 @@
-"""CAMELS-DK connector — Danish large-sample hydrology (GEUS Dataverse, daily).
+"""CAMELS-FI connector — Finnish large-sample hydrology (Zenodo, daily).
 
-CAMELS-DK (Liu et al. 2024) provides daily streamflow for 3330 Danish
-catchments, keyed by the catchment id (e.g. ``12410011``).
+CAMELS-FI (Seppä et al. 2025) provides daily observed discharge for 320 Finnish
+catchments, keyed by the SYKE gauge id (e.g. ``896``; combined/virtual gauges
+use a hyphenated id such as ``1181-3743``).
 
-A published, DOI-pinned dataset artifact (GEUS Dataverse, CC0-1.0). Two
-resources are auto-downloaded + checksum-verified via
-:func:`csfs.core.downloads.ensure_dataset`:
+A published, DOI-pinned dataset artifact (Zenodo, CC-BY-4.0), still an ESSD
+preprint under review. A single bundle is auto-downloaded + checksum-verified
+via :func:`csfs.core.downloads.ensure_dataset` (slug ``camels_fi``):
 
-* ``camels_dk`` — ``Gauged_catchments.zip`` → per-catchment
-  ``CAMELS_DK_obs_based_{id}.csv`` (comma-sep; ``time`` ISO, observed discharge
-  ``Qobs`` in m³/s; blank = missing);
-* ``camels_dk_attributes`` — the bare ``CAMELS_DK_topography.csv``
-  (``catch_id,catch_outlet_lon,catch_outlet_lat,...``). The outlet coordinates
-  are **easting/northing in ETRS89 / UTM 32N (EPSG:25832)** despite the
-  ``lon/lat`` column names, and are reprojected to WGS84 on read.
+* per-gauge ``CAMELS-FI/data/timeseries/CAMELS_FI_hydromet_timeseries_{gauge}_{range}.csv``
+  (CAMELS-GB layout; ``date,discharge_vol,discharge_spec,...``; observed
+  discharge ``discharge_vol`` in m³/s; blank = missing);
+* gauge coordinates from ``CAMELS_FI_meta_attributes.csv``. The published
+  ``gauge_lat`` / ``gauge_lon`` columns have a documented metadata-description
+  swap, so the unambiguous projected ``gauge_easting`` / ``gauge_northing``
+  (ETRS-TM35FIN, EPSG:3067) are used and reprojected to WGS84.
 """
 
 from __future__ import annotations
@@ -32,52 +33,53 @@ from csfs.core.reproject import to_wgs84
 
 logger = structlog.get_logger()
 
-_DATAVERSE_URL = "https://dataverse.geus.dk/dataset.xhtml?persistentId=doi:10.22008/FK2/AZXSYP"
-_STREAMFLOW_SLUG = "camels_dk"
-_ATTRIBUTES_SLUG = "camels_dk_attributes"
-_EPSG_DK = 25832  # ETRS89 / UTM zone 32N
+_LANDING = "https://doi.org/10.5281/zenodo.15853357"
+_SLUG = "camels_fi"
+_META_CSV = "CAMELS_FI_meta_attributes.csv"
+_EPSG_FI = 3067  # ETRS89 / ETRS-TM35FIN
 
 
-@register("camels_dk")
-class CAMELSDKConnector(BaseConnector):
-    """Connector for CAMELS-DK (Denmark) — authoritative standalone."""
+@register("camels_fi")
+class CAMELSFIConnector(BaseConnector):
+    """Connector for CAMELS-FI (Finland) — authoritative standalone."""
 
-    slug = "camels_dk"
-    display_name = "CAMELS-DK (Denmark)"
-    base_url = "https://dataverse.geus.dk"  # data via ensure_dataset
-    country_codes = ["DK"]
+    slug = "camels_fi"
+    display_name = "CAMELS-FI (Finland)"
+    base_url = "https://zenodo.org"  # data via ensure_dataset
+    country_codes = ["FI"]
 
     async def fetch_stations(self) -> list[Station]:
-        """Catalogue from ``CAMELS_DK_topography.csv`` (UTM 32N → WGS84)."""
-        data_dir = await ensure_dataset(_ATTRIBUTES_SLUG, self.config)
+        """Catalogue from the meta attributes CSV (TM35FIN → WGS84)."""
+        data_dir = await ensure_dataset(_SLUG, self.config)
         if data_dir is None:
-            logger.info("camels_dk_no_attributes", hint=f"Download from {_DATAVERSE_URL}")
+            logger.info("camels_fi_no_data", hint=f"Download from {_LANDING}")
             return []
-        topo = self._find_one(Path(data_dir), "CAMELS_DK_topography.csv")
-        if topo is None:
+        meta = self._find_one(Path(data_dir), _META_CSV)
+        if meta is None:
+            logger.info("camels_fi_meta_not_found", data_dir=str(data_dir))
             return []
         stations: list[Station] = []
-        with open(topo, newline="", encoding="utf-8") as fh:
+        with open(meta, newline="", encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
-                gid = (row.get("catch_id") or "").strip()
+                gid = (row.get("gauge_id") or "").strip()
                 try:
-                    easting = float(row["catch_outlet_lon"])
-                    northing = float(row["catch_outlet_lat"])
+                    easting = float(row["gauge_easting"])
+                    northing = float(row["gauge_northing"])
                 except (KeyError, TypeError, ValueError):
                     continue
                 if not gid:
                     continue
-                lat, lon = to_wgs84(easting, northing, _EPSG_DK)
+                lat, lon = to_wgs84(easting, northing, _EPSG_FI)
                 stations.append(Station(
                     id=self._station_id(gid),
                     provider=self.slug,
                     native_id=gid,
-                    name=gid,
+                    name=(row.get("gauge_name") or gid).strip(),
                     latitude=lat,
                     longitude=lon,
-                    country_code="DK",
+                    country_code="FI",
                 ))
-        logger.info("camels_dk_stations_loaded", count=len(stations))
+        logger.info("camels_fi_stations_loaded", count=len(stations))
         return stations
 
     async def fetch_observations(
@@ -86,22 +88,23 @@ class CAMELSDKConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Read daily observed discharge (Qobs) for one catchment."""
+        """Read daily observed discharge (discharge_vol, m³/s) for one gauge."""
         native_id = station_id.removeprefix(f"{self.slug}:")
-        data_dir = await ensure_dataset(_STREAMFLOW_SLUG, self.config)
+        data_dir = await ensure_dataset(_SLUG, self.config)
         if data_dir is None:
-            logger.info("camels_dk_no_data", station=native_id, hint=f"Download from {_DATAVERSE_URL}")
+            logger.info("camels_fi_no_data", station=native_id, hint=f"Download from {_LANDING}")
             return self._empty_chunk(station_id)
-        f = self._find_one(Path(data_dir), f"CAMELS_DK_obs_based_{native_id}.csv")
+        # The filename embeds the gauge id then the record date range.
+        f = self._find_one(Path(data_dir), f"CAMELS_FI_hydromet_timeseries_{native_id}_*.csv")
         if f is None:
-            logger.info("camels_dk_file_not_found", station=native_id, data_dir=str(data_dir))
+            logger.info("camels_fi_file_not_found", station=native_id, data_dir=str(data_dir))
             return self._empty_chunk(station_id)
 
         start_aware = start if start.tzinfo else start.replace(tzinfo=UTC)
         end_aware = end if end.tzinfo else end.replace(tzinfo=UTC)
         observations = self._parse_timeseries(f, station_id, start_aware, end_aware)
         logger.info(
-            "camels_dk_observations_loaded",
+            "camels_fi_observations_loaded",
             station=native_id, count=len(observations), file=str(f),
         )
         return TimeSeriesChunk(
@@ -122,8 +125,8 @@ class CAMELSDKConnector(BaseConnector):
         )
 
     @staticmethod
-    def _find_one(data_dir: Path, name: str) -> Path | None:
-        hits = list(data_dir.rglob(name))
+    def _find_one(data_dir: Path, pattern: str) -> Path | None:
+        hits = sorted(data_dir.rglob(pattern))
         return hits[0] if hits else None
 
     @staticmethod
@@ -133,10 +136,11 @@ class CAMELSDKConnector(BaseConnector):
         observations: list[Observation] = []
         with open(path, newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
-            if reader.fieldnames is None or "Qobs" not in reader.fieldnames:
+            cols = reader.fieldnames or []
+            if not {"date", "discharge_vol"} <= set(cols):
                 return observations
             for row in reader:
-                raw_date = (row.get("time") or "").strip()
+                raw_date = (row.get("date") or "").strip()
                 if not raw_date:
                     continue
                 try:
@@ -145,10 +149,10 @@ class CAMELSDKConnector(BaseConnector):
                     continue
                 if not (start <= ts <= end):
                     continue
-                raw = (row.get("Qobs") or "").strip()
+                raw = (row.get("discharge_vol") or "").strip()
                 discharge: float | None
                 quality: QualityFlag
-                if not raw or raw.lower() == "nan":
+                if not raw or raw.lower() in ("nan", "na"):
                     discharge, quality = None, QualityFlag.MISSING
                 else:
                     try:

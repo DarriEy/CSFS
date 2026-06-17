@@ -87,6 +87,27 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     import pandas as pd
 
+# True only once this module has finished importing. The symfluence base-class
+# import below triggers SYMFLUENCE's bootstrap; if THIS module was imported
+# before symfluence, that bootstrap re-enters and tries to load the csfs plugin
+# entry point (``…:register``) while this module is still partially initialized.
+# ``register`` is defined here, ahead of that import, and no-ops until the module
+# is ready — so the re-entrant call is quiet (no "failed to load … skipping"
+# warning) and the module-bottom self-register performs the real registration.
+_MODULE_READY = False
+
+
+def register() -> None:
+    """Register the CSFS observation tiers with SYMFLUENCE (idempotent).
+
+    Entry-point hook (``symfluence.plugins``). Defers while this module is still
+    importing (re-entrant bootstrap); the real work is in :func:`_register_impl`.
+    """
+    if not _MODULE_READY:  # pragma: no cover - re-entrant bootstrap during import
+        return
+    _register_impl()
+
+
 # Resolve the SYMFLUENCE base class defensively so importing this module
 # never hard-fails when SYMFLUENCE is not installed.
 try:  # pragma: no cover - exercised only with SYMFLUENCE present
@@ -347,7 +368,295 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={"resolution": "15min"},
         normalize=None,
     ),
+    # Live national-API drop-in: French Hub'Eau hydrométrie via the france_hubeau
+    # connector. Same source AND same L/s->m3/s conversion as SYMFLUENCE's native
+    # HubEauStreamflowHandler, so it is parity-gated (not provenance-gated).
+    "hubeau": ProviderBackend(
+        slug="france_hubeau",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the Hub'Eau code_station
+    ),
+    # Dataset-artifact provider (not a live API): LamaH-Ice gauges read from the
+    # published HydroShare archive via the iceland_lamahice connector
+    # (checksum-verified on download). Same handler machinery as the live
+    # drop-ins — the connector abstracts static-archive vs live-API fetch.
+    "lamah_ice": ProviderBackend(
+        slug="iceland_lamahice",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact provider: LamaH-CE gauges from the published Zenodo
+    # archive via the lamah_ce connector (checksum-verified on download).
+    "lamah_ce": ProviderBackend(
+        slug="lamah_ce",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact provider: CAMELS-BR (ANA gauges) from the published
+    # Zenodo archive via the camels_br connector (checksum-verified).
+    "camels_br": ProviderBackend(
+        slug="camels_br",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact provider: CAMELS-DE (authoritative standalone Zenodo
+    # bundle) via the camels_de connector (checksum-verified).
+    "camels_de": ProviderBackend(
+        slug="camels_de",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact provider: CAMELS-CL (DGA gauges) from the authoritative
+    # PANGAEA archive via the camels_cl connector (checksum-verified).
+    "camels_cl": ProviderBackend(
+        slug="camels_cl",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    # Dataset-artifact providers: CAMELS-IND (CWC gauges) and CAMELS-CH (BAFU
+    # gauges) from their Zenodo archives via the respective connectors.
+    "camels_ind": ProviderBackend(
+        slug="camels_ind",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "camels_ch": ProviderBackend(
+        slug="camels_ch",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "camels_aus": ProviderBackend(
+        slug="camels_aus",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "camels_gb": ProviderBackend(
+        slug="camels_gb",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
+    "camels_us": ProviderBackend(
+        slug="camels_us",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.usgs_site_code, "USGS_SITE_CODE"),
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # CAMELS-US is keyed by the exact 8-digit USGS id
+    ),
+    "camels_se": ProviderBackend(
+        slug="camels_se",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the SMHI catchment id
+    ),
+    "camels_fr": ProviderBackend(
+        slug="camels_fr",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the Hydro3 station code (sta_code_h3)
+    ),
+    "camels_nz": ProviderBackend(
+        slug="camels_nz",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the NZ hydrological station id
+    ),
+    "camels_fi": ProviderBackend(
+        slug="camels_fi",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the SYKE gauge id (hyphenated for virtual gauges)
+    ),
+    "camels_lux": ProviderBackend(
+        slug="camels_lux",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the zero-padded id (ID_01 … ID_56)
+    ),
+    "camels_pe": ProviderBackend(
+        slug="camels_pe",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the PE gauge id (e.g. PE_211408)
+    ),
+    "hysets": ProviderBackend(
+        slug="hysets",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.usgs_site_code, "USGS_SITE_CODE"),
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the agency Official_ID (HYDAT / USGS / …)
+    ),
+    "camels_dk": ProviderBackend(
+        slug="camels_dk",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    ),
 }
+
+
+class _NationalAPI(NamedTuple):
+    """A live national/regional streamflow API exposed as a posture-only drop-in.
+
+    These have NO native SYMFLUENCE handler to parity-grade against, so they are
+    admitted by the framework's posture-only provider_api gate (an open/
+    attribution SOURCE license). Each has been live round-trip verified — a real
+    fetch returns observed discharge — recorded in tests/test_provider_api_verified.py.
+    Providers whose data is RESTRICTED (e.g. belgium_spw) or whose license is
+    UNKNOWN (e.g. ecuador_inamhi, newzealand_hilltop) are deliberately NOT here:
+    a mirror must not re-serve them, and the gate would refuse them anyway.
+    """
+    slug: str
+    redistribution: str       # "open" | "attribution"
+    data_license: str
+    attribution: str
+    station_scheme: str
+    coverage: str = ""        # "" full; else a note e.g. "realtime-only", "historical archive"
+
+
+#: The 19 verified, mirrorable national-API drop-ins (slug == provider key).
+NATIONAL_PROVIDER_APIS: tuple[_NationalAPI, ...] = (
+    _NationalAPI("argentina_snih", "attribution", "SNIH-terms",
+                 "SNIH / Subsecretaría de Recursos Hídricos (Argentina)", "SNIH station id"),
+    _NationalAPI("australia_bom", "attribution", "CC-BY-4.0",
+                 "Australian Bureau of Meteorology", "AWRC station number (e.g. 403213)"),
+    _NationalAPI("belgium_waterinfo", "attribution", "Modellicentie-Gratis-Hergebruik-Vlaanderen-1.0",
+                 "VMM waterinfo.be (Flanders)", "waterinfo station code (e.g. 01L04_035)"),
+    _NationalAPI("czechia_chmu", "attribution", "CC-BY-4.0",
+                 "Czech Hydrometeorological Institute (ČHMÚ)", "CHMI station code"),
+    _NationalAPI("denmark_dmihyd", "attribution", "Danmarks-Miljoeportal-terms",
+                 "Miljøstyrelsen / Danmarks Miljøportal", "station id (e.g. 61000460)"),
+    _NationalAPI("finland_syke", "attribution", "CC-BY-4.0",
+                 "Finnish Environment Institute (SYKE)", "SYKE station id (e.g. 894)"),
+    _NationalAPI("germany_nrw", "open", "DL-DE-Zero-2.0",
+                 "LANUK North Rhine-Westphalia", "NRW station number"),
+    _NationalAPI("germany_pegelonline", "attribution", "DL-DE-BY-2.0",
+                 "WSV / PEGELONLINE (Germany)", "PEGELONLINE station number/uuid"),
+    _NationalAPI("greece_openhi", "attribution", "CC-BY-SA-4.0",
+                 "OpenHi.net (Greece)", "OpenHi station id"),
+    _NationalAPI("ireland_epa", "attribution", "CC-BY-4.0",
+                 "OPW / EPA (Ireland)", "station id (e.g. 14107)"),
+    _NationalAPI("italy_emilia", "attribution", "CC-BY-4.0",
+                 "ARPAE Emilia-Romagna (Italy)", "ARPAE station id"),
+    _NationalAPI("japan_mlit", "attribution", "JP-Gov-Standard-Terms-2.0",
+                 "MLIT (Japan, river.go.jp)", "MLIT observatory id"),
+    _NationalAPI("lithuania_lhmt", "attribution", "CC-BY-SA-4.0",
+                 "Lithuanian Hydrometeorological Service (LHMT)", "meteo.lt station code"),
+    _NationalAPI("netherlands_rws", "open", "CC0-1.0",
+                 "Rijkswaterstaat (Netherlands)", "RWS location code (e.g. aa.helmond)"),
+    _NationalAPI("norway_nve", "attribution", "NLOD-2.0",
+                 "NVE (Norway)", "NVE station id (e.g. 1.200.0)"),
+    _NationalAPI("poland_imgw", "attribution", "CC-BY-4.0",
+                 "IMGW-PIB (Poland)", "IMGW station id"),
+    _NationalAPI("scotland_sepa", "attribution", "OGL-UK-3.0",
+                 "Scottish Environment Protection Agency (SEPA)", "SEPA station id (e.g. 14969)"),
+    _NationalAPI("uk_ea", "attribution", "OGL-UK-3.0",
+                 "UK Environment Agency", "EA station/measure id"),
+    _NationalAPI("uk_nrfa", "attribution", "OGL-UK-3.0",
+                 "UK National River Flow Archive (CEH)", "NRFA station number (e.g. 1001)"),
+    # Added after per-connector diagnosis + license clearance (the no-data-in-sweep
+    # batch). Several are realtime- or historical-only — noted in `coverage`.
+    _NationalAPI("spain_cedex", "attribution", "Spain-RISP-Ley-37-2007",
+                 "CEDEX Anuario de Aforos (Spain)", "CEDEX station code (e.g. 9001)",
+                 coverage="historical archive (daily, ends 2021)"),
+    _NationalAPI("vietnam_mekong", "attribution", "OGL-UK-3.0",
+                 "NERC EIDC / Univ. Hull (Mekong)", "Mekong station code (e.g. chau_doc)",
+                 coverage="historical archive (EIDC data package)"),
+    _NationalAPI("austria_ehyd", "attribution", "CC-BY-4.0",
+                 "eHYD / BMLUK (Austria)", "eHYD station id (e.g. 200014)",
+                 coverage="realtime-only"),
+    _NationalAPI("slovenia_arso", "attribution", "CC-BY-4.0",
+                 "Slovenian Environment Agency (ARSO)", "ARSO station id (e.g. 1060)",
+                 coverage="realtime-only"),
+    _NationalAPI("germany_bavaria", "attribution", "CC-BY-4.0",
+                 "Gewässerkundlicher Dienst Bayern (LfU Bayern)", "GKD Bayern station number",
+                 coverage="realtime-only"),
+    _NationalAPI("taiwan_wra", "attribution", "OGDL-Taiwan-1.0",
+                 "Taiwan Water Resources Agency (WRA)", "WRA station/reservoir id (e.g. 10201)",
+                 coverage="realtime-only (~last 24h)"),
+    _NationalAPI("bulgaria_eaemdr", "attribution", "EU-Open-Data-Directive-2019-1024",
+                 "Bulgarian Executive Agency for the Danube (ИАППД)", "Danube gauge name (e.g. Ruse)",
+                 coverage="realtime-only (daily Danube bulletin)"),
+)
+
+# Register each as a drop-in backend (keyed by its slug). Done before
+# PROVIDER_HANDLERS is built below so each gets a shadow handler.
+for _api in NATIONAL_PROVIDER_APIS:
+    PROVIDER_BACKENDS[_api.slug] = ProviderBackend(
+        slug=_api.slug,
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    )
 
 
 def resolve_provider_station_id(provider_key: str, raw: Any) -> str:
@@ -546,7 +855,10 @@ class CSFSStreamflowHandler(_Base):
 
         frames: list[pd.DataFrame] = []
         for csv_file in csv_files:
-            standardized = standardize_frame(pd.read_csv(csv_file))
+            # round_trip float parsing: re-reading the raw CSV must recover the
+            # exact float written, not pandas' default ~1-ULP-lossy parse, so the
+            # processed values match the native handler's in-memory result bitwise.
+            standardized = standardize_frame(pd.read_csv(csv_file, float_precision="round_trip"))
             if standardized.empty:
                 self.logger.warning(f"No usable records in {csv_file.name}")
                 continue
@@ -673,17 +985,45 @@ PROVIDER_HANDLERS: dict[str, type[CSFSStreamflowHandler]] = {
 #: read from the installed framework) so that a contract bump on the
 #: SYMFLUENCE side is *detected* as skew by the selection layer instead of
 #: silently claimed compatible (pre-1.0, minor bumps are breaking).
-TARGET_INTERFACE_VERSION = "0.2.0"
+#:
+#: 0.4.0: declares the source-data license posture (``redistribution`` /
+#: ``data_license`` / ``attribution``). 0.5.0: declares the source-kind tier —
+#: ``source_kind`` + ``dataset_doi`` / ``dataset_version`` /
+#: ``dataset_checksum`` / ``noncommercial`` — so the LamaH-Ice DATASET_ARTIFACT
+#: capability is admitted by the framework's provenance gate. These fields exist
+#: only on the contract-0.5.0 ObservationCapability, so populating them while
+#: targeting an older minor would break against a pre-0.5.0 framework.
+TARGET_INTERFACE_VERSION = "0.5.0"
 
 
 class ObservationCapabilitySpec(NamedTuple):
-    """Pure (framework-free) capability facts for one served provider."""
+    """Pure (framework-free) capability facts for one served provider.
+
+    ``redistribution`` is the SOURCE-data posture (contract 0.4.0), as a plain
+    string mirroring the framework's ``Redistribution`` enum values
+    ("open" | "attribution" | "restricted" | "unknown"); kept framework-free so
+    this module still imports without symfluence. ``data_license`` /
+    ``attribution`` carry the obligation that must propagate to end users.
+    """
 
     provider_id: str
     kinds: frozenset[str]
     station_id_scheme: str
     parity_grade: str | None
     notes: str
+    redistribution: str = "unknown"
+    data_license: str = ""
+    attribution: str = ""
+    # Source-kind tier + provenance (contract 0.5.0). DATASET_ARTIFACT entries
+    # are admitted by the framework's provenance gate (DOI + version + checksum
+    # + license) instead of the parity gate; PROVIDER_API entries ignore these.
+    # ``source_kind`` mirrors the SourceKind enum values ("provider_api" |
+    # "dataset_artifact"); ``noncommercial`` flags a CC-BY-NC-style use clause.
+    source_kind: str = "provider_api"
+    dataset_doi: str = ""
+    dataset_version: str = ""
+    dataset_checksum: str = ""
+    noncommercial: bool = False
 
 
 #: Providers the community observation backend claims. Parity grades record
@@ -699,6 +1039,11 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="bit-identical",
         notes="USGS NWIS via the CSFS usgs connector; processed CSV bit-identical "
               "to the native handler per the parity work.",
+        # USGS/NWIS data are produced by a US federal agency and are public
+        # domain (17 U.S.C. §105) — free to mirror; courtesy citation only.
+        redistribution="open",
+        data_license="public-domain",
+        attribution="U.S. Geological Survey, National Water Information System (NWIS)",
     ),
     ObservationCapabilitySpec(
         provider_id="WSC",
@@ -707,6 +1052,11 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="value-identical:float-repr",
         notes="Environment Canada real-time/historical via CSFS; values identical, "
               "byte differences limited to float representation.",
+        # Environment and Climate Change Canada data: Open Government Licence –
+        # Canada. Redistributable with attribution.
+        redistribution="attribution",
+        data_license="OGL-Canada-2.0",
+        attribution="Environment and Climate Change Canada, Water Survey of Canada",
     ),
     ObservationCapabilitySpec(
         provider_id="SMHI",
@@ -715,6 +1065,355 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         parity_grade="value-identical:rounding",
         notes="SMHI 15-minute discharge (hydroobs parameter 2) pinned to match the "
               "native handler; values identical up to provider rounding.",
+        # SMHI open data: Creative Commons Attribution 4.0. Redistributable
+        # with attribution.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Swedish Meteorological and Hydrological Institute (SMHI)",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="HUBEAU",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="Hub'Eau code_station (e.g. M107302001; 'france_hubeau:<code>' also accepted)",
+        parity_grade="value-identical:unit-conversion",
+        notes="French Hub'Eau hydrométrie discharge via the france_hubeau connector. Same "
+              "live source and same L/s->m3/s (/1000) conversion as the native handler; "
+              "values identical up to float representation of the unit conversion.",
+        # Hub'Eau open data: Etalab Licence Ouverte 2.0 (attribution).
+        redistribution="attribution",
+        data_license="Licence-Ouverte-2.0",
+        attribution="Hub'Eau / Eaufrance (French national water information system)",
+    ),
+    ObservationCapabilitySpec(
+        provider_id="LAMAH_ICE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="LamaH-Ice gauge id (e.g. 1; 'iceland_lamahice:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: admitted by the provenance gate, not parity
+        notes="LamaH-Ice daily discharge from the published HydroShare archive via the "
+              "CSFS iceland_lamahice connector. A static, DOI-pinned dataset artifact — "
+              "admitted by the framework's provenance gate (DOI + version + checksum), "
+              "not the parity gate. The archive is checksum-verified on download.",
+        # Streamflow is CC-BY-NC-4.0 (attributes are CC-BY-4.0). Redistributable
+        # WITH attribution, but NOT for commercial use — hence noncommercial=True.
+        redistribution="attribution",
+        data_license="CC-BY-NC-4.0",
+        attribution="Helgason & Nijssen (2024), LamaH-Ice (HydroShare); "
+                    "streamflow data CC-BY-NC-4.0",
+        source_kind="dataset_artifact",
+        dataset_doi="10.4211/hs.86117a5f36cc4b7c90a5d54e18161c91",
+        dataset_version="daily; HydroShare snapshot 2024-05-30",
+        dataset_checksum="md5:6246f7300c77ead2c9f097ad5da89ba9",
+        noncommercial=True,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="LAMAH_CE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="LamaH-CE gauge id (e.g. 1; 'lamah_ce:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="LamaH-CE daily discharge from the published Zenodo archive via the CSFS "
+              "lamah_ce connector. A static, DOI-pinned dataset artifact — admitted by "
+              "the provenance gate (DOI + version + checksum), archive checksum-verified "
+              "on download.",
+        # LamaH-CE is CC-BY-4.0 throughout (no NonCommercial clause).
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Klingler, Schulz & Herrnegger (2021), LamaH-CE (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.5153305",
+        dataset_version="1.0; daily",
+        dataset_checksum="md5:69fd2733e969513403f923ecc5eaa3dc",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_BR",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="ANA gauge code (e.g. 10100000; 'camels_br:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-BR daily discharge from the published Zenodo archive via the CSFS "
+              "camels_br connector. A static, DOI-pinned dataset artifact — admitted by "
+              "the provenance gate; the streamflow archive is checksum-verified on "
+              "download (the attributes archive supplies gauge coordinates).",
+        # CAMELS-BR is CC-BY-4.0 throughout.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Chagas et al. (2020), CAMELS-BR (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.3964745",
+        dataset_version="1.1; daily",
+        dataset_checksum="md5:599b96f48ec78e25751cf1cc691a22bb",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_DE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CAMELS-DE gauge id (e.g. DE210480; 'camels_de:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-DE daily observed discharge (discharge_vol_obs) from the published "
+              "Zenodo archive via the CSFS camels_de connector. A static, DOI-pinned "
+              "dataset artifact — admitted by the provenance gate; the bundle is "
+              "checksum-verified on download.",
+        # CAMELS-DE is CC-BY-4.0 throughout.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Loritz et al. (2024), CAMELS-DE (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.16755906",
+        dataset_version="1.1.0; daily",
+        dataset_checksum="md5:5ee2f89f6204e8eafdbc11b491d34afb",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_CL",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="DGA gauge code (e.g. 1001001; 'camels_cl:<id>' also accepted)",
+        parity_grade=None,  # dataset artifact: provenance-gated, not parity
+        notes="CAMELS-CL daily discharge from the published PANGAEA archive via the CSFS "
+              "camels_cl connector. A static, DOI-pinned dataset artifact served from the "
+              "authoritative store.pangaea.de zips — admitted by the provenance gate; the "
+              "streamflow matrix is checksum-verified on download.",
+        # CAMELS-CL (PANGAEA) is CC-BY.
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Alvarez-Garreton et al. (2018), CAMELS-CL (PANGAEA)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.1594/PANGAEA.894885",
+        dataset_version="2018; daily",
+        dataset_checksum="md5:3457bc87e444e1e7d84a1b703965708d",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_IND",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CWC gauge code (e.g. 3002; 'camels_ind:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-IND v2.2 daily observed discharge (wide-matrix streamflow_observed.csv) "
+              "from the published Zenodo archive via the CSFS camels_ind connector — a "
+              "DOI-pinned dataset artifact, checksum-verified on download. Authoritative "
+              "standalone (distinct from the Caravan-derived camels_in alias).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Mangukiya et al. (2025), CAMELS-IND (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.14999580",
+        dataset_version="2.2; daily",
+        dataset_checksum="md5:3993c25ba7d7b86df0541de91e094f39",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_CH",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="BAFU gauge id (e.g. 2004; 'camels_ch:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-CH daily observation-based discharge (discharge_vol(m3/s)) from the "
+              "published Zenodo archive via the CSFS camels_ch connector — a DOI-pinned "
+              "dataset artifact, checksum-verified on download.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Höge et al. (2023), CAMELS-CH (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.15025258",
+        dataset_version="daily",
+        dataset_checksum="md5:04f909d9904375647d030c4ab8ddfdbe",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_DK",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="CAMELS-DK catchment id (e.g. 12410011; 'camels_dk:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-DK daily observed discharge (Qobs) from the published GEUS Dataverse "
+              "archive via the CSFS camels_dk connector — a DOI-pinned dataset artifact, "
+              "checksum-verified on download; outlet coords (EPSG:25832) reprojected to WGS84.",
+        # CAMELS-DK is CC0 1.0 (public-domain dedication) — no restriction.
+        redistribution="open",
+        data_license="CC0-1.0",
+        attribution="Liu et al. (2024), CAMELS-DK (GEUS Dataverse)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.22008/FK2/AZXSYP",
+        dataset_version="daily",
+        dataset_checksum="md5:50b6d3957e6abf0017973ac872aea67f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_US",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="8-digit USGS gauge id (e.g. 01013500; 'camels_us:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-US daily USGS discharge (cfs converted to m3/s) from the published "
+              "bundle via the CSFS camels_us connector — a DOI-pinned dataset artifact, "
+              "checksum-verified on download; coords from the bundled gauge_information.txt.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Newman et al. (2015) / Addor et al. (2017), CAMELS-US (NCAR/UCAR)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5065/D6MW2F4D",
+        dataset_version="1.2; daily",
+        dataset_checksum="md5:8e9a466710e8270b58f01d332a87184f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_GB",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="NRFA gauge id (e.g. 41004; 'camels_gb:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-GB daily observed discharge (discharge_vol, m3/s) from the published "
+              "CEH archive via the CSFS camels_gb connector — a dataset artifact. CEH "
+              "regenerates the zip per request, so integrity is a CONTENT checksum over the "
+              "extracted data (verified on download).",
+        # CAMELS-GB is Open Government Licence (UK), redistributable with attribution.
+        redistribution="attribution",
+        data_license="OGL-UK-3.0",
+        attribution="Coxon et al. (2020), CAMELS-GB (NERC EDS / CEH EIDC)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
+        dataset_version="daily",
+        dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_PE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="PE gauge id (e.g. PE_211408; 'camels_pe:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-PE daily OBSERVED streamflow (flow_obs, mm/day converted to m3/s via "
+              "catchment area) from the published Zenodo archive via the CSFS camels_pe "
+              "connector — a dataset artifact, checksum-verified on download. The simulated "
+              "flow_sim column (PISCO-ARNOVIC) is ignored. Coordinates already WGS84.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Llauca et al. (2026), CAMELS-PE (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.20058778",
+        dataset_version="1.0; daily",
+        dataset_checksum="md5:13f127d381338eee0e35359c08dba199",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="HYSETS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="agency Official_ID (HYDAT e.g. 01AD002, USGS e.g. 01646500; 'hysets:<id>' also accepted)",
+        parity_grade=None,
+        notes="HYSETS quality-controlled daily observed discharge (m3/s) for 14,425 North "
+              "American watersheds, read from the discharge(watershed, time) variable of the "
+              "published OSF NetCDF (~3 GB) via the CSFS hysets connector — a dataset artifact, "
+              "checksum-verified on download. Gauge coordinates from the watershed properties "
+              "table. Requires xarray/netCDF4.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Arsenault et al. (2020), HYSETS (OSF)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.17605/OSF.IO/RPC3W",
+        dataset_version="2023 update; daily",
+        dataset_checksum="md5:ccacb13ea3436fb8fd2e4dfecb3353d9",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_NZ",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="NZ hydrological station id (e.g. 29605; 'camels_nz:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-NZ daily observed streamflow (flow, m3/s) from the published University "
+              "of Canterbury (figshare) archive via the CSFS camels_nz connector — a dataset "
+              "artifact, checksum-verified on download (gauge coordinates already WGS84). 14 of "
+              "369 stations are permission-gated by the data owner and ship empty (all-NA) files.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Bushra et al. (2025), CAMELS-NZ (University of Canterbury)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.26021/canterburynz.28827644",
+        dataset_version="daily",
+        dataset_checksum="md5:089757d4b019487fefd8f20d7099403d",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_FI",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="SYKE gauge id (e.g. 896; hyphenated for virtual gauges; 'camels_fi:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-FI daily observed discharge (discharge_vol, m3/s) from the published "
+              "Zenodo archive via the CSFS camels_fi connector — a dataset artifact, checksum-"
+              "verified on download. Gauge coordinates reprojected from EPSG:3067 (the lat/lon "
+              "columns have a documented description swap). ESSD preprint under review.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Seppä et al. (2025), CAMELS-FI (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.15853357",
+        dataset_version="1.2.0; daily",
+        dataset_checksum="md5:f50bf2d972f42b6fc4db690ce201482f",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_LUX",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="zero-padded id (e.g. ID_01; 'camels_lux:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-LUX daily streamflow (Q, m3/s) from the published Zenodo archive via the "
+              "CSFS camels_lux connector — a dataset artifact, checksum-verified on download. "
+              "Gap-filled values (Qflag != 0) are surfaced with an 'estimated' quality flag; "
+              "gauge coordinates from the bundled WGS84 shapefile. ESSD preprint under review.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Nijzink et al. (2025), CAMELS-LUX (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.13846619",
+        dataset_version="2.1; daily",
+        dataset_checksum="md5:6c4a14a0feed08382a6b565a798d8fdc",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_FR",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="Hydro3 station code (e.g. A105003001; 'camels_fr:<code>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-FR daily observed streamflow (tsd_q_l, L/s converted to m3/s on read) "
+              "from the published Recherche Data Gouv archive via the CSFS camels_fr "
+              "connector — a dataset artifact, checksum-verified on download. Gauge outlet "
+              "coordinates from the bundled GeoPackage (EPSG:27572 reprojected to WGS84).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Delaigue et al. (2024), CAMELS-FR (INRAE / Recherche Data Gouv)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.57745/WH7FJR",
+        dataset_version="3.2; daily",
+        dataset_checksum="md5:dd48efe7cca89e86d8435a9888ebcdca",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_SE",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="SMHI catchment id (e.g. 1069; 'camels_se:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-SE daily observed discharge (Qobs_m3s) from the published SND archive "
+              "via the CSFS camels_se connector — a dataset artifact, checksum-verified on "
+              "download (gauge coordinates from the bundled WGS84 station shapefile). SND "
+              "publishes no archive checksum; the pinned md5 is self-computed.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Teutschbein et al. (2024), CAMELS-SE (SND 2023-173)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.57804/t3rm-v029",
+        dataset_version="v1; daily",
+        dataset_checksum="md5:5e6972cf29c9220e547bc00dddd7b03a",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="CAMELS_AUS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="AWRC station id (e.g. 912101A; 'camels_aus:<id>' also accepted)",
+        parity_grade=None,
+        notes="CAMELS-AUS v2 daily streamflow (wide matrix, ML/day converted to m3/s on "
+              "read) from the published Zenodo archive via the CSFS camels_aus connector — "
+              "a dataset artifact, checksum-verified on download (outlet coordinates from "
+              "the bare attributes master-table CSV).",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Fowler et al. (2024), CAMELS-AUS v2 (Zenodo)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.5281/zenodo.13350616",
+        dataset_version="2.02; daily",
+        dataset_checksum="md5:28113b991387796fe374aa0d1f4d4a4f",
+        noncommercial=False,
     ),
     ObservationCapabilitySpec(
         provider_id="CSFS",
@@ -724,7 +1423,40 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         notes="Ungated generic access to every CSFS provider connector; refused by "
               "the parity gate unless ALLOW_UNGATED_BACKENDS: true (the registry-"
               "handler tier and ADDITIONAL_OBSERVATIONS: csfs remain available).",
+        # Generic entry spans 80+ providers with heterogeneous terms (some
+        # restricted, e.g. GRDC), so the posture cannot be asserted per-provider
+        # here. Left 'unknown' — already refused by the parity gate
+        # (parity_grade=None); a future per-provider capability split can
+        # declare each source's true posture.
+        redistribution="unknown",
+        data_license="",
+        attribution="",
     ),
+)
+
+# Posture-only provider_api drop-ins (live national/regional APIs). Generated
+# from NATIONAL_PROVIDER_APIS so the table is the single source of truth. Each
+# is ungraded (parity_grade=None — no native handler to grade against) and
+# admitted by the framework's posture-only gate on its open/attribution source
+# license; all are live round-trip verified (tests/test_provider_api_verified.py).
+OBSERVATION_CAPABILITIES = OBSERVATION_CAPABILITIES + tuple(
+    ObservationCapabilitySpec(
+        provider_id=_api.slug.upper(),
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme=f"{_api.station_scheme}; '{_api.slug}:<id>' also accepted",
+        parity_grade=None,  # posture-only provider_api: no native to parity-grade against
+        notes=(
+            f"Live {_api.attribution} streamflow via the CSFS {_api.slug} connector — a "
+            "provider_api drop-in with no native SYMFLUENCE handler, admitted by the "
+            "posture-only gate (open/attribution source license) and live round-trip verified."
+            + (f" Coverage: {_api.coverage}." if _api.coverage else "")
+        ),
+        redistribution=_api.redistribution,
+        data_license=_api.data_license,
+        attribution=_api.attribution,
+        source_kind="provider_api",
+    )
+    for _api in NATIONAL_PROVIDER_APIS
 )
 
 
@@ -782,6 +1514,14 @@ class CommunityObservationBackend:
                 auth=frozenset(),
                 parity_grade=spec.parity_grade,
                 notes=spec.notes,
+                data_license=spec.data_license,
+                attribution=spec.attribution,
+                redistribution=contract.Redistribution(spec.redistribution),
+                source_kind=contract.SourceKind(spec.source_kind),
+                dataset_doi=spec.dataset_doi,
+                dataset_version=spec.dataset_version,
+                dataset_checksum=spec.dataset_checksum,
+                noncommercial=spec.noncommercial,
             )
             for spec in OBSERVATION_CAPABILITIES
         )
@@ -862,27 +1602,50 @@ class CommunityObservationBackend:
         end = request.window[1] if request.window else None
         paths: list[Path] = []
         for raw_file in raw_files:
-            obs = obs_csv_v1_frame(pd.read_csv(raw_file), start=start, end=end)
+            # round_trip float parsing (see process()): exact recovery of the
+            # written floats keeps the OBS_CSV_V1 delivery bitwise-faithful.
+            obs = obs_csv_v1_frame(pd.read_csv(raw_file, float_precision="round_trip"), start=start, end=end)
             out = target_dir / f"{raw_file.stem.removesuffix('_raw')}_obs_v1.csv"
             obs.to_csv(out, index=False)
             paths.append(out)
 
         import csfs
 
+        # Propagate the SOURCE-data license posture into the delivery so the
+        # obligation survives into the manifest and downstream provenance.
+        spec = next(
+            (s for s in OBSERVATION_CAPABILITIES
+             if s.provider_id.lower() == str(request.provider_id).lower()),
+            None,
+        )
+        provenance = {
+            "integration": f"{__name__}.CommunityObservationBackend",
+            "csfs_version": getattr(csfs, "__version__", "unknown"),
+            "provider_id": str(request.provider_id),
+            "stations": ",".join(request.station_ids),
+            "processed_path": str(processed),
+            "acquired_at": datetime.now(UTC).isoformat(),
+        }
+        # Dataset-artifact provenance: record the DOI/version/verified checksum
+        # in the manifest so the delivery is traceable to the published archive.
+        if spec and spec.source_kind == "dataset_artifact":
+            provenance.update(
+                source_kind=spec.source_kind,
+                dataset_doi=spec.dataset_doi,
+                dataset_version=spec.dataset_version,
+                dataset_checksum=spec.dataset_checksum,
+                noncommercial=str(spec.noncommercial).lower(),
+            )
         result = contract.AcquisitionResult(
             paths=tuple(paths),
             schema=contract.SchemaId.OBS_CSV_V1,
             dataset_id=request.provider_id,
             backend=self.name,
-            provenance={
-                "integration": f"{__name__}.CommunityObservationBackend",
-                "csfs_version": getattr(csfs, "__version__", "unknown"),
-                "provider_id": str(request.provider_id),
-                "stations": ",".join(request.station_ids),
-                "processed_path": str(processed),
-                "acquired_at": datetime.now(UTC).isoformat(),
-            },
+            provenance=provenance,
             variables_delivered=frozenset({"streamflow"}),
+            data_license=spec.data_license if spec else "",
+            attribution=spec.attribution if spec else "",
+            redistribution=contract.Redistribution(spec.redistribution if spec else "unknown"),
         )
         contract.write_manifest(result, target_dir)
         return result
@@ -899,8 +1662,8 @@ def _integration_logger() -> Any:
 # ---------------------------------------------------------------------------
 
 
-def register() -> None:
-    """Register the CSFS observation tiers with SYMFLUENCE (idempotent).
+def _register_impl() -> None:
+    """Actual registration logic for :func:`register` (idempotent).
 
     Zero-arg hook referenced by the ``symfluence.plugins`` entry point;
     SYMFLUENCE's bootstrap calls it automatically on ``import symfluence``.
@@ -940,13 +1703,15 @@ def register() -> None:
         backends.add("community", CommunityObservationBackend)
 
 
-# Self-register when SYMFLUENCE is importable. This complements the entry
-# point: if THIS module is imported before symfluence, the defensive import
-# above triggers symfluence's bootstrap mid-module, and its plugin discovery
-# then sees a partially-initialized module (no `register` yet) and skips the
-# csfs entry point. Registering here, at the end of the module body, makes
-# the handler available regardless of import order; register() is idempotent
-# so the entry-point path stays harmless.
+# The module is now fully defined; register() may do its real work. This
+# complements the entry point: if THIS module was imported before symfluence,
+# the defensive import above already triggered symfluence's bootstrap, whose
+# plugin discovery called register() while _MODULE_READY was False (a quiet
+# no-op). Flipping the flag and registering here makes the handler available
+# regardless of import order; _register_impl() is idempotent so the normal
+# entry-point path stays harmless.
+_MODULE_READY = True
+
 if HAVE_SYMFLUENCE:  # pragma: no cover - exercised only with SYMFLUENCE present
     import contextlib
 

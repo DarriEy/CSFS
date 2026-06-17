@@ -216,8 +216,9 @@
   realtime: true
   realtime_latency: 1h
   stations: ~1200
-  stability: moderate
-  status: implemented
+  stability: fragile
+  status: degraded
+  notes: "Upstream ArcGIS service (DGA/Red_Hidrometrica/MapServer on rest-sit.mop.gob.cl) was decommissioned — fetch_stations fails; no drop-in replacement (SNIA is a stateful JSP portal). Chilean discharge is available via the CAMELS-CL dataset-artifact connector (camels_cl) instead. Verified dead 2026-06-17."
 
 - slug: india_wris
   name: India WRIS / CWC
@@ -422,7 +423,7 @@
   stations: ~397
   stability: stable
   status: implemented
-  notes: Real-time data via backend hisbaza.py API.
+  notes: "Real-time data via backend hisbaza.py API. NOTE: the zadnjipodaci feed serves water LEVEL (cm), not discharge — stored in the discharge field per the connector's convention; NOT a streamflow drop-in (no m³/s source)."
   estreams_id: HR_DHZ
 
 - slug: ireland_epa
@@ -566,7 +567,7 @@
   stations: 91
   stability: fragile
   status: implemented
-  notes: PDF hydrological yearbooks; requires tabula-style extraction.
+  notes: "PDF hydrological yearbooks; requires tabula-style extraction. NOTE: the live FHMZ JSON API 404s and the site publishes only water LEVEL (vodostaj, cm), not discharge — NOT a streamflow drop-in."
   estreams_id: BA_FHMZ
 
 # ──────────────────────────────────────────────
@@ -718,6 +719,28 @@
   stations: 516
   status: fallback
 
+- slug: camels_ind
+  name: CAMELS-IND
+  country: IN
+  region: asia
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 472
+  status: implemented
+
+- slug: camels_ch
+  name: CAMELS-CH
+  country: CH
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 331
+  status: implemented
+
 - slug: camels_br
   name: CAMELS-BR
   country: BR
@@ -784,6 +807,114 @@
   stations: 3330
   status: implemented
   notes: "Offline archive (CAMELS-DK, Zenodo). Returns a small seed catalogue only; observations require local downloaded dataset files (config['data_dir']). No obs in automated acquisition without them."
+
+- slug: camels_se
+  name: CAMELS-SE
+  country: SE
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 50
+  status: implemented
+  notes: "Dataset artifact (CAMELS-SE, SND 2023-173, CC-BY-4.0). Auto-downloads two archives via ensure_dataset: per-catchment daily Qobs_m3s timeseries and the WGS84 gauge point shapefile (station coordinates). SND publishes no archive checksum; pinned md5 is self-computed."
+
+- slug: camels_fr
+  name: CAMELS-FR
+  country: FR
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 654
+  status: implemented
+  notes: "Dataset artifact (CAMELS-FR, Recherche Data Gouv doi:10.57745/WH7FJR, CC-BY-4.0). Auto-downloads two archives via ensure_dataset: per-station daily streamflow (tsd_q_l, L/s -> m3/s) and the gauge outlet GeoPackage (coords in EPSG:27572, reprojected to WGS84). Access endpoint redirects to an INRAE object store."
+
+- slug: camels_nz
+  name: CAMELS-NZ
+  country: NZ
+  region: oceania
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 369
+  status: implemented
+  notes: "Dataset artifact (CAMELS-NZ, U. Canterbury figshare doi:10.26021/canterburynz.28827644, CC-BY-4.0). Auto-downloads daily streamflow (flow, m3/s) + catchment info (WGS84 coords). figshare URLs carry no filename and redirect to signed S3; 14/369 stations are permission-gated and ship empty files."
+
+- slug: camels_fi
+  name: CAMELS-FI
+  country: FI
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 320
+  status: implemented
+  notes: "Dataset artifact (CAMELS-FI, Zenodo doi:10.5281/zenodo.15853357, CC-BY-4.0; ESSD preprint under review). Single bundle: per-gauge timeseries (discharge_vol, m3/s, CAMELS-GB layout) + meta attributes; coords reprojected from EPSG:3067."
+
+- slug: camels_lux
+  name: CAMELS-LUX
+  country: LU
+  region: europe
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 56
+  status: implemented
+  notes: "Dataset artifact (CAMELS-LUX, Zenodo doi:10.5281/zenodo.13846619, CC-BY-4.0; ESSD preprint under review). Auto-downloads the timeseries bundle (daily Q, m3/s; Qflag != 0 -> estimated) + the WGS84 gauge shapefile for coordinates."
+
+- slug: camels_pe
+  name: CAMELS-PE
+  country: PE
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 136
+  status: implemented
+  notes: "Dataset artifact (CAMELS-PE, Llauca et al. 2026, Zenodo doi:10.5281/zenodo.20058778, CC-BY-4.0). Single bundle: per-catchment timeseries with flow_obs (OBSERVED streamflow, mm/day -> m3/s via catchment area; flow_sim PISCO-ARNOVIC ignored) + topographic attributes (area) + stations (WGS84 coords)."
+
+- slug: hysets
+  name: HYSETS
+  country: [CA, US, MX]
+  region: north_america
+  api_type: bulk_download
+  format: [netcdf]
+  access: open
+  realtime: false
+  stations: 14425
+  status: implemented
+  notes: "Dataset artifact (HYSETS, OSF doi:10.17605/OSF.IO/RPC3W, CC-BY-4.0). Observed daily discharge (m3/s) is a discharge(watershed, time) variable in a ~3 GB NetCDF (not per-gauge CSVs); keyed by agency Official_ID via the watershed properties table. Requires xarray/netCDF4. OSF download URLs are filename-less (DATASETS 'filename' override)."
+
+- slug: camels_col
+  name: CAMELS-COL
+  country: CO
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: restricted
+  realtime: false
+  stations: 347
+  status: manual
+  notes: "Access-gated standalone (CAMELS-COL, Zenodo doi:10.5281/zenodo.15554735, CC-BY but files access-restricted: HTTP 403 + manual Request access). NOT in the provenance-gated tier (no auto-download/checksum). Manual connector: provide a local copy via config['data_dir']. Streamflow filename/column conventions are documented-but-UNVERIFIED pending access."
+
+- slug: camels_spat
+  name: CAMELS-SPAT
+  country: [US, CA]
+  region: north_america
+  api_type: bulk_download
+  format: [netcdf]
+  access: restricted
+  realtime: false
+  stations: 1426
+  status: manual
+  notes: "Distribution-gated standalone (CAMELS-SPAT, FRDR doi:10.20383/103.01306, Globus-only; no HTTPS endpoint). NOT in the provenance-gated tier (no auto-download/checksum). Manual connector: Globus-transfer locally, point config['data_dir'] at it. Per-basin NetCDF streamflow variable/metadata conventions are documented-but-UNVERIFIED pending a local copy."
 
 - slug: camelsh
   name: CAMELSH (Hourly US)
