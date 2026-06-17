@@ -48,6 +48,15 @@ api = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
 ]
+# Geospatial/NetCDF readers for the dataset-artifact + national-API connectors
+# (shapefile/GeoPackage station catalogues via fiona; NetCDF discharge via the
+# xarray netCDF4 backend). Optional: connectors lazy-import these and degrade to
+# an empty result when absent. CI installs this extra so those paths are
+# exercised and counted toward coverage.
+geo = [
+    "fiona>=1.9",
+    "netCDF4>=1.6",
+]
 docs = [
     "mkdocs>=1.6",
     "mkdocs-material>=9.5",
@@ -139,5 +148,7 @@ check_untyped_defs = true
 # symfluence is never a dependency — csfs.integrations.symfluence imports it
 # defensively and degrades when absent, so mypy must not require it either.
 [[tool.mypy.overrides]]
-module = ["pyarrow", "pyarrow.*", "pandas", "pandas.*", "symfluence", "symfluence.*"]
+# fiona ships no type stubs and is an optional (geo extra) dependency, so it may
+# be absent in lean environments — mypy must not require it either way.
+module = ["pyarrow", "pyarrow.*", "pandas", "pandas.*", "symfluence", "symfluence.*", "fiona", "fiona.*"]
 ignore_missing_imports = true
