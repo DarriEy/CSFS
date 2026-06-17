@@ -577,6 +577,7 @@ class _NationalAPI(NamedTuple):
     data_license: str
     attribution: str
     station_scheme: str
+    coverage: str = ""        # "" full; else a note e.g. "realtime-only", "historical archive"
 
 
 #: The 19 verified, mirrorable national-API drop-ins (slug == provider key).
@@ -619,6 +620,29 @@ NATIONAL_PROVIDER_APIS: tuple[_NationalAPI, ...] = (
                  "UK Environment Agency", "EA station/measure id"),
     _NationalAPI("uk_nrfa", "attribution", "OGL-UK-3.0",
                  "UK National River Flow Archive (CEH)", "NRFA station number (e.g. 1001)"),
+    # Added after per-connector diagnosis + license clearance (the no-data-in-sweep
+    # batch). Several are realtime- or historical-only — noted in `coverage`.
+    _NationalAPI("spain_cedex", "attribution", "Spain-RISP-Ley-37-2007",
+                 "CEDEX Anuario de Aforos (Spain)", "CEDEX station code (e.g. 9001)",
+                 coverage="historical archive (daily, ends 2021)"),
+    _NationalAPI("vietnam_mekong", "attribution", "OGL-UK-3.0",
+                 "NERC EIDC / Univ. Hull (Mekong)", "Mekong station code (e.g. chau_doc)",
+                 coverage="historical archive (EIDC data package)"),
+    _NationalAPI("austria_ehyd", "attribution", "CC-BY-4.0",
+                 "eHYD / BMLUK (Austria)", "eHYD station id (e.g. 200014)",
+                 coverage="realtime-only"),
+    _NationalAPI("slovenia_arso", "attribution", "CC-BY-4.0",
+                 "Slovenian Environment Agency (ARSO)", "ARSO station id (e.g. 1060)",
+                 coverage="realtime-only"),
+    _NationalAPI("germany_bavaria", "attribution", "CC-BY-4.0",
+                 "Gewässerkundlicher Dienst Bayern (LfU Bayern)", "GKD Bayern station number",
+                 coverage="realtime-only"),
+    _NationalAPI("taiwan_wra", "attribution", "OGDL-Taiwan-1.0",
+                 "Taiwan Water Resources Agency (WRA)", "WRA station/reservoir id (e.g. 10201)",
+                 coverage="realtime-only (~last 24h)"),
+    _NationalAPI("bulgaria_eaemdr", "attribution", "EU-Open-Data-Directive-2019-1024",
+                 "Bulgarian Executive Agency for the Danube (ИАППД)", "Danube gauge name (e.g. Ruse)",
+                 coverage="realtime-only (daily Danube bulletin)"),
 )
 
 # Register each as a drop-in backend (keyed by its slug). Done before
@@ -1425,6 +1449,7 @@ OBSERVATION_CAPABILITIES = OBSERVATION_CAPABILITIES + tuple(
             f"Live {_api.attribution} streamflow via the CSFS {_api.slug} connector — a "
             "provider_api drop-in with no native SYMFLUENCE handler, admitted by the "
             "posture-only gate (open/attribution source license) and live round-trip verified."
+            + (f" Coverage: {_api.coverage}." if _api.coverage else "")
         ),
         redistribution=_api.redistribution,
         data_license=_api.data_license,

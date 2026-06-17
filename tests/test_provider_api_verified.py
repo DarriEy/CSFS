@@ -18,7 +18,7 @@ station returns at least one real discharge value in EITHER window.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,12 +29,19 @@ pytestmark = [pytest.mark.network, pytest.mark.asyncio]
 
 discover()  # populate the connector registry so get_connector(slug) resolves
 
+# A live (non-deterministic) network test, so "now" is legitimate here. The
+# windows span the providers' very different coverage: a historical archive
+# window, a mid-archive window, and a CURRENT window (computed at run time) that
+# realtime-only feeds — which keep only the last hours/days — require.
+_NOW = datetime.now(UTC)
 _WINDOWS = (
-    (datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 3, 1, tzinfo=UTC)),   # archive
-    (datetime(2026, 5, 1, tzinfo=UTC), datetime(2026, 6, 15, tzinfo=UTC)),  # realtime
+    (datetime(1990, 6, 1, tzinfo=UTC), datetime(1990, 9, 1, tzinfo=UTC)),   # deep archive (R-ArcticNET etc.)
+    (datetime(2010, 6, 1, tzinfo=UTC), datetime(2010, 9, 1, tzinfo=UTC)),   # mid archive
+    (datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 3, 1, tzinfo=UTC)),   # recent archive
+    (_NOW - timedelta(days=10), _NOW + timedelta(days=1)),                  # current (realtime feeds)
 )
-_MAX_STATIONS = 5
-_TIMEOUT = 90
+_MAX_STATIONS = 8  # enough to hit an in-feed station; bounded for heavy archives
+_TIMEOUT = 120
 
 
 async def _first_real_discharge(slug: str) -> tuple[int, str | None]:
