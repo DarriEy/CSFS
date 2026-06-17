@@ -561,6 +561,80 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
 }
 
 
+class _NationalAPI(NamedTuple):
+    """A live national/regional streamflow API exposed as a posture-only drop-in.
+
+    These have NO native SYMFLUENCE handler to parity-grade against, so they are
+    admitted by the framework's posture-only provider_api gate (an open/
+    attribution SOURCE license). Each has been live round-trip verified — a real
+    fetch returns observed discharge — recorded in tests/test_provider_api_verified.py.
+    Providers whose data is RESTRICTED (e.g. belgium_spw) or whose license is
+    UNKNOWN (e.g. ecuador_inamhi, newzealand_hilltop) are deliberately NOT here:
+    a mirror must not re-serve them, and the gate would refuse them anyway.
+    """
+    slug: str
+    redistribution: str       # "open" | "attribution"
+    data_license: str
+    attribution: str
+    station_scheme: str
+
+
+#: The 19 verified, mirrorable national-API drop-ins (slug == provider key).
+NATIONAL_PROVIDER_APIS: tuple[_NationalAPI, ...] = (
+    _NationalAPI("argentina_snih", "attribution", "SNIH-terms",
+                 "SNIH / Subsecretaría de Recursos Hídricos (Argentina)", "SNIH station id"),
+    _NationalAPI("australia_bom", "attribution", "CC-BY-4.0",
+                 "Australian Bureau of Meteorology", "AWRC station number (e.g. 403213)"),
+    _NationalAPI("belgium_waterinfo", "attribution", "Modellicentie-Gratis-Hergebruik-Vlaanderen-1.0",
+                 "VMM waterinfo.be (Flanders)", "waterinfo station code (e.g. 01L04_035)"),
+    _NationalAPI("czechia_chmu", "attribution", "CC-BY-4.0",
+                 "Czech Hydrometeorological Institute (ČHMÚ)", "CHMI station code"),
+    _NationalAPI("denmark_dmihyd", "attribution", "Danmarks-Miljoeportal-terms",
+                 "Miljøstyrelsen / Danmarks Miljøportal", "station id (e.g. 61000460)"),
+    _NationalAPI("finland_syke", "attribution", "CC-BY-4.0",
+                 "Finnish Environment Institute (SYKE)", "SYKE station id (e.g. 894)"),
+    _NationalAPI("germany_nrw", "open", "DL-DE-Zero-2.0",
+                 "LANUK North Rhine-Westphalia", "NRW station number"),
+    _NationalAPI("germany_pegelonline", "attribution", "DL-DE-BY-2.0",
+                 "WSV / PEGELONLINE (Germany)", "PEGELONLINE station number/uuid"),
+    _NationalAPI("greece_openhi", "attribution", "CC-BY-SA-4.0",
+                 "OpenHi.net (Greece)", "OpenHi station id"),
+    _NationalAPI("ireland_epa", "attribution", "CC-BY-4.0",
+                 "OPW / EPA (Ireland)", "station id (e.g. 14107)"),
+    _NationalAPI("italy_emilia", "attribution", "CC-BY-4.0",
+                 "ARPAE Emilia-Romagna (Italy)", "ARPAE station id"),
+    _NationalAPI("japan_mlit", "attribution", "JP-Gov-Standard-Terms-2.0",
+                 "MLIT (Japan, river.go.jp)", "MLIT observatory id"),
+    _NationalAPI("lithuania_lhmt", "attribution", "CC-BY-SA-4.0",
+                 "Lithuanian Hydrometeorological Service (LHMT)", "meteo.lt station code"),
+    _NationalAPI("netherlands_rws", "open", "CC0-1.0",
+                 "Rijkswaterstaat (Netherlands)", "RWS location code (e.g. aa.helmond)"),
+    _NationalAPI("norway_nve", "attribution", "NLOD-2.0",
+                 "NVE (Norway)", "NVE station id (e.g. 1.200.0)"),
+    _NationalAPI("poland_imgw", "attribution", "CC-BY-4.0",
+                 "IMGW-PIB (Poland)", "IMGW station id"),
+    _NationalAPI("scotland_sepa", "attribution", "OGL-UK-3.0",
+                 "Scottish Environment Protection Agency (SEPA)", "SEPA station id (e.g. 14969)"),
+    _NationalAPI("uk_ea", "attribution", "OGL-UK-3.0",
+                 "UK Environment Agency", "EA station/measure id"),
+    _NationalAPI("uk_nrfa", "attribution", "OGL-UK-3.0",
+                 "UK National River Flow Archive (CEH)", "NRFA station number (e.g. 1001)"),
+)
+
+# Register each as a drop-in backend (keyed by its slug). Done before
+# PROVIDER_HANDLERS is built below so each gets a shadow handler.
+for _api in NATIONAL_PROVIDER_APIS:
+    PROVIDER_BACKENDS[_api.slug] = ProviderBackend(
+        slug=_api.slug,
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,
+    )
+
+
 def resolve_provider_station_id(provider_key: str, raw: Any) -> str:
     """Resolve a native or namespaced station id to the canonical CSFS id.
 
@@ -1334,6 +1408,30 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         data_license="",
         attribution="",
     ),
+)
+
+# Posture-only provider_api drop-ins (live national/regional APIs). Generated
+# from NATIONAL_PROVIDER_APIS so the table is the single source of truth. Each
+# is ungraded (parity_grade=None — no native handler to grade against) and
+# admitted by the framework's posture-only gate on its open/attribution source
+# license; all are live round-trip verified (tests/test_provider_api_verified.py).
+OBSERVATION_CAPABILITIES = OBSERVATION_CAPABILITIES + tuple(
+    ObservationCapabilitySpec(
+        provider_id=_api.slug.upper(),
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme=f"{_api.station_scheme}; '{_api.slug}:<id>' also accepted",
+        parity_grade=None,  # posture-only provider_api: no native to parity-grade against
+        notes=(
+            f"Live {_api.attribution} streamflow via the CSFS {_api.slug} connector — a "
+            "provider_api drop-in with no native SYMFLUENCE handler, admitted by the "
+            "posture-only gate (open/attribution source license) and live round-trip verified."
+        ),
+        redistribution=_api.redistribution,
+        data_license=_api.data_license,
+        attribution=_api.attribution,
+        source_kind="provider_api",
+    )
+    for _api in NATIONAL_PROVIDER_APIS
 )
 
 

@@ -305,13 +305,17 @@ def test_chunk_round_trip_through_csv(tmp_path):
 
 def test_provider_backends_cover_the_native_streamflow_providers():
     """Drop-in keys mirror SYMFLUENCE's lowercased STREAMFLOW_DATA_PROVIDER values."""
+    national = {a.slug for a in integration.NATIONAL_PROVIDER_APIS}
     assert set(integration.PROVIDER_BACKENDS) == {
         "usgs", "wsc", "smhi", "hubeau", "lamah_ice", "lamah_ce",
         "camels_br", "camels_de", "camels_cl", "camels_ind", "camels_ch",
         "camels_aus", "camels_us", "camels_dk", "camels_gb", "camels_se", "camels_fr",
         "camels_nz", "camels_fi", "camels_lux", "hysets", "camels_pe",
-    }
+    } | national
     slugs = {key: backend.slug for key, backend in integration.PROVIDER_BACKENDS.items()}
+    # Every posture-only national-API drop-in is keyed by its own slug.
+    assert all(slugs[a.slug] == a.slug for a in integration.NATIONAL_PROVIDER_APIS)
+    slugs = {k: v for k, v in slugs.items() if k not in national}
     assert slugs == {
         "usgs": "usgs",
         "wsc": "environment_canada",
@@ -858,7 +862,15 @@ def test_observation_capability_table_is_well_formed():
         "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
         "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
         "HYSETS", "CAMELS_PE", "CSFS",
-    }
+    } | {a.slug.upper() for a in integration.NATIONAL_PROVIDER_APIS}
+    # The posture-only national-API drop-ins are provider_api, ungraded, with an
+    # open/attribution source license (the gate's posture-only admission bar).
+    for a in integration.NATIONAL_PROVIDER_APIS:
+        cap = specs[a.slug.upper()]
+        assert cap.source_kind == "provider_api"
+        assert cap.parity_grade is None
+        assert cap.redistribution in ("open", "attribution")
+        assert cap.data_license
     grade_re = re.compile(r"^(bit-identical|value-identical:.+)$")
     for spec in specs.values():
         assert spec.kinds == frozenset({"streamflow"})
@@ -946,7 +958,7 @@ class TestCommunityObservationBackend:
             "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
             "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
             "HYSETS", "CAMELS_PE", "CSFS",
-        }
+        } | {a.slug.upper() for a in integration.NATIONAL_PROVIDER_APIS}
         assert caps["USGS"].parity_grade == "bit-identical"
         assert caps["CSFS"].parity_grade is None
         for cap in caps.values():
