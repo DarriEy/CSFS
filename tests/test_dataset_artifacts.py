@@ -129,6 +129,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "CAMELS_PE": _Artifact(
+        provider_id="CAMELS_PE",
+        connector_slug="camels_pe",
+        doi="10.5281/zenodo.20058778",
+        checksum="md5:13f127d381338eee0e35359c08dba199",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
     "HYSETS": _Artifact(
         provider_id="HYSETS",
         connector_slug="hysets",

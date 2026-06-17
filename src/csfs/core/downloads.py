@@ -212,6 +212,17 @@ DATASETS: list[dict] = [
         "checksum": "md5:d6800908b18317c0eae8462c6e86e15b",
     },
     {
+        # CAMELS-PE — single bundle (per-catchment timeseries + attributes +
+        # stations). flow_obs is OBSERVED streamflow in mm/day (converted to
+        # m3/s via catchment area in the connector). CC-BY-4.0.
+        "slug": "camels_pe",
+        "name": "CAMELS-PE — Peru large-sample hydrology (Zenodo)",
+        "auto": True,
+        "size": "~121 MB",
+        "url": "https://zenodo.org/records/20058779/files/CAMELS-PE_v1.0.zip?download=1",
+        "checksum": "md5:13f127d381338eee0e35359c08dba199",
+    },
+    {
         # CAMELS-NZ daily streamflow — per-station obs (flow, m3/s). figshare
         # access URLs carry no filename and redirect to a signed S3 link; the
         # download layer content-sniffs the archive and httpx follows the 30x.

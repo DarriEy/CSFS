@@ -867,6 +867,18 @@
   status: implemented
   notes: "Dataset artifact (CAMELS-LUX, Zenodo doi:10.5281/zenodo.13846619, CC-BY-4.0; ESSD preprint under review). Auto-downloads the timeseries bundle (daily Q, m3/s; Qflag != 0 -> estimated) + the WGS84 gauge shapefile for coordinates."
 
+- slug: camels_pe
+  name: CAMELS-PE
+  country: PE
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: open
+  realtime: false
+  stations: 136
+  status: implemented
+  notes: "Dataset artifact (CAMELS-PE, Llauca et al. 2026, Zenodo doi:10.5281/zenodo.20058778, CC-BY-4.0). Single bundle: per-catchment timeseries with flow_obs (OBSERVED streamflow, mm/day -> m3/s via catchment area; flow_sim PISCO-ARNOVIC ignored) + topographic attributes (area) + stations (WGS84 coords)."
+
 - slug: hysets
   name: HYSETS
   country: [CA, US, MX]
