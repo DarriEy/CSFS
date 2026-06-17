@@ -129,6 +129,14 @@ ARTIFACTS = {
         data_license="CC-BY-4.0",
         noncommercial=False,
     ),
+    "HYSETS": _Artifact(
+        provider_id="HYSETS",
+        connector_slug="hysets",
+        doi="10.17605/OSF.IO/RPC3W",
+        checksum="md5:ccacb13ea3436fb8fd2e4dfecb3353d9",
+        data_license="CC-BY-4.0",
+        noncommercial=False,
+    ),
     "CAMELS_NZ": _Artifact(
         provider_id="CAMELS_NZ",
         connector_slug="camels_nz",

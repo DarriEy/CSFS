@@ -187,6 +187,31 @@ DATASETS: list[dict] = [
         "checksum": "md5:aa47ba598d0486d5ea4ccca6e132a7be",
     },
     {
+        # HYSETS quality-controlled stations — a ~3 GB multi-variable NetCDF whose
+        # discharge(watershed, time) array holds observed daily flow (m3/s). The
+        # OSF download URL is filename-less, so 'filename' pins the real name; the
+        # bare .nc is content-sniffed (not an archive) and kept in place. md5 is
+        # self-computed (OSF/Dropbox publishes no archive hash via the API).
+        "slug": "hysets",
+        "name": "HYSETS — North America large-sample hydrology, QC stations NetCDF (OSF)",
+        "auto": True,
+        "size": "~3 GB",
+        "url": "https://osf.io/download/sbfd2/",
+        "filename": "HYSETS_2023_update_QC_stations.nc",
+        "checksum": "md5:ccacb13ea3436fb8fd2e4dfecb3353d9",
+    },
+    {
+        # HYSETS watershed properties — a bare comma-separated table mapping
+        # Official_ID -> Watershed_ID with WGS84 gauge coordinates.
+        "slug": "hysets_properties",
+        "name": "HYSETS — watershed properties incl. WGS84 gauge coordinates (OSF)",
+        "auto": True,
+        "size": "~3.4 MB",
+        "url": "https://osf.io/download/us795/",
+        "filename": "HYSETS_watershed_properties.txt",
+        "checksum": "md5:d6800908b18317c0eae8462c6e86e15b",
+    },
+    {
         # CAMELS-NZ daily streamflow — per-station obs (flow, m3/s). figshare
         # access URLs carry no filename and redirect to a signed S3 link; the
         # download layer content-sniffs the archive and httpx follows the 30x.
@@ -574,7 +599,11 @@ def _verify_archive_checksum(archive_path: Path, expected: str) -> None:
 
 async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
     """Download an archive (streaming, resumable) and extract it into dest."""
-    archive_name = _archive_name_from_url(url, slug)
+    entry = next((d for d in DATASETS if d["slug"] == slug), {})
+    # A filename-less URL (e.g. OSF ``osf.io/download/<key>/``) would otherwise
+    # be saved under the opaque key; an explicit ``filename`` keeps the real name
+    # so a bare non-archive download (e.g. a ``.nc``) is found by the connector.
+    archive_name = entry.get("filename") or _archive_name_from_url(url, slug)
     archive_path = dest / archive_name
     try:
         async with httpx.AsyncClient(
@@ -592,7 +621,6 @@ async def _download_and_extract(slug: str, dest: Path, url: str) -> bool:
         # Provenance gate: verify the published ARCHIVE hash before extraction
         # (fail-closed). Datasets whose server regenerates the zip per request
         # (e.g. CEH) use a content-checksum instead — verified after extraction.
-        entry = next((d for d in DATASETS if d["slug"] == slug), {})
         archive_ck = entry.get("checksum")
         content_ck = entry.get("content_checksum")
         if archive_ck:

@@ -497,6 +497,16 @@ PROVIDER_BACKENDS: dict[str, ProviderBackend] = {
         connector_defaults={},
         normalize=None,  # keyed by the zero-padded id (ID_01 … ID_56)
     ),
+    "hysets": ProviderBackend(
+        slug="hysets",
+        station_keys=(
+            _EVAL_STATION_KEY,
+            StationKey(lambda cfg: cfg.data.usgs_site_code, "USGS_SITE_CODE"),
+            StationKey(lambda cfg: cfg.data.streamflow_station_id, "STREAMFLOW_STATION_ID"),
+        ),
+        connector_defaults={},
+        normalize=None,  # keyed by the agency Official_ID (HYDAT / USGS / …)
+    ),
     "camels_dk": ProviderBackend(
         slug="camels_dk",
         station_keys=(
@@ -1105,6 +1115,25 @@ OBSERVATION_CAPABILITIES: tuple[ObservationCapabilitySpec, ...] = (
         dataset_doi="10.5285/8344e4f3-d2ea-44f5-8afa-86d2987543a9",
         dataset_version="daily",
         dataset_checksum="content-sha256:de33e2731d7285423801db723acbd0c8d97c1505b3d184830032c755a341742c",
+        noncommercial=False,
+    ),
+    ObservationCapabilitySpec(
+        provider_id="HYSETS",
+        kinds=frozenset({"streamflow"}),
+        station_id_scheme="agency Official_ID (HYDAT e.g. 01AD002, USGS e.g. 01646500; 'hysets:<id>' also accepted)",
+        parity_grade=None,
+        notes="HYSETS quality-controlled daily observed discharge (m3/s) for 14,425 North "
+              "American watersheds, read from the discharge(watershed, time) variable of the "
+              "published OSF NetCDF (~3 GB) via the CSFS hysets connector — a dataset artifact, "
+              "checksum-verified on download. Gauge coordinates from the watershed properties "
+              "table. Requires xarray/netCDF4.",
+        redistribution="attribution",
+        data_license="CC-BY-4.0",
+        attribution="Arsenault et al. (2020), HYSETS (OSF)",
+        source_kind="dataset_artifact",
+        dataset_doi="10.17605/OSF.IO/RPC3W",
+        dataset_version="2023 update; daily",
+        dataset_checksum="md5:ccacb13ea3436fb8fd2e4dfecb3353d9",
         noncommercial=False,
     ),
     ObservationCapabilitySpec(
