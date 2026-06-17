@@ -879,6 +879,30 @@
   status: implemented
   notes: "Dataset artifact (HYSETS, OSF doi:10.17605/OSF.IO/RPC3W, CC-BY-4.0). Observed daily discharge (m3/s) is a discharge(watershed, time) variable in a ~3 GB NetCDF (not per-gauge CSVs); keyed by agency Official_ID via the watershed properties table. Requires xarray/netCDF4. OSF download URLs are filename-less (DATASETS 'filename' override)."
 
+- slug: camels_col
+  name: CAMELS-COL
+  country: CO
+  region: south_america
+  api_type: bulk_download
+  format: [csv]
+  access: restricted
+  realtime: false
+  stations: 347
+  status: manual
+  notes: "Access-gated standalone (CAMELS-COL, Zenodo doi:10.5281/zenodo.15554735, CC-BY but files access-restricted: HTTP 403 + manual Request access). NOT in the provenance-gated tier (no auto-download/checksum). Manual connector: provide a local copy via config['data_dir']. Streamflow filename/column conventions are documented-but-UNVERIFIED pending access."
+
+- slug: camels_spat
+  name: CAMELS-SPAT
+  country: [US, CA]
+  region: north_america
+  api_type: bulk_download
+  format: [netcdf]
+  access: restricted
+  realtime: false
+  stations: 1426
+  status: manual
+  notes: "Distribution-gated standalone (CAMELS-SPAT, FRDR doi:10.20383/103.01306, Globus-only; no HTTPS endpoint). NOT in the provenance-gated tier (no auto-download/checksum). Manual connector: Globus-transfer locally, point config['data_dir'] at it. Per-basin NetCDF streamflow variable/metadata conventions are documented-but-UNVERIFIED pending a local copy."
+
 - slug: camelsh
   name: CAMELSH (Hourly US)
   country: US

@@ -327,6 +327,24 @@ DATASETS: list[dict] = [
         "url": "https://grdc.bafg.de/data/data_portal/",
     },
     {
+        # CAMELS-COL — access-gated (Zenodo files are restricted; HTTP 403 +
+        # manual "Request access" despite CC-BY). Manual: provide a local copy.
+        "slug": "camels_col",
+        "name": "CAMELS-COL — Colombia large-sample hydrology (Zenodo, access-restricted)",
+        "auto": False,
+        "size": "~varies",
+        "url": "https://doi.org/10.5281/zenodo.15554735",
+    },
+    {
+        # CAMELS-SPAT — distribution-gated (FRDR Globus-only; no HTTPS endpoint).
+        # Manual: Globus-transfer locally and point data_dir at it.
+        "slug": "camels_spat",
+        "name": "CAMELS-SPAT — North America spatial hydrology (FRDR, Globus-only)",
+        "auto": False,
+        "size": "~varies",
+        "url": "https://www.frdr-dfdr.ca/repo/dataset/9ca63670-9e40-477c-a8a8-30f61205d668",
+    },
+    {
         "slug": "spain_cedex",
         "name": "Spain MITECO/CEDEX Yearbooks",
         "auto": False,
