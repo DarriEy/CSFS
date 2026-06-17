@@ -93,6 +93,41 @@ def test_csfs_package_has_no_symfluence_dependency():
     assert isinstance(integration.HAVE_SYMFLUENCE, bool)
 
 
+def test_import_before_symfluence_registers_without_warning():
+    """Importing this module BEFORE symfluence must still register cleanly.
+
+    Regression: the symfluence base-class import triggers symfluence's bootstrap,
+    which re-enters to load the csfs plugin entry point while this module is
+    partially initialized. ``register`` is defined ahead of that import and
+    no-ops until the module is ready, so the bootstrap must NOT log
+    "Failed to load … skipping", and the community backend must end up
+    registered (via the module-bottom self-register).
+    """
+    import subprocess
+    import sys
+
+    pytest.importorskip("symfluence")
+    # Fresh interpreter, the pathological order: integration module imported
+    # FIRST, then symfluence's registry is consulted.
+    code = (
+        "import warnings, io, logging\n"
+        "buf = io.StringIO()\n"
+        "logging.getLogger().addHandler(logging.StreamHandler(buf))\n"
+        "logging.getLogger().setLevel(logging.WARNING)\n"
+        "import csfs.integrations.symfluence  # noqa: F401 (import before symfluence)\n"
+        "from symfluence.core.registries import R\n"
+        "assert R.observation_backends.get('community') is not None, 'community backend not registered'\n"
+        "logs = buf.getvalue()\n"
+        "assert 'Failed to load' not in logs and 'skipping' not in logs, logs\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert "OK" in result.stdout
+
+
 # ---------------------------------------------------------------------------
 # 2. Pure helpers (standalone, no symfluence required)
 # ---------------------------------------------------------------------------
@@ -817,7 +852,12 @@ def test_observation_capability_table_is_well_formed():
     import re
 
     specs = {spec.provider_id: spec for spec in integration.OBSERVATION_CAPABILITIES}
-    assert set(specs) == {"USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE", "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK", "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX", "HYSETS", "CAMELS_PE", "CSFS"}
+    assert set(specs) == {
+        "USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+        "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
+        "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
+        "HYSETS", "CAMELS_PE", "CSFS",
+    }
     grade_re = re.compile(r"^(bit-identical|value-identical:.+)$")
     for spec in specs.values():
         assert spec.kinds == frozenset({"streamflow"})
@@ -900,7 +940,12 @@ class TestCommunityObservationBackend:
 
     def test_capabilities_map_the_pure_table(self, tmp_path):
         caps = {cap.provider_id: cap for cap in self._backend(tmp_path).capabilities()}
-        assert set(caps) == {"USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE", "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK", "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX", "HYSETS", "CAMELS_PE", "CSFS"}
+        assert set(caps) == {
+            "USGS", "WSC", "SMHI", "LAMAH_ICE", "LAMAH_CE", "CAMELS_BR", "CAMELS_DE",
+            "CAMELS_CL", "CAMELS_IND", "CAMELS_CH", "CAMELS_AUS", "CAMELS_US", "CAMELS_DK",
+            "CAMELS_GB", "CAMELS_SE", "CAMELS_FR", "CAMELS_NZ", "CAMELS_FI", "CAMELS_LUX",
+            "HYSETS", "CAMELS_PE", "CSFS",
+        }
         assert caps["USGS"].parity_grade == "bit-identical"
         assert caps["CSFS"].parity_grade is None
         for cap in caps.values():

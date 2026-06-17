@@ -87,6 +87,27 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 if TYPE_CHECKING:
     import pandas as pd
 
+# True only once this module has finished importing. The symfluence base-class
+# import below triggers SYMFLUENCE's bootstrap; if THIS module was imported
+# before symfluence, that bootstrap re-enters and tries to load the csfs plugin
+# entry point (``…:register``) while this module is still partially initialized.
+# ``register`` is defined here, ahead of that import, and no-ops until the module
+# is ready — so the re-entrant call is quiet (no "failed to load … skipping"
+# warning) and the module-bottom self-register performs the real registration.
+_MODULE_READY = False
+
+
+def register() -> None:
+    """Register the CSFS observation tiers with SYMFLUENCE (idempotent).
+
+    Entry-point hook (``symfluence.plugins``). Defers while this module is still
+    importing (re-entrant bootstrap); the real work is in :func:`_register_impl`.
+    """
+    if not _MODULE_READY:  # pragma: no cover - re-entrant bootstrap during import
+        return
+    _register_impl()
+
+
 # Resolve the SYMFLUENCE base class defensively so importing this module
 # never hard-fails when SYMFLUENCE is not installed.
 try:  # pragma: no cover - exercised only with SYMFLUENCE present
@@ -1493,8 +1514,8 @@ def _integration_logger() -> Any:
 # ---------------------------------------------------------------------------
 
 
-def register() -> None:
-    """Register the CSFS observation tiers with SYMFLUENCE (idempotent).
+def _register_impl() -> None:
+    """Actual registration logic for :func:`register` (idempotent).
 
     Zero-arg hook referenced by the ``symfluence.plugins`` entry point;
     SYMFLUENCE's bootstrap calls it automatically on ``import symfluence``.
@@ -1534,13 +1555,15 @@ def register() -> None:
         backends.add("community", CommunityObservationBackend)
 
 
-# Self-register when SYMFLUENCE is importable. This complements the entry
-# point: if THIS module is imported before symfluence, the defensive import
-# above triggers symfluence's bootstrap mid-module, and its plugin discovery
-# then sees a partially-initialized module (no `register` yet) and skips the
-# csfs entry point. Registering here, at the end of the module body, makes
-# the handler available regardless of import order; register() is idempotent
-# so the entry-point path stays harmless.
+# The module is now fully defined; register() may do its real work. This
+# complements the entry point: if THIS module was imported before symfluence,
+# the defensive import above already triggered symfluence's bootstrap, whose
+# plugin discovery called register() while _MODULE_READY was False (a quiet
+# no-op). Flipping the flag and registering here makes the handler available
+# regardless of import order; _register_impl() is idempotent so the normal
+# entry-point path stays harmless.
+_MODULE_READY = True
+
 if HAVE_SYMFLUENCE:  # pragma: no cover - exercised only with SYMFLUENCE present
     import contextlib
 
