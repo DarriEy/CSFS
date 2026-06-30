@@ -58,7 +58,7 @@ class CAMELSCHConnector(BaseConnector):
         if topo is None:
             return []
         stations: list[Station] = []
-        with open(topo, newline="", encoding="utf-8") as fh:
+        with open(topo, newline="", encoding="latin-1") as fh:
             for row in _rows_skipping_comments(fh):
                 gid = (row.get("gauge_id") or "").strip()
                 try:
@@ -131,7 +131,7 @@ class CAMELSCHConnector(BaseConnector):
         path: Path, station_id: str, start: datetime, end: datetime,
     ) -> list[Observation]:
         observations: list[Observation] = []
-        with open(path, newline="", encoding="utf-8") as fh:
+        with open(path, newline="", encoding="latin-1") as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None or _DISCHARGE_COL not in reader.fieldnames:
                 return observations
