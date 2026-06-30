@@ -48,7 +48,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install
-        run: pip install -e ".[api]"
+        run: pip install -e ".[api,geo]"
 
       - name: Select tier
         id: tier

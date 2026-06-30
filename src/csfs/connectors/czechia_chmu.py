@@ -99,6 +99,15 @@ class CzechiaChmuConnector(BaseConnector):
                 self._parse_discharge(resp.content, station_id, start, end),
             )
 
+        # CHMI's now/recent files overlap at day boundaries (and a file can repeat a
+        # timestamp across tsData series), which would violate the store's
+        # (station_id, timestamp) primary key. De-duplicate by timestamp, keeping the
+        # last value seen, before handing the chunk to the store.
+        deduped: dict[datetime, Observation] = {}
+        for obs in observations:
+            deduped[obs.timestamp] = obs
+        observations = sorted(deduped.values(), key=lambda o: o.timestamp)
+
         return TimeSeriesChunk(
             station_id=station_id,
             provider=self.slug,
