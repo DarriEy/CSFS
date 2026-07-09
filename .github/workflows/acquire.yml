@@ -6,14 +6,15 @@ name: Acquire
 # GitHub Release. Each run downloads it, fetches one tier, re-uploads it, then
 # checks health for that tier and alerts (via a GitHub issue) on failure.
 #
-# NOTE: only the daily and weekly tiers run on schedule here. The realtime
-# (15-min) and hourly tiers would re-upload the ~700 MB DB dozens of times a
-# day — impractical on Actions; run those on a long-lived host instead. You can
-# still trigger any tier manually via "Run workflow".
+# NOTE: only the WEEKLY tier runs on schedule here — the daily cron was removed
+# so acquisition runs on a low cadence and the health-alert issue (opened only on
+# degraded/errored connectors) is the signal, not routine daily runs. The daily,
+# hourly, and realtime tiers are still available on demand via "Run workflow"
+# (the realtime/hourly tiers re-upload the ~700 MB DB too often for a schedule and
+# belong on a long-lived host anyway).
 
 on:
   schedule:
-    - cron: "30 2 * * *"   # daily  02:30 UTC
     - cron: "0 3 * * 0"    # weekly Sun 03:00 UTC
   workflow_dispatch:
     inputs:
