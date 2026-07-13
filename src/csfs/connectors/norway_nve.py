@@ -9,7 +9,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -53,8 +60,10 @@ def _to_float(value: object) -> float | None:
     except (ValueError, TypeError):
         return None
 
-# Resolution codes: 60 = hourly, 1440 = daily
+# NVE ResolutionTime codes: 60 = hourly, 1440 = daily. This connector always
+# requests 1440; per the HydAPI docs those series are daily MEAN values.
 _RESOLUTION_DAILY = "1440"
+_OBS_RESOLUTION = Resolution.DAILY_MEAN
 
 
 def _correction_to_quality(correction: int | None) -> QualityFlag:
@@ -220,7 +229,9 @@ class NorwayNVEConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=_OBS_RESOLUTION,
+                    value=discharge,
                     quality=quality,
                 ))
 

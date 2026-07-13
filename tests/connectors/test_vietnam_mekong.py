@@ -1,5 +1,7 @@
 """Tests for the Vietnam Mekong Delta EIDC connector with mocked HTTP and CSV."""
 
+import io
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -10,8 +12,10 @@ import respx
 from csfs.connectors.vietnam_mekong import (
     _SEED_STATIONS,
     EIDC_CATALOGUE_DOC,
+    EIDC_DATA_ZIP_URL,
     VietnamMekongConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Sample CSV data
@@ -117,6 +121,41 @@ async def test_fetch_observations_eidc_api():
     assert chunk.observations[0].discharge_m3s == pytest.approx(
         8500.0,
     )
+    # Catalogue fallback declares no aggregation.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_data_package_ratings():
+    """The EIDC data-package ratings path yields instantaneous gaugings."""
+    ratings_csv = (
+        "Month,Day,Year,Discharge (m3/s),"
+        "Section Averaged SSC (mg/l),Sediment Flux (kg/s)\n"
+        "6,1,2010,8500.0,120.5,1.2\n"
+        "6,2,2010,8600.0,121.0,1.3\n"
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("supporting/Chaudocratings.csv", ratings_csv)
+    respx.get(EIDC_DATA_ZIP_URL).mock(
+        return_value=httpx.Response(200, content=buf.getvalue()),
+    )
+
+    async with VietnamMekongConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "vietnam_mekong:chau_doc",
+            start=datetime(2010, 6, 1, tzinfo=UTC),
+            end=datetime(2010, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    obs = chunk.observations[0]
+    assert obs.discharge_m3s == pytest.approx(8500.0)
+    assert obs.variable is Variable.DISCHARGE
+    # Ratings files hold in-situ spot gaugings.
+    assert obs.resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio
@@ -180,6 +219,8 @@ async def test_fetch_observations_csv_parses_correctly(
         8520.0,
     )
     assert chunk.observations[0].quality.value == "raw"
+    # Local hourly CSVs do not declare spot-vs-mean aggregation.
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

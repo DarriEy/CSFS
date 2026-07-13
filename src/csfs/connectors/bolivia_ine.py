@@ -45,8 +45,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -488,7 +490,11 @@ class BoliviaIneConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # INE's "Estadisticas de Caudales" CSV layouts carry date-only
+                # rows and never declare the aggregation behind each value.
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=quality,
             ))
 
@@ -543,7 +549,10 @@ class BoliviaIneConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # Aggregation undeclared in INE CSVs (see long-format note).
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=quality,
             ))
 

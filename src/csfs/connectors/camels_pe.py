@@ -28,7 +28,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -182,10 +182,14 @@ class CAMELSPEConnector(BaseConnector):
                             quality = QualityFlag.RAW
                     except ValueError:
                         discharge, quality = None, QualityFlag.MISSING
+                # mm/day is a per-day depth; converted to m3/s via the catchment area it is
+                # by definition the daily MEAN discharge.
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

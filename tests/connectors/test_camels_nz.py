@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_nz import CAMELSNZConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     '"time","flow"\n'
@@ -38,6 +39,8 @@ async def test_fetch_observations_flow_and_na(tmp_path: Path):
     assert chunk.provider == "camels_nz"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(0.640166, abs=1e-5)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # NA
     assert chunk.observations[2].quality.value == "missing"
     assert chunk.observations[3].discharge_m3s is None  # negative

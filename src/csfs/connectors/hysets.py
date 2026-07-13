@@ -31,7 +31,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -169,10 +176,14 @@ class HYSETSConnector(BaseConnector):
                 quality = QualityFlag.RAW
                 if discharge < 0:
                     discharge, quality = None, QualityFlag.MISSING
+            # HYSETS QC discharge is a daily series (1950-2023 daily,
+            # per the dataset docs above) -> daily means.
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.DAILY_MEAN,
+                value=discharge,
                 quality=quality,
             ))
         return observations

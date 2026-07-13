@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.germany_pegelonline import GermanyPegelonlineConnector
+from csfs.core.models import Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = [
     {
@@ -138,6 +139,10 @@ async def test_fetch_observations_parses_json():
     # Third observation — None value should yield MISSING
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+
+    # PEGELONLINE serves 15-min current (point) measurements.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio

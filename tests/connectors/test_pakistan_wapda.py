@@ -12,6 +12,7 @@ from csfs.connectors.pakistan_wapda import (
     CUSEC_TO_M3S,
     PakistanWAPDAConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Sample CSV data (Kaggle format, cusecs)
@@ -96,6 +97,9 @@ async def test_fetch_observations_csv_parses_correctly(
         expected_m3s,
     )
     assert chunk.observations[0].quality.value == "raw"
+    # Daily cadence, but mean-vs-spot aggregation is undeclared.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

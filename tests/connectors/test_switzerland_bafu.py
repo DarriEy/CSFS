@@ -8,6 +8,7 @@ import respx
 
 from csfs.connectors.switzerland_bafu import SwitzerlandBafuConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
+from csfs.core.models import Resolution, Variable
 
 # ISO timestamps for test data
 _TS1_ISO = "2024-06-01T12:00:00+00:00"
@@ -149,6 +150,9 @@ async def test_fetch_observations_parses_values():
     assert chunk.observations[0].discharge_m3s == pytest.approx(523.4)
     assert chunk.observations[0].quality.value == "raw"
     assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 12, 0, 0, tzinfo=UTC)
+    assert chunk.observations[0].variable == Variable.DISCHARGE
+    # api.existenz.ch relays BAFU values without aggregation metadata.
+    assert all(o.resolution == Resolution.UNKNOWN for o in chunk.observations)
 
     # Third observation — None value should yield MISSING
     assert chunk.observations[2].discharge_m3s is None

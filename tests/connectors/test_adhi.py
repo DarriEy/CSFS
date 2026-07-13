@@ -10,6 +10,7 @@ import pytest
 import respx
 
 from csfs.connectors.adhi import _SEED_STATIONS, ADHI_COUNTRY_CODES, ADHIConnector
+from csfs.core.models import Resolution, Variable
 
 
 def _make_monthly_zip(series_by_station: dict[str, str]) -> bytes:
@@ -266,6 +267,11 @@ async def test_fetch_observations_from_api():
     assert chunk.observations[3].discharge_m3s == pytest.approx(1100.2)
     assert chunk.observations[3].quality.value == "good"
 
+    # ADHI monthly series carry mean monthly runoff -> monthly means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.MONTHLY_MEAN
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -374,6 +380,9 @@ async def test_fetch_observations_from_local_file(tmp_path: Path):
     missing = chunk.observations[2]
     assert missing.discharge_m3s is None
     assert missing.quality.value == "missing"
+
+    # Local files are also monthly discharge -> monthly means
+    assert chunk.observations[0].resolution is Resolution.MONTHLY_MEAN
 
 
 @pytest.mark.asyncio

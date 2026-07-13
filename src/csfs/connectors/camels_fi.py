@@ -27,7 +27,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 from csfs.core.reproject import to_wgs84
 
@@ -162,10 +162,15 @@ class CAMELSFIConnector(BaseConnector):
                             discharge, quality = None, QualityFlag.MISSING
                     except ValueError:
                         discharge, quality = None, QualityFlag.MISSING
+                # SYKE daily discharge is an aggregated daily product: official gauge
+                # observations are daily averages of instantaneous records, converted to
+                # discharge via rating curves.
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

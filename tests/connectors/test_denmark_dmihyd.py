@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.denmark_dmihyd import DenmarkHydroConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = [
     {
@@ -105,6 +105,9 @@ async def test_fetch_observations():
     obs1 = chunk.observations[0]
     assert obs1.discharge_m3s == 1.5
     assert obs1.quality == QualityFlag.GOOD
+    assert obs1.variable == Variable.DISCHARGE
+    # VanDa does not declare the aggregation behind its readings.
+    assert obs1.resolution == Resolution.UNKNOWN
     
     obs2 = chunk.observations[1]
     assert obs2.discharge_m3s is None

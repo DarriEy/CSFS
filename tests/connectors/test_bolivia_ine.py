@@ -11,6 +11,7 @@ from csfs.connectors.bolivia_ine import (
     _SEED_STATIONS,
     BoliviaIneConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://anda.ine.gob.bo"
 
@@ -130,6 +131,9 @@ async def test_fetch_observations_long_format_csv():
     # 3 rows for BO-001 (2024-06-01, 02, 03)
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(150.3)
+    # INE CSVs never declare the aggregation behind each value.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
 
@@ -282,6 +286,7 @@ async def test_fetch_observations_local_csv_wide_format(tmp_path):
     assert chunk is not None
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(300.5)
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
     # Empty value -> None discharge, MISSING quality
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"

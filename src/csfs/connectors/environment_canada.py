@@ -16,7 +16,14 @@ from datetime import UTC, datetime, timedelta
 import structlog
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -233,7 +240,10 @@ class EnvironmentCanadaConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=datetime.fromisoformat(dt_str),
-            discharge_m3s=float(discharge) if discharge is not None else None,
+            variable=Variable.DISCHARGE,
+            # hydrometric-realtime is 5-min telemetry (point readings).
+            resolution=Resolution.INSTANTANEOUS,
+            value=float(discharge) if discharge is not None else None,
             quality=quality,
         )
 
@@ -252,6 +262,9 @@ class EnvironmentCanadaConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=datetime.fromisoformat(date_str),
-            discharge_m3s=float(discharge) if discharge is not None else None,
+            variable=Variable.DISCHARGE,
+            # hydrometric-daily-mean is, per the collection name, a daily mean.
+            resolution=Resolution.DAILY_MEAN,
+            value=float(discharge) if discharge is not None else None,
             quality=quality,
         )

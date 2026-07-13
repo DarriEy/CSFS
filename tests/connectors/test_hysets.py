@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.hysets import HYSETSConnector, _country_of
+from csfs.core.models import Resolution, Variable
 
 # Two gauges (USGS + HYDAT); Watershed_ID maps into the NetCDF watershed dim.
 SAMPLE_PROPS = (
@@ -74,6 +75,10 @@ async def test_fetch_observations_reads_netcdf_discharge(tmp_path: Path):
     assert chunk.observations[2].discharge_m3s is None  # NaN -> missing
     assert chunk.observations[2].quality.value == "missing"
     assert chunk.observations[3].discharge_m3s is None  # negative -> missing
+    # HYSETS QC discharge is a daily series -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

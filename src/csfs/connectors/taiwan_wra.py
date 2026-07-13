@@ -25,7 +25,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -108,7 +115,12 @@ class TaiwanWRAConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # The reservoir dataset reports hourly observationtime rows,
+                # but WRA does not declare whether inflowdischarge is a spot
+                # reading or an interval mean.
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=QualityFlag.RAW,
             ))
 

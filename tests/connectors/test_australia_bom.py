@@ -8,7 +8,7 @@ import respx
 
 from csfs.connectors.australia_bom import AustraliaBomConnector, _map_quality
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 # -- Mock response data ------------------------------------------------
 
@@ -191,6 +191,9 @@ async def test_fetch_observations_parses_values():
     # First observation — good quality code (1)
     assert chunk.observations[0].discharge_m3s == pytest.approx(123.4)
     assert chunk.observations[0].quality == QualityFlag.GOOD
+    # The KiWIS ts_id's aggregation is never inspected -> UNKNOWN.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
     # Second observation — fair quality code (10)
     assert chunk.observations[1].discharge_m3s == pytest.approx(125.0)

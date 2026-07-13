@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_col import CAMELSCOLConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     "date,streamflow,precip\n"
@@ -38,6 +39,8 @@ async def test_fetch_observations_streamflow_column(tmp_path: Path):
     assert chunk.provider == "camels_col"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(12.5)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # blank
     assert chunk.observations[3].discharge_m3s is None  # negative
 

@@ -36,7 +36,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -228,7 +235,12 @@ class GermanyNRWConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # UNKNOWN: the archive declares no aggregation — rows are
+                # irregular, interval-midpoint-stamped (e.g. :07:30) values,
+                # so mean vs. spot sampling cannot be determined.
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=quality,
             ))
         return observations

@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.germany_bavaria import GermanyBavariaConnector
+from csfs.core.models import Resolution, Variable
 from csfs.core.registry import get_connector
 
 _CATALOGUE_URL = "https://www.gkd.bayern.de/de/fluesse/abfluss/tabellen"
@@ -107,6 +108,10 @@ async def test_fetch_observations_parses_table():
     # "-" (no value) becomes None / MISSING.
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+
+    # GKD "Aktuelle Messwerte" are 15-min point measurements.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ import respx
 
 from csfs.connectors.brazil_ana import _SERVICE, BrazilAnaConnector
 from csfs.core.exceptions import ConnectorError
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://telemetriaws1.ana.gov.br"
 INVENTORY_URL = f"{BASE_URL}{_SERVICE}/HidroInventario"
@@ -122,6 +123,9 @@ async def test_fetch_observations_expands_daily_and_prefers_consolidated():
     # Consolidated (105) wins over raw (100), and is flagged GOOD.
     assert day1.discharge_m3s == pytest.approx(105.0)
     assert day1.quality.value == "good"
+    # Vazao01..31 expand to daily-mean discharge.
+    assert day1.variable is Variable.DISCHARGE
+    assert day1.resolution is Resolution.DAILY_MEAN
 
     assert day2.timestamp == datetime(2025, 1, 2, tzinfo=UTC)
     assert day2.discharge_m3s == pytest.approx(110.0)

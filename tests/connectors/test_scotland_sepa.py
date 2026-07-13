@@ -8,7 +8,7 @@ import respx
 
 from csfs.connectors.scotland_sepa import ScotlandSepaConnector, _map_quality
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 KIWIS_URL = "https://timeseries.sepa.org.uk/KiWIS/KiWIS"
 
@@ -95,6 +95,51 @@ async def test_fetch_observations_parses_values_and_quality():
     assert missing.quality == QualityFlag.MISSING    # code 255 / null value
     assert raw.discharge_m3s == pytest.approx(1.040)
     assert raw.quality == QualityFlag.RAW            # code 254 (provisional)
+    # Station 14969 is served by its "15minute" series: point readings.
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    assert all(
+        o.resolution == Resolution.INSTANTANEOUS for o in chunk.observations
+    )
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_observations_day_mean_station_resolution():
+    """A station whose best cadence is Day.Mean is tagged DAILY_MEAN."""
+    respx.get(KIWIS_URL).mock(side_effect=_route())
+
+    async with ScotlandSepaConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "scotland_sepa:322551",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 1, 1, 0, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 3
+    assert all(
+        o.resolution == Resolution.DAILY_MEAN for o in chunk.observations
+    )
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_unmapped_cadence_keeps_unknown_resolution():
+    """A station whose only series has an unmapped ts_name stays UNKNOWN."""
+    series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["14969", "67554010", "Month.Mean"],
+    ]
+    respx.get(KIWIS_URL).mock(side_effect=_route(flow_series=series))
+
+    async with ScotlandSepaConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "scotland_sepa:14969",
+            start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2024, 6, 1, 1, 0, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 3
+    assert all(o.resolution == Resolution.UNKNOWN for o in chunk.observations)
 
 
 @respx.mock

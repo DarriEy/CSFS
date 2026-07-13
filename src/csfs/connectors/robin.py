@@ -22,8 +22,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -87,11 +89,14 @@ class ROBINConnector(BaseConnector):
                         continue
 
                     if start <= ts <= end:
+                        # ROBIN provides daily streamflow series -> daily means.
                         observations.append(
                             Observation(
                                 station_id=station_id,
                                 timestamp=ts,
-                                discharge_m3s=float(val),
+                                variable=Variable.DISCHARGE,
+                                resolution=Resolution.DAILY_MEAN,
+                                value=float(val),
                                 quality=QualityFlag.RAW,
                             )
                         )

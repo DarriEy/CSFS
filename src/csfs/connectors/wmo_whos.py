@@ -41,7 +41,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -285,7 +292,13 @@ class WHOSConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=value,
+                    variable=Variable.DISCHARGE,
+                    # WHOS federates heterogeneous providers and this parser
+                    # merges their series per timestamp without reading any
+                    # per-member aggregation metadata, so the resolution is
+                    # undeclared (applies to all wmo_whos_* views).
+                    resolution=Resolution.UNKNOWN,
+                    value=value,
                     quality=QualityFlag.RAW if value is not None else QualityFlag.MISSING,
                 )
             )

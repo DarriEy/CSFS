@@ -27,7 +27,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 
 logger = structlog.get_logger()
 
@@ -48,6 +55,9 @@ class KiWISConnector(BaseConnector):
     )
     # Cadence preference for selecting a station's discharge series.
     _TS_PREFERENCE: tuple[str, ...] = ()
+    # ts_name -> temporal resolution of that cadence. Cadences not listed
+    # here are tagged Resolution.UNKNOWN.
+    _TS_RESOLUTION: dict[str, Resolution] = {}
     # Restrict getTimeseriesList to one ts_name (keeps the response small on
     # capacity-limited hosts). None = fetch every discharge cadence.
     _TS_NAME_FILTER: str | None = None
@@ -84,7 +94,7 @@ class KiWISConnector(BaseConnector):
     ) -> TimeSeriesChunk:
         """Fetch discharge observations for a station over a time range."""
         native_id = station_id.removeprefix(f"{self.slug}:")
-        ts_id = await self._resolve_ts_id(native_id)
+        ts_id, resolution = await self._resolve_series(native_id)
         resp = await self._get_kiwis({
             "request": self._VALUES_REQUEST,
             "ts_id": ts_id,
@@ -92,7 +102,7 @@ class KiWISConnector(BaseConnector):
             "from": start.isoformat(),
             "to": end.isoformat(),
         })
-        return self._parse_timeseries(resp.json(), station_id)
+        return self._parse_timeseries(resp.json(), station_id, resolution)
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
         """Fetch the most recent discharge observations (last 24 h)."""
@@ -178,18 +188,29 @@ class KiWISConnector(BaseConnector):
         return result
 
     async def _resolve_ts_id(self, native_id: str) -> str:
+        ts_id, _ = await self._resolve_series(native_id)
+        return ts_id
+
+    async def _resolve_series(self, native_id: str) -> tuple[str, Resolution]:
+        """Return (ts_id, resolution) of the station's preferred cadence."""
         series = await self._load_series()
         station_series = series.get(native_id)
         if station_series:
             for ts_name in self._TS_PREFERENCE:
                 if ts_name in station_series:
-                    return station_series[ts_name]
-            return next(iter(station_series.values()))
+                    return station_series[ts_name], self._ts_resolution(ts_name)
+            ts_name, ts_id = next(iter(station_series.items()))
+            return ts_id, self._ts_resolution(ts_name)
         raise ConnectorError(
             self.slug,
             f"No discharge ({self._DISCHARGE_PARAM}) timeseries "
             f"for station '{native_id}'",
         )
+
+    @classmethod
+    def _ts_resolution(cls, ts_name: str) -> Resolution:
+        """Temporal resolution of a cadence; UNKNOWN when not declared."""
+        return cls._TS_RESOLUTION.get(ts_name, Resolution.UNKNOWN)
 
     # -- parsing --------------------------------------------------------------
 
@@ -251,7 +272,12 @@ class KiWISConnector(BaseConnector):
         except (ValueError, TypeError):
             return None
 
-    def _parse_timeseries(self, data: list, station_id: str) -> TimeSeriesChunk:
+    def _parse_timeseries(
+        self,
+        data: list,
+        station_id: str,
+        resolution: Resolution = Resolution.UNKNOWN,
+    ) -> TimeSeriesChunk:
         observations: list[Observation] = []
         ts_data: list = []
         if data and isinstance(data, list) and isinstance(data[0], dict):
@@ -272,7 +298,9 @@ class KiWISConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=resolution,
+                value=discharge,
                 quality=quality,
             ))
 

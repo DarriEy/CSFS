@@ -11,6 +11,7 @@ from csfs.connectors.ca_discharge import (
     _SEED_STATIONS,
     CADischargeConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ------------------------------------------------------------------
 # Mock data
@@ -162,6 +163,11 @@ async def test_fetch_observations_parses_csv(tmp_path: Path):
     # Missing value (-999.0)
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+
+    # CSV exports don't declare their aggregation -> resolution UNKNOWN
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

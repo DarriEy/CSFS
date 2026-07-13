@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_pe import CAMELSPEConnector
+from csfs.core.models import Resolution, Variable
 
 # flow_obs is OBSERVED streamflow in mm/day; flow_sim must be ignored.
 SAMPLE_TS = (
@@ -50,6 +51,8 @@ async def test_fetch_observations_converts_mm_per_day(tmp_path: Path):
     assert len(chunk.observations) == 4
     # 0.952 mm/day * 10391.389 km2 / 86.4 = 114.5 m3/s
     assert chunk.observations[0].discharge_m3s == pytest.approx(0.952 * _AREA / 86.4, rel=1e-6)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[0].discharge_m3s == pytest.approx(114.5, abs=0.1)
     assert chunk.observations[2].discharge_m3s is None  # NA
     assert chunk.observations[3].discharge_m3s is None  # negative

@@ -12,7 +12,7 @@ import respx
 
 from csfs.connectors.finland_syke import FinlandSYKEConnector, _dms_to_decimal, _quality_from_syke
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 SYKE_BASE = "https://rajapinnat.ymparisto.fi/api/Hydrologiarajapinta/1.0/odata"
 
@@ -279,6 +279,9 @@ async def test_fetch_observations_discharge_values():
     assert chunk.observations[0].discharge_m3s == pytest.approx(120.5)
     assert chunk.observations[1].discharge_m3s == pytest.approx(121.3)
     assert chunk.observations[2].discharge_m3s == pytest.approx(119.0)
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    # The SYKE OData API does not declare the aggregation behind Arvo.
+    assert all(o.resolution == Resolution.UNKNOWN for o in chunk.observations)
 
 
 @pytest.mark.asyncio

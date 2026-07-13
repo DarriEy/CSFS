@@ -12,7 +12,7 @@ from csfs.connectors.belgium_spw import (
     _map_quality,
 )
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 KIWIS_URL = "https://hydrometrie.wallonie.be/services/KiWIS/KiWIS"
 
@@ -105,6 +105,10 @@ async def test_fetch_observations_parses_values_and_quality():
     assert missing.quality == QualityFlag.MISSING    # code 255 / null
     assert raw.discharge_m3s == pytest.approx(7.719)
     assert raw.quality == QualityFlag.RAW            # code 200
+
+    # The only fetched cadence is "10-Debit.1h.Moyen" (hourly mean).
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.HOURLY_MEAN for o in chunk.observations)
 
 
 @respx.mock

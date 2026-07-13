@@ -18,6 +18,7 @@ from csfs.connectors.wmo_whos import (
     WHOSConnector,
     WHOSPlataConnector,
 )
+from csfs.core.models import Resolution, Variable
 from csfs.core.registry import discover, get_connector
 
 # --- om-api/features: a discharge-filtered station page ---------------------
@@ -186,6 +187,9 @@ async def test_fetch_observations_parses_discharge_m3s():
 
     assert obs[t0].discharge_m3s == pytest.approx(42.97)  # in m3/s, no conversion
     assert obs[t0].quality.value == "raw"
+    # WHOS federates heterogeneous providers; aggregation is undeclared.
+    assert obs[t0].variable is Variable.DISCHARGE
+    assert obs[t0].resolution is Resolution.UNKNOWN
     assert obs[t1].discharge_m3s == pytest.approx(42.82)
 
     # -9999 no-data sentinel -> MISSING

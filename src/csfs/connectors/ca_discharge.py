@@ -37,8 +37,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -1564,10 +1566,14 @@ class CADischargeConnector(BaseConnector):
             else:
                 quality = QualityFlag.MISSING
 
+        # CA-discharge is parsed from user CSV exports of the GeoPackage;
+        # the aggregation (daily vs monthly) is not declared -> UNKNOWN.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.UNKNOWN,
+            value=discharge,
             quality=quality,
         )
 

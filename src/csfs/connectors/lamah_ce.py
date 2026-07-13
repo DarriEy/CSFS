@@ -32,8 +32,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -387,10 +389,14 @@ class LamaHCEConnector(BaseConnector):
         if discharge is None:
             quality = QualityFlag.MISSING
 
+        # This connector reads the LamaH-CE *daily* timeseries archive
+        # (an hourly variant exists but is not used here) -> daily means.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.DAILY_MEAN,
+            value=discharge,
             quality=quality,
         )
 

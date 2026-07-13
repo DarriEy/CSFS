@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.norway_nve import NorwayNVEConnector
+from csfs.core.models import Resolution, Variable
 
 STATIONS_URL = "https://hydapi.nve.no/api/v1/Stations"
 OBSERVATIONS_URL = "https://hydapi.nve.no/api/v1/Observations"
@@ -144,6 +145,9 @@ async def test_fetch_observations_parses_json():
     assert chunk.observations[0].quality.value == "good"        # correction 1
     assert chunk.observations[1].quality.value == "raw"         # correction 0
     assert chunk.observations[2].quality.value == "estimated"   # correction 2
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    # The connector always requests ResolutionTime=1440 (NVE daily means).
+    assert all(o.resolution == Resolution.DAILY_MEAN for o in chunk.observations)
 
 
 @pytest.mark.asyncio

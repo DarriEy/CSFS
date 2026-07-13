@@ -10,7 +10,7 @@ import respx
 
 from csfs.connectors.geoglows import GEOGloWSConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 _BASE = "https://geoglows.ecmwf.int/api/v2"
 
@@ -97,6 +97,9 @@ async def test_fetch_observations_retrospective():
     assert obs.timestamp == datetime(2026, 5, 1, tzinfo=UTC)
     # GEOGLOWS is model output, not a gauge reading.
     assert obs.quality == QualityFlag.ESTIMATED
+    # retrospectivedaily is the daily-average retrospective product.
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio
@@ -116,6 +119,8 @@ async def test_fetch_observations_forecast():
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(2375.8)
     assert chunk.observations[0].quality == QualityFlag.ESTIMATED
+    # Forecast steps carry no declared cadence/aggregation.
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

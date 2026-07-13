@@ -10,7 +10,7 @@ import respx
 
 from csfs.connectors.ecuador_inamhi import EcuadorINAMHIConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 _BASE = "https://geoglows.ecmwf.int/api/v2"
 _REACH = "670049564"  # Guayas at Daule
@@ -83,6 +83,9 @@ async def test_fetch_observations_retrospective():
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(350.2)
     assert chunk.observations[0].quality == QualityFlag.ESTIMATED
+    # retrospectivedaily is the daily-average retrospective product.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
     assert chunk.observations[2].discharge_m3s == pytest.approx(400.1)
 
 

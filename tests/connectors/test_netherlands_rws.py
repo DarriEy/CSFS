@@ -10,7 +10,7 @@ from csfs.connectors.netherlands_rws import (
     NetherlandsRwsConnector,
     _status_to_quality,
 )
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 BASE = "https://ddapi20-waterwebservices.rijkswaterstaat.nl"
 CATALOGUE_URL = f"{BASE}/METADATASERVICES/OphalenCatalogus"
@@ -202,6 +202,10 @@ async def test_fetch_observations_parses_and_dedups():
     last = chunk.observations[2]
     assert last.discharge_m3s is None
     assert last.quality == QualityFlag.MISSING
+
+    # Ungrouped (Groepering-less) native ~10-min samples.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio

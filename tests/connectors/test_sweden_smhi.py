@@ -7,7 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.sweden_smhi import SwedenSMHIConnector, _quality_from_smhi
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 SMHI_BASE = "https://opendata-download-hydroobs.smhi.se/api"
 
@@ -227,6 +227,9 @@ async def test_fetch_observations_discharge_values():
     assert chunk.observations[0].discharge_m3s == pytest.approx(42.5)
     assert chunk.observations[1].discharge_m3s == pytest.approx(43.1)
     assert chunk.observations[2].discharge_m3s == pytest.approx(41.0)
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    # Parameter 1 is "Vattenföring (Dygn)": SMHI's daily mean discharge.
+    assert all(o.resolution == Resolution.DAILY_MEAN for o in chunk.observations)
 
 
 @pytest.mark.asyncio
@@ -388,6 +391,10 @@ async def test_fetch_observations_15min_historical_uses_corrected_archive():
     assert chunk.observations[0].quality == QualityFlag.RAW
     assert chunk.observations[2].quality == QualityFlag.GOOD
     assert chunk.observations[3].quality == QualityFlag.SUSPECT
+    # Parameter 2 is "Vattenföring (15 min)": point readings, not means.
+    assert all(
+        o.resolution == Resolution.INSTANTANEOUS for o in chunk.observations
+    )
 
 
 @pytest.mark.asyncio

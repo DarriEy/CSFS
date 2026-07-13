@@ -12,7 +12,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -221,7 +228,12 @@ class NewZealandHilltopConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # Hilltop GetData Measurement=Flow returns each council's raw
+                # archive series; the response's <Data> aggregation/interval
+                # metadata is not declared or inspected here.
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=quality,
             ))
 

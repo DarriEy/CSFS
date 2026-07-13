@@ -18,8 +18,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -139,7 +141,11 @@ class UKNRFAConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # data-type "gdf" is the NRFA gauged daily flow product,
+                    # i.e. the mean flow for each day.
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
             except (IndexError, ValueError, TypeError):

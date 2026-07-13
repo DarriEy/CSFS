@@ -23,8 +23,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -172,7 +174,13 @@ class DenmarkHydroConnector(BaseConnector):
                     observations.append(Observation(
                         station_id=station_id,
                         timestamp=ts,
-                        discharge_m3s=discharge,
+                        variable=Variable.DISCHARGE,
+                        # VanDa /water-flows rows carry no aggregation metadata
+                        # (the Hydro-API does not declare whether results are
+                        # point readings or means), so the resolution stays
+                        # UNKNOWN.
+                        resolution=Resolution.UNKNOWN,
+                        value=discharge,
                         quality=quality,
                     ))
                 except (ValueError, TypeError):

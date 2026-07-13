@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_spat import CAMELSSPATConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_META = (
     "gauge_id,lat,lon,country\n"
@@ -43,6 +44,8 @@ async def test_fetch_observations_reads_basin_netcdf(tmp_path: Path):
     assert chunk.provider == "camels_spat"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(148.66, abs=1e-2)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # NaN
     assert chunk.observations[3].discharge_m3s is None  # negative
 

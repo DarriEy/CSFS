@@ -42,8 +42,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -150,6 +152,8 @@ class GEOGloWSConnector(BaseConnector):
             # Future window -> use the latest forecast (median ensemble).
             path = f"/forecast/{reach_id}"
             params = {"format": "json"}
+            # Forecast steps carry no declared cadence/aggregation.
+            resolution = Resolution.UNKNOWN
         else:
             # Historical window -> retrospective daily reanalysis.
             path = f"/retrospectivedaily/{reach_id}"
@@ -158,6 +162,8 @@ class GEOGloWSConnector(BaseConnector):
                 "start_date": start.strftime("%Y%m%d"),
                 "end_date": end.strftime("%Y%m%d"),
             }
+            # `retrospectivedaily` is the daily-average retrospective product.
+            resolution = Resolution.DAILY_MEAN
 
         try:
             resp = await self._get(path, params=params)
@@ -192,7 +198,9 @@ class GEOGloWSConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=resolution,
+                    value=discharge,
                     # GEOGLOWS reanalysis/forecast model output, not a gauge.
                     quality=QualityFlag.ESTIMATED,
                 )

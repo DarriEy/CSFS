@@ -14,6 +14,7 @@ from csfs.connectors.caravan import (
     CaravanConnector,
     CaravanGRDCConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # Registered variant slugs -> their connector classes. Thin subclasses of
 # CaravanConnector that only override slug/display_name/country_codes but
@@ -187,6 +188,10 @@ async def test_fetch_observations_parses_csv(tmp_path: Path):
     assert chunk.observations[4].discharge_m3s == pytest.approx(
         20.2,
     )
+    # Caravan time series are daily-aggregated -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio
@@ -482,6 +487,7 @@ async def test_variant_fetch_observations_parses_csv(slug, cls, tmp_path: Path):
     assert len(chunk.observations) == 5
     assert chunk.observations[0].discharge_m3s == pytest.approx(15.3)
     assert chunk.observations[4].discharge_m3s == pytest.approx(20.2)
+    assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

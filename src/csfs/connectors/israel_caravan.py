@@ -36,8 +36,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -386,10 +388,14 @@ class IsraelCaravanConnector(BaseConnector):
             else:
                 quality = QualityFlag.MISSING
 
+        # Caravan-Israel follows the Caravan format with daily discharge
+        # data (one row per calendar date) -> daily means.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.DAILY_MEAN,
+            value=discharge,
             quality=quality,
         )
 

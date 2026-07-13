@@ -54,8 +54,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -143,7 +145,11 @@ class ItalyEmiliaConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # The feed is ARPAE's "portata istantanea" product:
+                    # instantaneous 15-minute discharge readings.
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=discharge,
                     quality=(
                         QualityFlag.RAW
                         if discharge is not None

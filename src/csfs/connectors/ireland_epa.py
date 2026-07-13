@@ -24,8 +24,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -132,14 +134,17 @@ class IrelandEPAConnector(BaseConnector):
             )
             return self._empty_chunk(station_id)
 
-        # Try 15-minute data first, then daily mean
+        # Try 15-minute data first, then daily mean. The 15-minute product
+        # holds point readings (INSTANTANEOUS); the day product is the daily
+        # mean, so the resolution follows whichever download succeeded.
         url = _DOWNLOAD_FMT.format(
             base=self.base_url,
             region=region,
             no=native_id,
             param="Q",
         )
-        
+        resolution = Resolution.INSTANTANEOUS
+
         try:
             resp = await self._get(url)
         except Exception:
@@ -150,6 +155,7 @@ class IrelandEPAConnector(BaseConnector):
                 no=native_id,
                 param="Q",
             )
+            resolution = Resolution.DAILY_MEAN
             try:
                 resp = await self._get(url)
             except Exception as exc:
@@ -161,7 +167,9 @@ class IrelandEPAConnector(BaseConnector):
                 )
                 return self._empty_chunk(station_id)
 
-        return self._parse_zip_response(resp.content, station_id, start, end)
+        return self._parse_zip_response(
+            resp.content, station_id, start, end, resolution,
+        )
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
         """Fetch the most recent observations."""
@@ -200,6 +208,7 @@ class IrelandEPAConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution = Resolution.UNKNOWN,
     ) -> TimeSeriesChunk:
         """Extract CSV from ZIP and parse observations."""
         try:
@@ -258,7 +267,9 @@ class IrelandEPAConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=resolution,
+                    value=discharge,
                     quality=quality,
                 ))
             except (ValueError, TypeError):

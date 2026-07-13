@@ -11,7 +11,7 @@ import pytest
 import respx
 
 from csfs.connectors.ireland_epa import IrelandEPAConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 MOCK_INDEX_RESPONSE = [
     {
@@ -106,7 +106,12 @@ async def test_fetch_observations_with_region_discovery():
     assert obs1.timestamp == datetime(2024, 6, 1, 12, 0, tzinfo=UTC)
     assert obs1.discharge_m3s == 1.234
     assert obs1.quality == QualityFlag.GOOD
-    
+    assert obs1.variable == Variable.DISCHARGE
+    # The 15-minute product carries point readings.
+    assert all(
+        o.resolution == Resolution.INSTANTANEOUS for o in chunk.observations
+    )
+
     obs3 = chunk.observations[2]
     assert obs3.discharge_m3s is None
     assert obs3.quality == QualityFlag.MISSING
@@ -137,3 +142,7 @@ async def test_fetch_observations_fallback_to_daymean():
         )
 
     assert len(chunk.observations) == 3
+    # The daymean fallback product is a daily mean series.
+    assert all(
+        o.resolution == Resolution.DAILY_MEAN for o in chunk.observations
+    )

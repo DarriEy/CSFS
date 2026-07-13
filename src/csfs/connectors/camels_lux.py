@@ -27,7 +27,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -164,10 +164,14 @@ class CAMELSLUXConnector(BaseConnector):
                             quality = QualityFlag.RAW if flag in ("0", "0.0", "") else QualityFlag.ESTIMATED
                     except ValueError:
                         discharge, quality = None, QualityFlag.MISSING
+                # Native 15-min discharge is 'aggregated to hourly and daily time steps' in
+                # m3/s (Nijzink et al.), i.e. daily means.
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.germany_nrw import GermanyNRWConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 from csfs.core.registry import get_connector
 
 _Q = "https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/oberflaechengewaesser/hydro/q"
@@ -97,6 +97,10 @@ async def test_fetch_observations_parses_and_filters():
     assert real.timestamp == datetime(2026, 1, 3, 10, 45, tzinfo=UTC)
     assert chunk.observations[1].discharge_m3s is None
     assert chunk.observations[1].quality == QualityFlag.MISSING
+
+    # The archive declares no aggregation, so resolution stays UNKNOWN.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
 
 
 @pytest.mark.asyncio

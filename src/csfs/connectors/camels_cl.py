@@ -27,7 +27,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -175,10 +175,13 @@ class CAMELSCLConnector(BaseConnector):
                 except ValueError:
                     # CAMELS-CL missing-data sentinel is a quoted single space.
                     discharge, quality = None, QualityFlag.MISSING
+                # DGA/CR2 daily series are 'caudal medio diario' (mean daily flow).
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

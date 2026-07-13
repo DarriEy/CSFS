@@ -10,6 +10,7 @@ from csfs.connectors.bosnia_fhmz import (
     _SEED_STATIONS,
     BosniaFhmzConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://www.fhmzbih.gov.ba"
 
@@ -69,6 +70,9 @@ async def test_fetch_observations_parses_json():
     # Only 12:00 and 18:00 within range
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(18.7)
+    # FHMZ declares neither cadence nor aggregation.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
     assert chunk.observations[1].discharge_m3s is None
     assert chunk.observations[1].quality.value == "missing"
 

@@ -10,7 +10,7 @@ import respx
 
 from csfs.connectors.glofas import GloFASConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 _FLOOD_URL = "https://flood-api.open-meteo.com/v1/flood"
 
@@ -79,6 +79,9 @@ async def test_fetch_observations():
     assert obs.timestamp == datetime(2026, 5, 1, tzinfo=UTC)
     # GloFAS is model output, not a gauge reading.
     assert obs.quality == QualityFlag.ESTIMATED
+    # GloFAS v4 daily-mean river discharge.
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

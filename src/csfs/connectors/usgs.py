@@ -8,7 +8,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -76,7 +83,7 @@ class USGSConnector(BaseConnector):
             "startDT": start.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
             "endDT": end.strftime("%Y-%m-%dT%H:%M:%S+00:00"),
         })
-        return self._parse_dv_json(resp.json(), station_id)
+        return self._parse_iv_json(resp.json(), station_id)
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
         native_id = station_id.removeprefix(f"{self.slug}:")
@@ -86,7 +93,7 @@ class USGSConnector(BaseConnector):
             "parameterCd": self.DISCHARGE_PARAM,
             "period": "PT2H",
         })
-        return self._parse_dv_json(resp.json(), station_id)
+        return self._parse_iv_json(resp.json(), station_id)
 
     def _parse_site_rdb(self, text: str) -> list[Station]:
         stations = []
@@ -126,7 +133,14 @@ class USGSConnector(BaseConnector):
                 continue
         return stations
 
-    def _parse_dv_json(self, data: dict, station_id: str) -> TimeSeriesChunk:
+    def _parse_iv_json(self, data: dict, station_id: str) -> TimeSeriesChunk:
+        """Parse an NWIS /iv/ (instantaneous values) JSON response.
+
+        Both fetch paths hit the ``iv`` service only (param 00060), which
+        serves instantaneous unit values (typically 15-min telemetry), so
+        every observation is tagged INSTANTANEOUS. The ``dv`` (daily values)
+        service is not used by this connector.
+        """
         observations = []
         try:
             ts_list = data["value"]["timeSeries"]
@@ -150,7 +164,9 @@ class USGSConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=datetime.fromisoformat(v["dateTime"]),
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.INSTANTANEOUS,
+                value=discharge,
                 quality=q_flag if discharge is not None else QualityFlag.MISSING,
             ))
 

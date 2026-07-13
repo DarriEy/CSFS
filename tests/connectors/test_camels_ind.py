@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_ind import CAMELSINDConnector
+from csfs.core.models import Resolution, Variable
 
 # year,month,day then one column per gauge id; missing = empty cell.
 SAMPLE_MATRIX = (
@@ -41,6 +42,8 @@ async def test_fetch_observations_selects_gauge_and_marks_empty_missing(tmp_path
     assert chunk.provider == "camels_ind"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s is None  # empty cell
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
     assert chunk.observations[0].quality.value == "missing"
     assert chunk.observations[1].discharge_m3s == pytest.approx(5.5)
 

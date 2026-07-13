@@ -35,8 +35,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -198,7 +200,11 @@ class GermanyBavariaConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # GKD labels the table "Aktuelle Messwerte" / "hochauf-
+                    # gelöste Abflüsse": 15-min point measurements.
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=discharge,
                     quality=QualityFlag.RAW
                     if discharge is not None
                     else QualityFlag.MISSING,

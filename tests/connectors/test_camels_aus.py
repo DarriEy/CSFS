@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_aus import _MLD_TO_M3S, CAMELSAUSConnector
+from csfs.core.models import Resolution, Variable
 
 # year,month,day then one column per station id (ML/day); missing = -99.99.
 SAMPLE_MATRIX = (
@@ -40,6 +41,8 @@ async def test_fetch_observations_converts_mld_to_m3s(tmp_path: Path):
     assert len(chunk.observations) == 3
     # -99.99 sentinel -> missing.
     assert chunk.observations[0].discharge_m3s is None
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[0].quality.value == "missing"
     # 8640 ML/day = 8640 * 1000 / 86400 = 100 m3/s.
     assert chunk.observations[1].discharge_m3s == pytest.approx(8640.0 * _MLD_TO_M3S)

@@ -14,6 +14,7 @@ from csfs.connectors.spain_cedex import (
     MITECO_STATION_KMZ,
     SpainCedexConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Sample CSV data (semicolon-delimited, Spanish headers)
@@ -158,6 +159,11 @@ async def test_fetch_observations_from_csv(tmp_path: Path):
     # Fourth obs: no quality string -> raw
     assert chunk.observations[3].discharge_m3s == pytest.approx(18.20)
     assert chunk.observations[3].quality.value == "raw"
+
+    # Anuario de aforos series are daily discharge -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

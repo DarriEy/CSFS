@@ -11,6 +11,7 @@ from csfs.connectors.gsim import (
     _SEED_STATIONS,
     GSIMConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ------------------------------------------------------------------
 # Mock data
@@ -144,6 +145,10 @@ async def test_fetch_observations_parses_text_file(
     # Missing value (-999.0)
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+    # .mon files carry monthly mean flow
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.MONTHLY_MEAN
 
 
 @pytest.mark.asyncio
@@ -170,6 +175,8 @@ async def test_fetch_observations_parses_csv_file(
     assert chunk.observations[2].discharge_m3s == pytest.approx(
         8400.0,
     )
+    # CSV exports (year, month, mean) are monthly means
+    assert chunk.observations[0].resolution is Resolution.MONTHLY_MEAN
 
 
 @pytest.mark.asyncio
@@ -198,6 +205,28 @@ async def test_fetch_observations_csv_with_date_column(
     # Missing value
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_year_file_resolution_unknown(
+    tmp_path: Path,
+):
+    """.year files carry yearly indices, which don't fit the Resolution enum."""
+    text = "year\tmonth\tmean\n1960\t1\t8500.0\n"
+    gsim_file = tmp_path / "GSIM_TEST.year"
+    gsim_file.write_text(text, encoding="utf-8")
+
+    async with GSIMConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "gsim:GSIM_TEST",
+            start=datetime(1960, 1, 1, tzinfo=UTC),
+            end=datetime(1960, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

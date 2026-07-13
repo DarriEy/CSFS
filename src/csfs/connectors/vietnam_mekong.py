@@ -47,8 +47,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -374,7 +376,11 @@ class VietnamMekongConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # The ratings files hold in-situ discharge gaugings
+                    # (spot measurements, dated by day).
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=discharge,
                     quality=QualityFlag.RAW,
                 )
             )
@@ -508,7 +514,11 @@ class VietnamMekongConnector(BaseConnector):
                     Observation(
                         station_id=station_id,
                         timestamp=ts_aware,
-                        discharge_m3s=discharge,
+                        variable=Variable.DISCHARGE,
+                        # Best-effort catalogue fallback of unknown shape;
+                        # no aggregation is declared.
+                        resolution=Resolution.UNKNOWN,
+                        value=discharge,
                         quality=(
                             QualityFlag.RAW
                             if discharge is not None
@@ -697,7 +707,11 @@ class VietnamMekongConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            # Local EIDC CSVs are the hourly-cadence series, but whether the
+            # values are spot readings or hourly means is not declared.
+            resolution=Resolution.UNKNOWN,
+            value=discharge,
             quality=quality,
         )
 

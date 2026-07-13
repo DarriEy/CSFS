@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_gb import CAMELSGBConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     "date,precipitation,pet,temperature,discharge_spec,discharge_vol\n"
@@ -40,6 +41,8 @@ async def test_fetch_observations_glob_matches_dated_filename(tmp_path: Path):
     assert chunk.provider == "camels_gb"
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(0.77)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # blank discharge_vol
     assert chunk.observations[2].quality.value == "missing"
 

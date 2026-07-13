@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_br import CAMELSBRConnector
+from csfs.core.models import Resolution, Variable
 
 # year month day streamflow_m3s qual_control_by_ana qual_flag  (whitespace-sep)
 SAMPLE_STREAMFLOW = """\
@@ -45,6 +46,8 @@ async def test_fetch_observations_parses_and_filters(tmp_path: Path):
     # 4 rows minus the -999 missing-data sentinel = 3 observations.
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(42611.27)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert all(o.discharge_m3s is not None and o.discharge_m3s >= 0 for o in chunk.observations)
     assert [o.timestamp.day for o in chunk.observations] == [1, 2, 4]
 

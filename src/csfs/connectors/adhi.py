@@ -25,7 +25,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -714,10 +721,14 @@ class ADHIConnector(BaseConnector):
                     discharge = None
                     quality = QualityFlag.MISSING
 
+            # ADHI monthly series carry the *mean* monthly runoff column
+            # (year, month, mean, max, min, ...) -> monthly means.
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.MONTHLY_MEAN,
+                value=discharge,
                 quality=quality,
             ))
 
@@ -815,10 +826,13 @@ class ADHIConnector(BaseConnector):
         if flag_str:
             quality = _QUALITY_MAP.get(flag_str, quality)
 
+        # ADHI distributes monthly discharge series -> monthly means.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.MONTHLY_MEAN,
+            value=discharge,
             quality=quality,
         )
 

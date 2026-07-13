@@ -7,7 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.newzealand_hilltop import NewZealandHilltopConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 # -- Mock response data ------------------------------------------------
 
@@ -146,6 +146,9 @@ async def test_fetch_observations_parses_values():
 
     assert chunk.observations[0].discharge_m3s == pytest.approx(5.23)
     assert chunk.observations[0].quality == QualityFlag.RAW
+    # Hilltop GetData does not declare the series' aggregation.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
     assert chunk.observations[1].discharge_m3s == pytest.approx(5.31)
     assert chunk.observations[2].discharge_m3s == pytest.approx(5.18)
 

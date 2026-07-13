@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_fr import CAMELSFRConnector
+from csfs.core.models import Resolution, Variable
 
 # Real-shape: a '#'-comment block, then a ';'-separated header. tsd_q_l is L/s.
 SAMPLE_TS = (
@@ -40,6 +41,8 @@ async def test_fetch_observations_skips_comment_block_and_converts_lps(tmp_path:
     assert len(chunk.observations) == 4
     # 1650 L/s -> 1.65 m3/s
     assert chunk.observations[0].discharge_m3s == pytest.approx(1.65)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[1].discharge_m3s == pytest.approx(1.73)
     assert chunk.observations[2].discharge_m3s is None  # blank
     assert chunk.observations[2].quality.value == "missing"

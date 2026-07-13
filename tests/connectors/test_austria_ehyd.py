@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.austria_ehyd import AustriaEhydConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = {
     "type": "FeatureCollection",
@@ -109,6 +109,9 @@ async def test_fetch_latest():
     # 2026-06-01T02:20:00+02:00 -> 2026-06-01T00:20:00+00:00
     assert obs.timestamp == datetime(2026, 6, 1, 0, 20, tzinfo=UTC)
     assert obs.quality == QualityFlag.GOOD
+    # pegel_aktuell serves the latest spot reading.
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio
