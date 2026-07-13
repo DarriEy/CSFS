@@ -213,12 +213,25 @@
   base_url: https://snia.mop.gob.cl/BNAConsultas/
   format: [csv, json]
   access: open
-  realtime: true
-  realtime_latency: 1h
+  realtime: false
   stations: ~1200
   stability: fragile
-  status: degraded
-  notes: "Upstream ArcGIS service (DGA/Red_Hidrometrica/MapServer on rest-sit.mop.gob.cl) was decommissioned — fetch_stations fails; no drop-in replacement (SNIA is a stateful JSP portal). Chilean discharge is available via the CAMELS-CL dataset-artifact connector (camels_cl) instead. Verified dead 2026-06-17."
+  status: deprecated
+  notes: "Retired 2026-07: the ArcGIS service (DGA/Red_Hidrometrica/MapServer) was decommissioned (verified dead 2026-06-17) and the connector never had a working observations endpoint. Chilean discharge is served by chile_cr2 (CR2 explorador re-serve of the DGA archive) and camels_cl."
+
+- slug: chile_cr2
+  name: CR2 explorador (Chile DGA archive)
+  country: CL
+  region: south_america
+  api_type: rest
+  base_url: https://explorador.cr2.cl
+  format: [json, csv]
+  access: open
+  realtime: false
+  stations: ~550
+  stability: stable
+  status: implemented
+  notes: "Universidad de Chile's CR2 explorador re-serves the DGA gauge archive through a scriptable request.php endpoint (JSON metadata + generated CSV export). Daily-mean discharge, already m3/s; snapshot currently ends 2020-06-05, so this is a historical/backfill source. Live station catalog (~548 qflxDaily gauges). Server ignores requested time windows; sliced client-side."
 
 - slug: india_wris
   name: India WRIS / CWC
@@ -446,13 +459,13 @@
   region: europe
   api_type: web_portal
   base_url: https://snirh.apambiente.pt
-  format: [csv]
+  format: [html]
   access: open
   realtime: false
-  stations: unknown
+  stations: ~715
   stability: fragile
-  status: manual
-  notes: Max 50 stations per download batch.
+  status: implemented
+  notes: "Daily-mean discharge (pars 1850) and stage (pars 1845) scraped from the janela_verdados.php HTML tables; bundled 715-gauge seed catalog (code -> numeric SNIRH id + coords). Server ignores tmin/tmax (full record returned; sliced client-side). SNIRH's edge IP-blocks some networks (bare 403) — parser verified against captured/archived responses; watch csfs health from the acquisition runner."
   estreams_id: PT_SNIRH
 
 - slug: belgium_waterinfo
@@ -1136,7 +1149,7 @@
   realtime: true
   stations: ~95
   status: implemented
-  notes: Hydrology API launched Nov 2023.
+  notes: "Hydrology API launched Nov 2023. Serves water level (cm) and water temperature only — no discharge; the connector emits stage (m) + water_temperature. (Pre-2026-07 rows stored levels in the discharge column; re-tagged by the store's multi-variable migration.)"
 
 - slug: estonia_ilmateenistus
   name: Ilmateenistus (Estonia)
@@ -1320,3 +1333,31 @@
   realtime: true
   status: implemented
   notes: "INAMHI Ecuador streamflow via the GEOGLOWS ECMWF model (reach-based, m3/s). Shares the GEOGLOWS backend with the global geoglows connector but scoped to Ecuador."
+
+- slug: southafrica_dws
+  name: DWS South Africa (Verified Hydrology)
+  country: ZA
+  region: africa
+  api_type: web_portal
+  base_url: https://www.dws.gov.za
+  format: [html]
+  access: open
+  realtime: false
+  stations: ~1294
+  stability: fragile
+  status: implemented
+  notes: "Department of Water and Sanitation verified hydrology (HyData.aspx <pre> text): daily-mean discharge plus instantaneous discharge and stage (SAST -> UTC); bundled 1,294-gauge seed catalog. Primary host geo/WAF-blocks some networks; legacy mirror www.dwa.gov.za serves the same Hydstra backend (config base_url override + verify_ssl=false). Daily mode currently erroring server-side on the mirror; connector degrades gracefully."
+
+- slug: germany_berlin
+  name: Wasserportal Berlin
+  country: DE
+  region: europe
+  api_type: rest
+  base_url: https://wasserportal.berlin.de
+  format: [csv, html]
+  access: open
+  realtime: true
+  stations: ~133
+  stability: stable
+  status: implemented
+  notes: "Berlin state surface-water portal: discharge + stage (cm -> m) + water temperature, daily means and 15-min instantaneous (station.php CSV; live-scraped catalog with proper UTM33N/GK4 -> WGS84 conversion). Europe/Berlin -> UTC."
