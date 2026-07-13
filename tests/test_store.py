@@ -384,3 +384,20 @@ async def test_get_latest_timestamps_bulk(store: DuckDBStore, sample_station: St
     assert d_marks[sid].astimezone(UTC) == datetime(2024, 6, 1, tzinfo=UTC)
 
     assert await store.get_latest_timestamps([]) == {}
+
+
+@pytest.mark.asyncio
+async def test_connector_health_per_provider_staleness(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
+    """Archive-class providers get a longer staleness horizon via overrides."""
+    await store.upsert_stations([sample_station])
+    await store.append_observations(sample_chunk)  # 2024 data — stale by default
+
+    default_rows = await store.get_connector_health()
+    assert default_rows[0]["data_health"] == "stale"
+
+    tolerant = await store.get_connector_health(
+        stale_after_by_provider={"usgs": 10 * 365 * 24.0}
+    )
+    assert tolerant[0]["data_health"] == "ok"

@@ -96,9 +96,12 @@ class BaseStore(ABC):
     async def get_connector_health(
         self,
         stale_after_hours: float = 168.0,
+        stale_after_by_provider: dict[str, float] | None = None,
     ) -> list[dict]:
         """Return one health summary row per provider.
 
         Combines stored-data coverage (station/observation counts, freshness)
         with acquisition-log outcomes (last run, status, error, success rate).
+        ``stale_after_by_provider`` overrides the staleness threshold for
+        specific providers (archives tolerate longer horizons).
         """

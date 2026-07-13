@@ -74,6 +74,37 @@ TIER_LOOKBACK: dict[str, int] = {
     "weekly": 720,
 }
 
+# Freshness expectations for health classification ("stale" threshold in
+# hours). The weekly tier hosts archive-class sources that publish annually
+# (uk_nrfa: gauged daily flow lands ~once a year) or consolidate with
+# months of lag (brazil_ana) — flagging those against a 7-day horizon is
+# permanent noise, not signal. Live tiers keep the historical 7-day default.
+TIER_STALE_AFTER: dict[str, float] = {
+    "realtime": 168.0,
+    "hourly": 168.0,
+    "daily": 168.0,
+    "weekly": 26280.0,  # 3 years — tolerates annual archives + consolidation lag
+}
+
+# Per-provider overrides (take precedence over the tier value).
+PROVIDER_STALE_AFTER: dict[str, float] = {
+    # CR2 explorador re-serves a DGA snapshot frozen at 2020-06-05; the
+    # connector delivers everything the source offers, so "fresh" here
+    # means "the archive is loaded", not "recent data exists".
+    "chile_cr2": 87600.0,  # 10 years
+}
+
+
+def stale_after_by_provider() -> dict[str, float]:
+    """Per-provider staleness thresholds derived from tiers + overrides."""
+    thresholds: dict[str, float] = {}
+    for tier, slugs in PROVIDER_TIERS.items():
+        tier_hours = TIER_STALE_AFTER.get(tier, 168.0)
+        for slug in slugs:
+            thresholds[slug] = tier_hours
+    thresholds.update(PROVIDER_STALE_AFTER)
+    return thresholds
+
 
 async def run_scheduled_cycle(
     db_path: str,

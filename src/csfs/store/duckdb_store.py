@@ -497,6 +497,7 @@ class DuckDBStore(BaseStore):
     async def get_connector_health(
         self,
         stale_after_hours: float = 168.0,
+        stale_after_by_provider: dict[str, float] | None = None,
     ) -> list[dict]:
         """Per-provider health derived from stored data and the acquisition log.
 
@@ -550,16 +551,18 @@ class DuckDBStore(BaseStore):
         """).fetchall()
 
         merged: dict[str, dict] = {}
+        overrides = stale_after_by_provider or {}
         for provider, stations, observations, latest_obs, last_fetch in coverage:
             staleness_hours: float | None = None
             if latest_obs is not None and now is not None:
                 staleness_hours = (now - latest_obs).total_seconds() / 3600.0
 
+            threshold = overrides.get(provider, stale_after_hours)
             if stations == 0:
                 data_health = "none"
             elif observations == 0:
                 data_health = "empty"
-            elif staleness_hours is not None and staleness_hours > stale_after_hours:
+            elif staleness_hours is not None and staleness_hours > threshold:
                 data_health = "stale"
             else:
                 data_health = "ok"
