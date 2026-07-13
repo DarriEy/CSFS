@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_se import CAMELSSEConnector
+from csfs.core.models import Resolution, Variable
 
 # Year,Month,Day,Qobs_m3s,... — Swedish chars in the FILENAME only (id is ASCII).
 SAMPLE_TS = (
@@ -37,6 +38,8 @@ async def test_fetch_observations_globs_on_ascii_id(tmp_path: Path):
     assert chunk.provider == "camels_se"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(4.24)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # blank
     assert chunk.observations[2].quality.value == "missing"
     assert chunk.observations[3].discharge_m3s is None  # -9999 sentinel

@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.uk_nrfa import UKNRFAConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = {
     "data": [
@@ -81,6 +81,9 @@ async def test_fetch_observations():
     assert obs1.timestamp == datetime(2010, 1, 1, tzinfo=UTC)
     assert obs1.discharge_m3s == 218.0
     assert obs1.quality == QualityFlag.GOOD
+    assert obs1.variable == Variable.DISCHARGE
+    # NRFA "gdf" is gauged daily flow: the mean flow for each day.
+    assert all(o.resolution == Resolution.DAILY_MEAN for o in chunk.observations)
     
     obs3 = chunk.observations[2]
     assert obs3.discharge_m3s is None

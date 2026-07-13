@@ -8,6 +8,7 @@ import pytest
 import respx
 
 from csfs.connectors.taiwan_wra import _RESERVOIR_DATASET, TaiwanWRAConnector
+from csfs.core.models import Resolution, Variable
 
 DATASET_URL = f"https://opendata.wra.gov.tw/api/v2/{_RESERVOIR_DATASET}"
 
@@ -65,6 +66,9 @@ async def test_fetch_observations_parses_inflow_and_tz():
     # 06:00 Taipei (UTC+8) -> 2026-05-31 22:00 UTC.
     assert chunk.observations[0].timestamp == datetime(2026, 5, 31, 22, 0, tzinfo=UTC)
     assert chunk.observations[0].quality.value == "raw"
+    # WRA does not declare whether hourly inflow rows are spot or mean values.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
 
 
 @respx.mock

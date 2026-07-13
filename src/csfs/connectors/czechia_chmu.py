@@ -33,7 +33,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -183,7 +190,12 @@ class CzechiaChmuConnector(BaseConnector):
                     observations.append(Observation(
                         station_id=station_id,
                         timestamp=when,
-                        discharge_m3s=float(value),
+                        variable=Variable.DISCHARGE,
+                        # Both now/ and recent/ files carry the raw 10-minute
+                        # sensor readings (see module docstring), i.e. point
+                        # values, not aggregates.
+                        resolution=Resolution.INSTANTANEOUS,
+                        value=float(value),
                         quality=QualityFlag.RAW,
                     ))
         return observations

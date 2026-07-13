@@ -8,7 +8,7 @@ import respx
 
 from csfs.connectors.belgium_waterinfo import BelgiumWaterinfoConnector, _map_quality
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 # -- Mock response data ------------------------------------------------
 
@@ -277,6 +277,55 @@ async def test_fetch_observations_parses_values():
 
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality == QualityFlag.MISSING
+
+    # L04_00A selects P.15 (15-min point readings) -> INSTANTANEOUS.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_daily_mean_resolution():
+    """A station whose only cadence is DagGem is tagged DAILY_MEAN."""
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(
+            MOCK_Q_SERIES_RESPONSE, MOCK_STATION_LIST_RESPONSE,
+        ),
+    )
+
+    async with BelgiumWaterinfoConnector() as conn:
+        # L06_42A only has the DagGem (daily mean) series.
+        chunk = await conn.fetch_observations(
+            "belgium_waterinfo:L06_42A",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 3
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_unmapped_cadence_is_unknown():
+    """A cadence outside _TS_RESOLUTION falls back to UNKNOWN."""
+    q_series = [
+        ["station_no", "ts_id", "ts_name"],
+        ["L04_00A", "55555", "SomeOtherCadence"],
+    ]
+    respx.get(KIWIS_URL).mock(
+        side_effect=_route_by_request(q_series, MOCK_STATION_LIST_RESPONSE),
+    )
+
+    async with BelgiumWaterinfoConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "belgium_waterinfo:L04_00A",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 3
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
 
 
 @pytest.mark.asyncio

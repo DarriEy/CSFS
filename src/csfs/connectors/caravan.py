@@ -35,8 +35,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -1070,10 +1072,14 @@ class CaravanConnector(BaseConnector):
             else:
                 quality = QualityFlag.MISSING
 
+        # Caravan distributes daily-aggregated streamflow time series
+        # (one row per calendar date), so values are daily means.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.DAILY_MEAN,
+            value=discharge,
             quality=quality,
         )
 

@@ -38,8 +38,10 @@ from csfs.connectors.base import BaseConnector
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -462,36 +464,30 @@ class RussiaArcticNETConnector(BaseConnector):
         station_id: str,
         ts: datetime,
     ) -> Observation:
-        """Convert a raw discharge string to an Observation."""
-        if not raw or raw == "":
+        """Convert a raw discharge string to an Observation.
+
+        R-ArcticNET distributes monthly mean discharge (Jan..Dec columns
+        per year), so every observation is tagged MONTHLY_MEAN.
+        """
+        def _obs(value: float | None, quality: QualityFlag) -> Observation:
             return Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=None,
-                quality=QualityFlag.MISSING,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.MONTHLY_MEAN,
+                value=value,
+                quality=quality,
             )
+
+        if not raw or raw == "":
+            return _obs(None, QualityFlag.MISSING)
 
         try:
             value = float(str(raw))
         except ValueError:
-            return Observation(
-                station_id=station_id,
-                timestamp=ts,
-                discharge_m3s=None,
-                quality=QualityFlag.MISSING,
-            )
+            return _obs(None, QualityFlag.MISSING)
 
         if abs(value - _MISSING_VALUE) < 0.01:
-            return Observation(
-                station_id=station_id,
-                timestamp=ts,
-                discharge_m3s=None,
-                quality=QualityFlag.MISSING,
-            )
+            return _obs(None, QualityFlag.MISSING)
 
-        return Observation(
-            station_id=station_id,
-            timestamp=ts,
-            discharge_m3s=value,
-            quality=QualityFlag.RAW,
-        )
+        return _obs(value, QualityFlag.RAW)

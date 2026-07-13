@@ -8,7 +8,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -132,7 +139,11 @@ class GermanyPegelonlineConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # PEGELONLINE Q measurements are current (point) readings at a
+                # 15-min equidistance, not aggregates.
+                resolution=Resolution.INSTANTANEOUS,
+                value=discharge,
                 quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
             ))
 

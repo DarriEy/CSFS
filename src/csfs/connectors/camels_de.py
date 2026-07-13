@@ -25,7 +25,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -155,10 +155,15 @@ class CAMELSDEConnector(BaseConnector):
                         discharge, quality = None, QualityFlag.MISSING
                 except ValueError:
                     discharge, quality = None, QualityFlag.MISSING
+                # CAMELS-DE documents only 'daily discharge (m3/s)' from 13 state agencies
+                # with heterogeneous, partly undocumented methods; daily mean vs. spot value
+                # is not declared, so the resolution stays UNKNOWN.
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.UNKNOWN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

@@ -18,8 +18,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -163,7 +165,11 @@ class AustriaEhydConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=float(raw_value),
+                variable=Variable.DISCHARGE,
+                # pegel_aktuell serves the latest spot reading, not an
+                # aggregate.
+                resolution=Resolution.INSTANTANEOUS,
+                value=float(raw_value),
                 quality=QualityFlag.GOOD, # WFS 'aktuell' values are screened
             ))
 

@@ -31,7 +31,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -198,7 +205,12 @@ class BrazilAnaConnector(BaseConnector):
             Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=value,
+                variable=Variable.DISCHARGE,
+                # HidroSerieHistorica Vazao01..31 are daily-mean discharge
+                # (see module docstring); this is the connector's only
+                # observation path.
+                resolution=Resolution.DAILY_MEAN,
+                value=value,
                 quality=QualityFlag.GOOD if consist >= 2 else QualityFlag.RAW,
             )
             for ts, (consist, value) in sorted(best.items())

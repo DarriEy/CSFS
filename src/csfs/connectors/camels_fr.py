@@ -29,7 +29,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 from csfs.core.reproject import to_wgs84
 
@@ -170,10 +170,14 @@ class CAMELSFRConnector(BaseConnector):
                         discharge, quality = value * _LPS_TO_M3S, QualityFlag.RAW
                 except ValueError:
                     discharge, quality = None, QualityFlag.MISSING
+            # CAMELS-FR provides MEAN daily streamflow (trapezoidal integration of
+            # sub-daily records; Delaigue et al. 2025).
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.DAILY_MEAN,
+                value=discharge,
                 quality=quality,
             ))
         return observations

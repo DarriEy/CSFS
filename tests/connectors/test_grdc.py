@@ -11,6 +11,7 @@ from csfs.connectors.grdc import (
     _SEED_STATIONS,
     GRDCConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -223,6 +224,11 @@ async def test_fetch_observations_parses_file(tmp_path: Path):
     assert chunk.observations[0].discharge_m3s == pytest.approx(620.0)
     assert chunk.observations[0].quality.value == "good"
 
+    # *_Q_Day* files carry daily mean discharge
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
+
     # Second obs: original value
     assert chunk.observations[1].discharge_m3s == pytest.approx(635.5)
     assert chunk.observations[1].quality.value == "good"
@@ -279,6 +285,31 @@ async def test_fetch_observations_alt_filename(tmp_path: Path):
 
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(620.0)
+    # The bare {grdc_no}.txt naming does not declare its aggregation
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_monthly_filename(tmp_path: Path):
+    """*_Q_Month* files are tagged as monthly means."""
+    grdc_file = tmp_path / "6340110_Q_Month.txt"
+    grdc_file.write_text(
+        "# Header\n"
+        "1950-01-01; 00:00;    620.000;0\n",
+        encoding="utf-8",
+    )
+
+    async with GRDCConnector(
+        config={"data_dir": str(tmp_path)},
+    ) as conn:
+        chunk = await conn.fetch_observations(
+            "grdc:6340110",
+            start=datetime(1950, 1, 1, tzinfo=UTC),
+            end=datetime(1950, 1, 5, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].resolution is Resolution.MONTHLY_MEAN
 
 
 @pytest.mark.asyncio

@@ -10,7 +10,7 @@ public KiWIS time-series service needs no authentication. Discharge is the
 from __future__ import annotations
 
 from csfs.connectors._kiwis import KiWISConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution
 from csfs.core.registry import register
 
 # KISTERS quality codes: low = validated, 130/255 = missing, otherwise the
@@ -53,6 +53,15 @@ class ScotlandSepaConnector(KiWISConnector):
     )
     # Prefer real-time 15-minute flow, then hourly/daily means.
     _TS_PREFERENCE = ("15minute", "Hour.Mean", "Day.Mean", "Day.Mean.Natural")
+    # Resolution implied by each cadence: "15minute" is the raw 15-minute
+    # point series, the ".Mean" cadences are hourly/daily aggregates. A
+    # station whose only series has some other cadence keeps UNKNOWN.
+    _TS_RESOLUTION = {
+        "15minute": Resolution.INSTANTANEOUS,
+        "Hour.Mean": Resolution.HOURLY_MEAN,
+        "Day.Mean": Resolution.DAILY_MEAN,
+        "Day.Mean.Natural": Resolution.DAILY_MEAN,
+    }
     _LIST_TIMEOUT = 120.0
 
     _map_quality = staticmethod(_map_quality)

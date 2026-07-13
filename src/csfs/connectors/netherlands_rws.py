@@ -32,7 +32,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -270,7 +277,12 @@ class NetherlandsRwsConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # The request carries no "Groepering" (aggregation), and
+                    # the API confirms Groepering.Code == "" on Q responses:
+                    # ungrouped native ~10-min point samples.
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

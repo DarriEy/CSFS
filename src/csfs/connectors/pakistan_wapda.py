@@ -35,8 +35,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -412,7 +414,12 @@ class PakistanWAPDAConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            # IRSA/WAPDA tables and the Kaggle CSVs are daily-cadence, but the
+            # sources never declare whether the figures are 24-h means or
+            # morning spot readings.
+            resolution=Resolution.UNKNOWN,
+            value=discharge,
             quality=QualityFlag.RAW,
         )
 
@@ -612,7 +619,10 @@ class PakistanWAPDAConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            # Daily-cadence Kaggle CSVs; aggregation not declared (see above).
+            resolution=Resolution.UNKNOWN,
+            value=discharge,
             quality=(
                 QualityFlag.RAW
                 if discharge is not None

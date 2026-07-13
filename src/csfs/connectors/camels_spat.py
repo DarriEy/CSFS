@@ -29,7 +29,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -179,10 +179,15 @@ class CAMELSSPATConnector(BaseConnector):
                 quality = QualityFlag.RAW
                 if discharge < 0:
                     discharge, quality = None, QualityFlag.MISSING
+            # The archive's daily product is agency daily-MEAN flow (Knoben et al. 2025),
+            # but it also ships hourly NetCDFs and this UNVERIFIED glob cannot guarantee
+            # which file it matches, so the resolution stays UNKNOWN.
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.UNKNOWN,
+                value=discharge,
                 quality=quality,
             ))
         return observations

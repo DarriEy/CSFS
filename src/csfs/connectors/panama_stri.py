@@ -40,8 +40,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -502,7 +504,11 @@ class PanamaSTRIConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            # The ACP product is acp_discharge_15min.zip: 15-minute in-situ
+            # gauge readings (spot samples, not interval aggregates).
+            resolution=Resolution.INSTANTANEOUS,
+            value=discharge,
             quality=quality,
         )
 

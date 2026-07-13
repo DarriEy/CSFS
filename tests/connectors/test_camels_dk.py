@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_dk import CAMELSDKConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     "time,catch_id,precipitation,Qdkm,Abstraction,Qobs\n"
@@ -38,6 +39,8 @@ async def test_fetch_observations_reads_qobs(tmp_path: Path):
     assert chunk.provider == "camels_dk"
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(0.75)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[2].discharge_m3s is None  # blank Qobs
     assert chunk.observations[2].quality.value == "missing"
 

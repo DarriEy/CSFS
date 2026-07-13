@@ -26,7 +26,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -371,7 +378,11 @@ class JapanMlitConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # KIND=6 is 時刻流量 ("clock-hour discharge"): the value at
+                    # each hour mark, i.e. hourly spot readings, not means.
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

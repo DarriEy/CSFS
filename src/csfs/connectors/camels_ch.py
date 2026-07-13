@@ -24,7 +24,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -158,10 +158,14 @@ class CAMELSCHConnector(BaseConnector):
                             discharge, quality = None, QualityFlag.MISSING
                     except ValueError:
                         discharge, quality = None, QualityFlag.MISSING
+                # FOEN serves discharge as daily means (Tagesmittel); non-Swiss gauges are
+                # hourly series averaged to daily (Hoege et al. 2023).
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

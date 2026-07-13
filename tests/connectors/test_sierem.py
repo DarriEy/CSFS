@@ -11,6 +11,7 @@ from csfs.connectors.sierem import (
     _SEED_STATIONS,
     SIEREMConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Sample data files
@@ -184,6 +185,11 @@ async def test_fetch_observations_parses_semicolon_csv(tmp_path: Path):
     # Fifth obs: suspect flag
     assert chunk.observations[4].discharge_m3s == pytest.approx(980.0)
     assert chunk.observations[4].quality.value == "suspect"
+
+    # SIEREM does not declare its aggregation -> resolution stays UNKNOWN
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

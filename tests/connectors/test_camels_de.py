@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_de import CAMELSDEConnector
+from csfs.core.models import Resolution, Variable
 
 # date,discharge_vol_obs,discharge_spec_obs,... (comma-separated, blank = missing)
 SAMPLE_TIMESERIES = """\
@@ -43,6 +44,8 @@ async def test_fetch_observations_parses_discharge_vol_obs(tmp_path: Path):
     assert chunk.provider == "camels_de"
     assert len(chunk.observations) == 4  # incl. the blank row as MISSING
     assert chunk.observations[0].discharge_m3s == pytest.approx(12.5)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
     # Blank discharge -> missing.
     missing = chunk.observations[2]
     assert missing.discharge_m3s is None

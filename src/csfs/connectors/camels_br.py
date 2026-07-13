@@ -25,7 +25,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -159,10 +159,14 @@ class CAMELSBRConnector(BaseConnector):
                 if q < 0:  # CAMELS-BR missing-data sentinel
                     continue
                 if start <= ts <= end:
+                    # ANA daily streamflow is a daily MEAN (average of the 07:00/17:00 stage
+                    # readings, or automatic records; Chagas et al. 2020, sect. 3.1).
                     observations.append(Observation(
                         station_id=station_id,
                         timestamp=ts,
-                        discharge_m3s=q,
+                        variable=Variable.DISCHARGE,
+                        resolution=Resolution.DAILY_MEAN,
+                        value=q,
                         quality=QualityFlag.RAW,
                     ))
         return observations

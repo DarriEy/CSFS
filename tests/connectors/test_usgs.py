@@ -8,6 +8,7 @@ import respx
 
 from csfs.connectors.usgs import USGSConnector
 from csfs.core.exceptions import DataFormatError
+from csfs.core.models import Resolution, Variable
 
 MOCK_DV_RESPONSE = {
     "value": {
@@ -49,6 +50,9 @@ async def test_fetch_observations_parses_json():
     assert chunk.observations[0].discharge_m3s == pytest.approx(5000 * 0.0283168, rel=1e-3)
     assert chunk.observations[0].quality.value == "good"
     assert chunk.observations[1].quality.value == "raw"
+    # The iv service serves instantaneous unit values.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio
@@ -196,6 +200,7 @@ async def test_fetch_latest():
         chunk = await conn.fetch_latest("usgs:01646500")
 
     assert len(chunk.observations) == 2
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio

@@ -12,6 +12,7 @@ from csfs.connectors.lamah_ce import (
     ZENODO_RECORD_ID,
     LamaHCEConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -153,6 +154,11 @@ async def test_fetch_observations_parses_csv(tmp_path: Path):
 
     # Fifth obs: valid
     assert chunk.observations[4].discharge_m3s == pytest.approx(50.3)
+
+    # LamaH-CE daily timeseries -> daily mean discharge
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

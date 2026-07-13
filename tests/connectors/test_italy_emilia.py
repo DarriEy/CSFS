@@ -12,6 +12,7 @@ import pytest
 import respx
 
 from csfs.connectors.italy_emilia import ItalyEmiliaConnector
+from csfs.core.models import Resolution, Variable
 from csfs.core.registry import discover, get_connector
 
 _FEED_URL = (
@@ -106,6 +107,11 @@ async def test_fetch_observations_returns_discharge_m3s():
     assert chunk.observations[0].quality.value == "raw"
     # All discharge values are well above any plausible water-level reading.
     assert all(o.discharge_m3s > 100 for o in chunk.observations)
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    # The feed is ARPAE's "portata istantanea" (instantaneous 15-min) product.
+    assert all(
+        o.resolution == Resolution.INSTANTANEOUS for o in chunk.observations
+    )
 
 
 @pytest.mark.asyncio

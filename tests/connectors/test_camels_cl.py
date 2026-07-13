@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_cl import CAMELSCLConnector
+from csfs.core.models import Resolution, Variable
 
 # Wide matrix: row 0 = gauge_id + gauge IDs; col 0 = ISO date; missing = " ".
 # Every field double-quoted and tab-separated, as in the PANGAEA file.
@@ -45,6 +46,8 @@ async def test_fetch_observations_selects_the_gauge_column(tmp_path: Path):
     assert chunk.provider == "camels_cl"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(5.96)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     # 1990-01-03 is a quoted space for gauge 1001001 -> missing.
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"

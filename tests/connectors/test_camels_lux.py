@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_lux import CAMELSLUXConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     "Date,Q,Qspec,Qflag\n"
@@ -36,6 +37,8 @@ async def test_fetch_observations_q_and_qflag(tmp_path: Path):
     assert chunk.provider == "camels_lux"
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(2.273)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[0].quality.value == "raw"
     assert chunk.observations[1].discharge_m3s == pytest.approx(2.5)
     assert chunk.observations[1].quality.value == "estimated"  # Qflag=1

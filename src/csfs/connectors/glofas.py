@@ -42,8 +42,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -207,7 +209,11 @@ class GloFASConnector(BaseConnector):
                 Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # Open-Meteo's `daily=river_discharge` serves GloFAS v4
+                    # daily-mean river discharge (see class docstring).
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     # GloFAS reanalysis/forecast model output, not a gauge reading.
                     quality=QualityFlag.ESTIMATED,
                 )

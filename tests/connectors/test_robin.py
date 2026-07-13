@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.robin import ROBINConnector
+from csfs.core.models import Resolution, Variable
 
 # Per-station daily CSV: date + discharge in m3/s
 SAMPLE_CSV = (
@@ -86,6 +87,10 @@ async def test_fetch_observations_from_csv(tmp_path: Path):
     assert chunk.observations[0].timestamp == datetime(2020, 1, 1, tzinfo=UTC)
     assert chunk.observations[0].quality.value == "raw"
     assert chunk.observations[2].discharge_m3s == pytest.approx(18.20)
+    # ROBIN provides daily streamflow -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

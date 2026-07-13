@@ -35,7 +35,14 @@ from pyproj import Transformer
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -307,10 +314,14 @@ class IcelandLamahIceConnector(BaseConnector):
             quality = (
                 QualityFlag.RAW if discharge is not None else QualityFlag.MISSING
             )
+            # LamaH-Ice per-gauge discharge CSVs are the *daily* timeseries
+            # (D_gauges/2_timeseries/daily) -> daily means.
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.DAILY_MEAN,
+                value=discharge,
                 quality=quality,
             ))
         return observations

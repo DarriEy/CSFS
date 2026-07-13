@@ -32,7 +32,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -129,6 +136,8 @@ class EcuadorINAMHIConnector(BaseConnector):
             # Future window -> latest forecast (median ensemble).
             path = f"/forecast/{reach_id}"
             params = {"format": "json"}
+            # Forecast steps carry no declared cadence/aggregation.
+            resolution = Resolution.UNKNOWN
         else:
             # Historical window -> retrospective daily reanalysis.
             path = f"/retrospectivedaily/{reach_id}"
@@ -137,6 +146,8 @@ class EcuadorINAMHIConnector(BaseConnector):
                 "start_date": start.strftime("%Y%m%d"),
                 "end_date": end.strftime("%Y%m%d"),
             }
+            # `retrospectivedaily` is the daily-average retrospective product.
+            resolution = Resolution.DAILY_MEAN
 
         try:
             resp = await self._get(path, params=params)
@@ -172,7 +183,9 @@ class EcuadorINAMHIConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=resolution,
+                value=discharge,
                 quality=QualityFlag.ESTIMATED,
             ))
 

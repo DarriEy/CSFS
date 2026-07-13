@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.bulgaria_nimh import BulgariaNimhConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 from csfs.core.registry import get_connector
 
 _URL = "https://info.meteo.bg/openData/river-runoff/"
@@ -72,6 +72,9 @@ async def test_fetch_observations_parses_discharge():
     assert obs.discharge_m3s == pytest.approx(5.14)  # Bulgarian comma -> dot
     assert obs.quality == QualityFlag.RAW
     assert obs.timestamp == datetime(2026, 6, 1, tzinfo=UTC)
+    # The "Q" column's aggregation is not declared (Qср is a separate column).
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio

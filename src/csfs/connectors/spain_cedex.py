@@ -44,8 +44,10 @@ from csfs.core.exceptions import DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -819,10 +821,15 @@ class SpainCedexConnector(BaseConnector):
         if discharge is None:
             quality = QualityFlag.MISSING
 
+        # Both sources are daily series: yearbook ZIP CSVs carry daily
+        # discharge (caudal medio diario) and the CEDEX afliq.csv is the
+        # anuario's daily-flow file -> daily means.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.DAILY_MEAN,
+            value=discharge,
             quality=quality,
         )
 

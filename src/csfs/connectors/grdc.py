@@ -30,8 +30,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -699,6 +701,21 @@ class GRDCConnector(BaseConnector):
                 return candidate
         return None
 
+    @staticmethod
+    def _resolution_for_file(file_path: Path) -> Resolution:
+        """Temporal resolution implied by the GRDC file naming convention.
+
+        ``*_Q_Day*`` files carry calculated daily mean discharge and
+        ``*_Q_Month*`` files monthly means; the bare ``{grdc_no}.txt``
+        naming does not declare its aggregation, so it stays UNKNOWN.
+        """
+        name = file_path.name.lower()
+        if "_q_day" in name:
+            return Resolution.DAILY_MEAN
+        if "_q_month" in name:
+            return Resolution.MONTHLY_MEAN
+        return Resolution.UNKNOWN
+
     def _parse_grdc_file(
         self,
         file_path: Path,
@@ -714,6 +731,7 @@ class GRDCConnector(BaseConnector):
         Missing values are encoded as -999.000.
         """
         observations: list[Observation] = []
+        resolution = self._resolution_for_file(file_path)
 
         try:
             lines = file_path.read_text(encoding="utf-8").splitlines()
@@ -742,7 +760,9 @@ class GRDCConnector(BaseConnector):
             data_lines = data_lines[1:]
 
         for line in data_lines:
-            obs = self._parse_data_line(line, station_id, start, end)
+            obs = self._parse_data_line(
+                line, station_id, start, end, resolution,
+            )
             if obs is not None:
                 observations.append(obs)
 
@@ -754,6 +774,7 @@ class GRDCConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> Observation | None:
         """Parse a single semicolon-delimited data line."""
         parts = line.split(";")
@@ -793,7 +814,9 @@ class GRDCConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=resolution,
+            value=discharge,
             quality=quality,
         )
 

@@ -9,6 +9,7 @@ import respx
 
 from csfs.connectors.czechia_chmu import _META_PATH, CzechiaChmuConnector
 from csfs.core.exceptions import DataFormatError
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://opendata.chmi.cz"
 META_URL = f"{BASE_URL}{_META_PATH}"
@@ -99,6 +100,9 @@ async def test_fetch_observations_recent_day_filters_q_and_window():
     ]
     assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
     assert all(o.quality.value == "raw" for o in chunk.observations)
+    # The CHMI feed carries raw 10-minute point readings.
+    assert all(o.variable == Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution == Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @respx.mock

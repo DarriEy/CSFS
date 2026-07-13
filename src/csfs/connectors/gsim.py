@@ -42,8 +42,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -322,12 +324,21 @@ class GSIMConnector(BaseConnector):
             ) from exc
 
         suffix = file_path.suffix.lower()
+        # GSIM serves pre-computed indices: ``.mon`` files (and the CSV
+        # exports, whose documented layout is year, month, MEAN, ...) carry
+        # monthly mean flow -> MONTHLY_MEAN. ``.year`` files carry yearly
+        # indices, which have no Resolution enum member -> keep UNKNOWN.
+        resolution = (
+            Resolution.UNKNOWN
+            if suffix == ".year"
+            else Resolution.MONTHLY_MEAN
+        )
         if suffix == ".csv":
             return self._parse_csv_format(
-                text, station_id, start, end,
+                text, station_id, start, end, resolution,
             )
         return self._parse_text_format(
-            text, station_id, start, end,
+            text, station_id, start, end, resolution,
         )
 
     def _parse_text_format(
@@ -336,6 +347,7 @@ class GSIMConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> list[Observation]:
         """Parse GSIM native text format.
 
@@ -361,13 +373,13 @@ class GSIMConnector(BaseConnector):
             # Detect GSIM .mon CSV format: "date", "MEAN", ...
             if "date" in first.lower() and "mean" in first.lower():
                 return self._parse_gsim_mon_csv(
-                    data_lines, station_id, start, end,
+                    data_lines, station_id, start, end, resolution,
                 )
             data_lines = data_lines[1:]
 
         for line in data_lines:
             obs = self._parse_text_line(
-                line, station_id, start, end,
+                line, station_id, start, end, resolution,
             )
             if obs is not None:
                 observations.append(obs)
@@ -380,6 +392,7 @@ class GSIMConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> list[Observation]:
         """Parse GSIM .mon/.year CSV: date,MEAN,SD,CV,...
 
@@ -412,7 +425,9 @@ class GSIMConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=resolution,
+                value=discharge,
                 quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
             ))
 
@@ -424,6 +439,7 @@ class GSIMConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> Observation | None:
         """Parse a single GSIM text data line.
 
@@ -463,7 +479,9 @@ class GSIMConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=resolution,
+            value=discharge,
             quality=quality,
         )
 
@@ -473,6 +491,7 @@ class GSIMConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> list[Observation]:
         """Parse CSV-formatted GSIM data.
 
@@ -503,7 +522,7 @@ class GSIMConnector(BaseConnector):
         for row in reader:
             obs = self._parse_csv_row(
                 row, year_col, month_col, date_col,
-                value_col, station_id, start, end,
+                value_col, station_id, start, end, resolution,
             )
             if obs is not None:
                 observations.append(obs)
@@ -520,6 +539,7 @@ class GSIMConnector(BaseConnector):
         station_id: str,
         start: datetime,
         end: datetime,
+        resolution: Resolution,
     ) -> Observation | None:
         """Parse a single CSV row into an Observation."""
         ts: datetime | None = None
@@ -577,7 +597,9 @@ class GSIMConnector(BaseConnector):
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=resolution,
+            value=discharge,
             quality=quality,
         )
 

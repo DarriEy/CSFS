@@ -26,7 +26,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 from csfs.core.reproject import to_wgs84
 
@@ -158,10 +158,14 @@ class CAMELSDKConnector(BaseConnector):
                             discharge, quality = None, QualityFlag.MISSING
                     except ValueError:
                         discharge, quality = None, QualityFlag.MISSING
+                # 'Mean daily water discharges are calculated from sub-daily time series'
+                # (Liu et al. 2025, ESSD).
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

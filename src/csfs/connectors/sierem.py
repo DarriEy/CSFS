@@ -22,7 +22,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -705,10 +712,14 @@ class SIEREMConnector(BaseConnector):
             else:
                 discharge = raw_value
 
+        # SIEREM's docs describe "flow series" without declaring the
+        # aggregation (daily vs monthly), so resolution stays UNKNOWN.
         return Observation(
             station_id=station_id,
             timestamp=ts,
-            discharge_m3s=discharge,
+            variable=Variable.DISCHARGE,
+            resolution=Resolution.UNKNOWN,
+            value=discharge,
             quality=quality,
         )
 

@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.environment_canada import EnvironmentCanadaConnector
+from csfs.core.models import Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = {
     "type": "FeatureCollection",
@@ -151,6 +152,10 @@ async def test_fetch_observations_parses_daily_mean():
     # Third observation: null discharge -> missing
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+
+    # The hydrometric-daily-mean collection is a daily mean.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
 
 
 @pytest.mark.asyncio
@@ -325,6 +330,8 @@ async def test_fetch_observations_realtime_recent():
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == pytest.approx(18.5)
     assert chunk.observations[0].quality.value == "good"
+    # The hydrometric-realtime collection is 5-min point telemetry.
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations)
 
 
 @pytest.mark.asyncio
@@ -361,6 +368,10 @@ async def test_fetch_observations_mixed_hist_and_realtime():
     assert len(chunk.observations) == 5  # 3 daily-mean + 2 realtime
     assert rt_route.call_count >= 1
     assert dm_route.call_count >= 1
+    # Each product keeps its own resolution tag.
+    resolutions = [o.resolution for o in chunk.observations]
+    assert resolutions.count(Resolution.DAILY_MEAN) == 3
+    assert resolutions.count(Resolution.INSTANTANEOUS) == 2
 
 
 @pytest.mark.asyncio

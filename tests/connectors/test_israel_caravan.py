@@ -11,6 +11,7 @@ from csfs.connectors.israel_caravan import (
     _SEED_STATIONS,
     IsraelCaravanConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ------------------------------------------------------------------
 # Mock data
@@ -181,6 +182,10 @@ async def test_fetch_observations_parses_csv(tmp_path: Path):
     assert len(chunk.observations) == 5
     assert chunk.observations[0].discharge_m3s == pytest.approx(8.5)
     assert chunk.observations[4].discharge_m3s == pytest.approx(12.3)
+    # Caravan-Israel is daily discharge in Caravan format -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

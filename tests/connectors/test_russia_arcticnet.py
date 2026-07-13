@@ -10,6 +10,7 @@ from csfs.connectors.russia_arcticnet import (
     _REGIONS,
     RussiaArcticNETConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ---------------------------------------------------------------------------
 # Sample data
@@ -186,6 +187,11 @@ async def test_fetch_observations_parses_monthly():
     jun = chunk.observations[5]
     assert jun.timestamp == datetime(1980, 6, 1, tzinfo=UTC)
     assert jun.discharge_m3s == pytest.approx(5000.0)
+
+    # R-ArcticNET distributes monthly mean discharge
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.MONTHLY_MEAN
 
 
 @pytest.mark.asyncio

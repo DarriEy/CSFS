@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_us import _CFS_TO_M3S, CAMELSUSConnector
+from csfs.core.models import Resolution, Variable
 
 # gaugeID YYYY MM DD discharge_cfs qc  (whitespace; -999 = missing)
 SAMPLE_QC = (
@@ -40,6 +41,8 @@ async def test_fetch_observations_converts_cfs(tmp_path: Path):
     assert chunk.provider == "camels_us"
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(1000.0 * _CFS_TO_M3S)
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     # -999 -> missing
     assert chunk.observations[1].discharge_m3s is None
     assert chunk.observations[1].quality.value == "missing"

@@ -11,6 +11,7 @@ from csfs.connectors.panama_stri import (
     _SEED_STATIONS,
     PanamaSTRIConnector,
 )
+from csfs.core.models import Resolution, Variable
 
 # ------------------------------------------------------------------
 # Mock data
@@ -128,6 +129,9 @@ async def test_fetch_observations_from_local_csv(tmp_path: Path):
     # 3 CHA rows on Jan 1 + 1 CHA row on Jan 2 = 4
     assert len(chunk.observations) == 4
     assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    # ACP 15-minute readings are spot samples.
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio
@@ -166,6 +170,7 @@ async def test_fetch_observations_from_zip_download():
 
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    assert chunk.observations[0].resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camels_ch import CAMELSCHConnector
+from csfs.core.models import Resolution, Variable
 
 SAMPLE_TS = (
     "date,discharge_vol(m3/s),discharge_spec(mm/d),waterlevel(m)\n"
@@ -41,6 +42,8 @@ async def test_fetch_observations_parses_discharge_vol(tmp_path: Path):
     assert chunk.provider == "camels_ch"
     assert len(chunk.observations) == 3
     assert chunk.observations[0].discharge_m3s is None  # NaN -> missing
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
     assert chunk.observations[0].quality.value == "missing"
     assert chunk.observations[1].discharge_m3s == pytest.approx(12.5)
 

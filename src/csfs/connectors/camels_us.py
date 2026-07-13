@@ -24,7 +24,7 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.downloads import ensure_dataset
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import Observation, QualityFlag, Resolution, Station, TimeSeriesChunk, Variable
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -159,10 +159,14 @@ class CAMELSUSConnector(BaseConnector):
                     discharge, quality = None, QualityFlag.MISSING
                 else:
                     discharge, quality = cfs * _CFS_TO_M3S, QualityFlag.RAW
+                # CAMELS-US streamflow is the USGS daily-value product: daily MEAN discharge
+                # (averaged over 00:00-24:00 local standard time).
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=ts,
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=discharge,
                     quality=quality,
                 ))
         return observations

@@ -11,7 +11,7 @@ from csfs.connectors.japan_mlit import (
     JapanMlitConnector,
     _flag_to_quality,
 )
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 BASE = "http://www1.river.go.jp"
 DATA_URL = f"{BASE}/cgi-bin/DspWaterData.exe"
@@ -105,6 +105,9 @@ async def test_fetch_observations_parses_dat():
     assert first.timestamp == datetime(2000, 6, 30, 16, 0, tzinfo=UTC)
     assert first.discharge_m3s == pytest.approx(1.0)
     assert first.quality == QualityFlag.GOOD
+    # KIND=6 時刻流量 = spot value at each clock hour.
+    assert first.variable is Variable.DISCHARGE
+    assert first.resolution is Resolution.INSTANTANEOUS
 
     # Hour 4 flagged provisional (*), value present.
     hour4 = obs[3]

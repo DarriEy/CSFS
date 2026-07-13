@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.poland_imgw import PolandImgwConnector
+from csfs.core.models import Resolution, Variable
 
 MOCK_HYDRO_RESPONSE = [
     {
@@ -131,6 +132,9 @@ async def test_fetch_observations_parses_discharge():
     obs = chunk.observations[0]
     assert obs.discharge_m3s == pytest.approx(450.5)
     assert obs.quality.value == "raw"
+    # The real-time endpoint serves spot telemetry readings.
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio

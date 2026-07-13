@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.iceland_lamahice import IcelandLamahIceConnector, _safe_float
+from csfs.core.models import Resolution, Variable
 
 # Real Gauge_attributes.csv schema: semicolon-delimited, with lat/lon as ISN93
 # (EPSG:3057) northing/easting in metres — converted to WGS84 by the connector.
@@ -104,6 +105,10 @@ async def test_fetch_observations_ymd_columns(tmp_path: Path):
     # -999 sentinel -> missing
     assert chunk.observations[2].discharge_m3s is None
     assert chunk.observations[2].quality.value == "missing"
+    # LamaH-Ice daily discharge timeseries -> daily means
+    for obs in chunk.observations:
+        assert obs.variable is Variable.DISCHARGE
+        assert obs.resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio

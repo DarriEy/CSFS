@@ -8,7 +8,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -19,6 +26,13 @@ logger = structlog.get_logger()
 _PARAMETER_BY_RESOLUTION = {
     "daily": 1,  # "Vattenföring (Dygn)" — daily mean discharge
     "15min": 2,  # "Vattenföring (15 min)" — 15-minute discharge
+}
+
+# Canonical Resolution implied by each SMHI product: parameter 1 is the
+# daily-mean series, parameter 2 the 15-minute point readings.
+_OBS_RESOLUTION_BY_RESOLUTION = {
+    "daily": Resolution.DAILY_MEAN,
+    "15min": Resolution.INSTANTANEOUS,
 }
 
 # A station's full 15-min corrected archive is served as one large JSON
@@ -73,6 +87,7 @@ class SwedenSMHIConnector(BaseConnector):
             )
         self.resolution = resolution
         self._parameter = _PARAMETER_BY_RESOLUTION[resolution]
+        self._obs_resolution = _OBS_RESOLUTION_BY_RESOLUTION[resolution]
 
     # ------------------------------------------------------------------
     # Public API
@@ -233,7 +248,9 @@ class SwedenSMHIConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=self._obs_resolution,
+                value=discharge,
                 quality=quality,
             ))
 

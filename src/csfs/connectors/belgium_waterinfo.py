@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from csfs.connectors._kiwis import KiWISConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution
 from csfs.core.registry import register
 
 # KiWIS quality code ranges (same convention as BOM)
@@ -57,6 +57,15 @@ class BelgiumWaterinfoConnector(KiWISConnector):
     # P.15 = validated real-time 15-min; DagGem = daily mean; the rest are base
     # / raw cadences.
     _TS_PREFERENCE = ("P.15", "DagGem", "Basis.15", "Basis", "O.15")
+    # Per-cadence temporal resolution: the 15-min series (P.15 / Basis.15 /
+    # O.15) are point readings, DagGem is a daily mean. Plain "Basis" does not
+    # declare its cadence and stays UNKNOWN (the base-class default).
+    _TS_RESOLUTION = {
+        "P.15": Resolution.INSTANTANEOUS,
+        "Basis.15": Resolution.INSTANTANEOUS,
+        "O.15": Resolution.INSTANTANEOUS,
+        "DagGem": Resolution.DAILY_MEAN,
+    }
     # The unfiltered Q timeseries list is large (~9k rows); the coverage field
     # is omitted (it forces an expensive server-side span computation that
     # times out), so allow a long timeout for this one call.

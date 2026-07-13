@@ -16,7 +16,7 @@ are basin-grouping entries with no coordinates).
 from __future__ import annotations
 
 from csfs.connectors._kiwis import KiWISConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution
 from csfs.core.registry import register
 
 # KISTERS quality codes: low = validated, 130/255 = missing, otherwise the
@@ -59,6 +59,9 @@ class BelgiumSpwConnector(KiWISConnector):
     _CADENCE = "10-Debit.1h.Moyen"
     _TS_NAME_FILTER = _CADENCE
     _TS_PREFERENCE = (_CADENCE,)
+    # "1h.Moyen" = hourly mean; the list filter means every fetched series
+    # is this cadence.
+    _TS_RESOLUTION = {_CADENCE: Resolution.HOURLY_MEAN}
     _TRANSIENT_RETRIES = 6
 
     _map_quality = staticmethod(_map_quality)

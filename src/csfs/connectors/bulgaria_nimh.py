@@ -26,7 +26,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -148,7 +155,12 @@ class BulgariaNimhConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=datetime(day.year, day.month, day.day, tzinfo=UTC),
-                    discharge_m3s=discharge,
+                    variable=Variable.DISCHARGE,
+                    # One value per gauge per day, but we read the table's "Q"
+                    # column, not "Qср" (the mean column); NIMH does not
+                    # declare Q's aggregation, so the resolution is unknown.
+                    resolution=Resolution.UNKNOWN,
+                    value=discharge,
                     quality=QualityFlag.RAW if discharge is not None else QualityFlag.MISSING,
                 ))
             day += timedelta(days=1)

@@ -8,7 +8,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError, DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -151,7 +158,11 @@ class PolandImgwConnector(BaseConnector):
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                # /api/data/hydro/ serves the latest spot telemetry reading
+                # per station ("przeplyw" with its own measurement timestamp).
+                resolution=Resolution.INSTANTANEOUS,
+                value=discharge,
                 quality=quality,
             ))
 
