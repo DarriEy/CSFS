@@ -390,10 +390,21 @@ class VietnamMekongConnector(BaseConnector):
     def _parse_mdy(
         month: str, day: str, year: str,
     ) -> datetime | None:
-        """Build a UTC timestamp from separate M/D/Y string fields."""
+        """Build a UTC timestamp from separate M/D/Y string fields.
+
+        The Cantho ratings file mixes 4-digit and 2-digit years (152 rows
+        like ``5,8,10`` meaning 2010-05-08); 2-digit years are expanded to
+        20xx, and anything outside the dataset's plausible era (1990-2100)
+        is rejected rather than silently becoming year 10 AD.
+        """
         try:
+            y = int(str(year).strip())
+            if y < 100:
+                y += 2000
+            if not 1990 <= y <= 2100:
+                return None
             return datetime(
-                int(str(year).strip()),
+                y,
                 int(str(month).strip()),
                 int(str(day).strip()),
                 tzinfo=UTC,

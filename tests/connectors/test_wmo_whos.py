@@ -272,7 +272,9 @@ def test_registration():
         assert cls is expected
         assert cls.slug == slug
 
-    # The africa slug must at least be registered (it backs a cron tier).
-    africa = get_connector("wmo_whos_africa")
-    assert africa.slug == "wmo_whos_africa"
-    assert "global" in africa.country_codes
+    # The africa view (whos-ra1) was removed upstream in 2026-07; its slug
+    # must no longer be registered.
+    import pytest
+
+    with pytest.raises(KeyError):
+        get_connector("wmo_whos_africa")

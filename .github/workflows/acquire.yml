@@ -64,10 +64,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tier=${{ inputs.tier }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 3 * * 0" ]; then
-            echo "tier=weekly" >> "$GITHUB_OUTPUT"
           else
-            echo "tier=daily" >> "$GITHUB_OUTPUT"
+            # The only cron on this workflow is the weekly one. Do NOT match
+            # on the cron string: delayed schedule events historically fell
+            # through a string comparison here and silently ran the daily
+            # tier instead.
+            echo "tier=weekly" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restore DB snapshot
@@ -91,6 +93,9 @@ jobs:
           CONCURRENCY: "12"
           PROVIDERS: ${{ inputs.providers }}
           LOOKBACK: ${{ inputs.lookback }}
+          # Optional repo secret; norway_nve reads it as its HydAPI key
+          # (register free at https://hydapi.nve.no/).
+          NVE_API_KEY: ${{ secrets.NVE_API_KEY }}
           # CI-specific provider config: dataset auto-downloads disabled
           # (they exhaust the runner's disk), southafrica_dws mirror.
           CSFS_CONFIG: .github/csfs-ci.yaml

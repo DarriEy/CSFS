@@ -289,3 +289,78 @@ async def test_outer_exception_records_error(store: DuckDBStore):
     assert len(history) == 1
     assert history[0]["status"] == "error"
     assert "boom" in history[0]["error_message"]
+
+
+@pytest.mark.asyncio
+async def test_max_stations_prioritizes_data_starved_stations(store: DuckDBStore):
+    """A capped run fetches never-fetched / oldest-watermark stations first."""
+    from datetime import UTC
+
+    from csfs.scheduler.runner import run_acquisition
+
+    stations = _make_stations(4)
+    # Pre-seed data so test:0000 and test:0001 have fresh watermarks,
+    # test:0002 an old one, and test:0003 none at all.
+    for sid, ts in [
+        ("test:0000", datetime(2024, 6, 10, tzinfo=UTC)),
+        ("test:0001", datetime(2024, 6, 9, tzinfo=UTC)),
+        ("test:0002", datetime(2024, 1, 1, tzinfo=UTC)),
+    ]:
+        await store.upsert_stations([s for s in stations if s.id == sid])
+        await store.append_observations(TimeSeriesChunk(
+            station_id=sid, provider="test",
+            observations=[Observation(station_id=sid, timestamp=ts, value=1.0)],
+            fetched_at=ts,
+        ))
+
+    fetched: list[str] = []
+
+    async def mock_fetch_observations(station_id, start, end):
+        fetched.append(station_id)
+        return _make_chunk(station_id)
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch_stations = AsyncMock(return_value=stations)
+    mock_conn.fetch_observations = mock_fetch_observations
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("csfs.scheduler.runner.discover"),
+        patch("csfs.scheduler.runner.list_providers", return_value=["test"]),
+        patch("csfs.scheduler.runner.get_connector", return_value=lambda **kw: mock_conn),
+    ):
+        await run_acquisition(
+            store, providers=["test"], lookback_hours=24, max_stations=2,
+        )
+
+    # No-data station first, then the stalest watermark.
+    assert fetched == ["test:0003", "test:0002"]
+
+
+@pytest.mark.asyncio
+async def test_uncapped_run_keeps_station_order(store: DuckDBStore):
+    """Without max_stations, discovery order is preserved (no re-sort)."""
+    from csfs.scheduler.runner import run_acquisition
+
+    stations = _make_stations(3)
+    fetched: list[str] = []
+
+    async def mock_fetch_observations(station_id, start, end):
+        fetched.append(station_id)
+        return _make_chunk(station_id)
+
+    mock_conn = AsyncMock()
+    mock_conn.fetch_stations = AsyncMock(return_value=stations)
+    mock_conn.fetch_observations = mock_fetch_observations
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("csfs.scheduler.runner.discover"),
+        patch("csfs.scheduler.runner.list_providers", return_value=["test"]),
+        patch("csfs.scheduler.runner.get_connector", return_value=lambda **kw: mock_conn),
+    ):
+        await run_acquisition(store, providers=["test"], lookback_hours=24)
+
+    assert fetched == ["test:0000", "test:0001", "test:0002"]

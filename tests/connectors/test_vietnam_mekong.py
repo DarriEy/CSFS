@@ -160,6 +160,38 @@ async def test_fetch_observations_data_package_ratings():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_ratings_two_digit_years_expanded():
+    """Cantho-style 2-digit years (``5,8,10`` = 2010-05-08) are expanded."""
+    ratings_csv = (
+        "Month,Day,Year,Discharge (m3/s),"
+        "Section Averaged SSC (mg/l),Sediment Flux (kg/s)\n"
+        "5,8,10,9745.4,71.3,853.9\n"     # 2-digit year -> 2010
+        "5,9,2010,8802.3,70.9,804.2\n"   # 4-digit year
+        "1,1,1500,1.0,1.0,1.0\n"          # implausible year -> dropped
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("supporting/Canthoratings.csv", ratings_csv)
+    respx.get(EIDC_DATA_ZIP_URL).mock(
+        return_value=httpx.Response(200, content=buf.getvalue()),
+    )
+
+    async with VietnamMekongConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "vietnam_mekong:can_tho",
+            start=datetime(2010, 1, 1, tzinfo=UTC),
+            end=datetime(2010, 12, 31, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    assert chunk.observations[0].timestamp == datetime(
+        2010, 5, 8, tzinfo=UTC,
+    )
+    assert chunk.observations[0].discharge_m3s == pytest.approx(9745.4)
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_observations_api_fails_csv_fallback(
     tmp_path: Path,
 ):

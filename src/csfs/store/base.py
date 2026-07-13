@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from datetime import datetime
 
 from csfs.core.models import Station, TimeSeriesChunk
@@ -57,6 +58,16 @@ class BaseStore(ABC):
         """Return the most recent observation timestamp for incremental fetches."""
 
     @abstractmethod
+    async def get_latest_timestamps(
+        self, station_ids: Sequence[str], variable: str | None = None
+    ) -> dict[str, datetime]:
+        """Newest stored timestamp per station (stations without data absent).
+
+        One bulk query; ``variable=None`` spans all variables (the
+        acquisition watermark).
+        """
+
+    @abstractmethod
     async def record_acquisition(
         self,
         provider: str,
@@ -85,9 +96,12 @@ class BaseStore(ABC):
     async def get_connector_health(
         self,
         stale_after_hours: float = 168.0,
+        stale_after_by_provider: dict[str, float] | None = None,
     ) -> list[dict]:
         """Return one health summary row per provider.
 
         Combines stored-data coverage (station/observation counts, freshness)
         with acquisition-log outcomes (last run, status, error, success rate).
+        ``stale_after_by_provider`` overrides the staleness threshold for
+        specific providers (archives tolerate longer horizons).
         """

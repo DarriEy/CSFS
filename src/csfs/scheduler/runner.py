@@ -52,13 +52,31 @@ async def run_acquisition(
                 end = datetime.now(UTC)
                 start = end - timedelta(hours=lookback_hours)
                 limit = max_stations or len(stations)
+
+                # One bulk watermark query (newest stored timestamp per
+                # station, across all variables) replaces a per-station
+                # lookup, and drives coverage rotation: when max_stations
+                # caps the run, the most data-starved stations (no data
+                # first, then oldest watermark) go first, so successive
+                # capped runs sweep the whole roster instead of refetching
+                # the same head of the list.
+                watermarks = await store.get_latest_timestamps(
+                    [s.id for s in stations]
+                )
+                if limit < len(stations):
+                    epoch = datetime.min.replace(tzinfo=UTC)
+                    stations = sorted(
+                        stations, key=lambda s: watermarks.get(s.id, epoch)
+                    )
                 target_stations = stations[:limit]
 
                 sem = asyncio.Semaphore(concurrency)
 
-                async def _fetch_one(station, _sem=sem, _start=start, _end=end):
+                async def _fetch_one(
+                    station, _sem=sem, _start=start, _end=end, _marks=watermarks
+                ):
                     async with _sem:
-                        latest = await store.get_latest_timestamp(station.id)
+                        latest = _marks.get(station.id)
                         fetch_start = latest if latest else _start
                         return await conn.fetch_observations(
                             station.id, fetch_start, _end,
@@ -102,9 +120,11 @@ async def run_acquisition(
                     log.info("retrying_failed_stations", count=retried)
                     retry_sem = asyncio.Semaphore(max(concurrency // 2, 2))
 
-                    async def _retry_one(station, _sem=retry_sem, _start=start, _end=end):
+                    async def _retry_one(
+                        station, _sem=retry_sem, _start=start, _end=end, _marks=watermarks
+                    ):
                         async with _sem:
-                            latest = await store.get_latest_timestamp(station.id)
+                            latest = _marks.get(station.id)
                             fetch_start = latest if latest else _start
                             return await conn.fetch_observations(
                                 station.id, fetch_start, _end,

@@ -42,9 +42,44 @@ class ArgentinaSnihConnector(BaseConnector):
         self._series_resolution: dict[int, Resolution] = {}
 
     async def fetch_stations(self) -> list[Station]:
-        """Return all stations from the INA Alerta system."""
+        """Return INA Alerta stations that carry discharge or stage data.
+
+        The raw ``/obs/puntual/estaciones`` catalogue lists ~4700 stations,
+        but ~76% of them have no discharge or stage series at all (they are
+        precipitation/meteo points or dataless placeholders) — fetching
+        observations for those can only fail. Filter the roster down to
+        stations with at least one populated discharge or stage series
+        (live-measured 2026-07: 4664 raw -> 892 usable stations).
+        """
         resp = await self._get("/obs/puntual/estaciones")
-        return self._parse_stations(resp.json())
+        stations = self._parse_stations(resp.json())
+
+        try:
+            if (
+                not self._station_to_series
+                and not self._station_to_stage_series
+            ):
+                await self._build_series_cache()
+        except Exception as exc:  # noqa: BLE001 - degrade to unfiltered
+            logger.warning(
+                "series_catalogue_unavailable",
+                provider=self.slug,
+                error=str(exc)[:120],
+            )
+            return stations
+
+        usable = (
+            self._station_to_series.keys()
+            | self._station_to_stage_series.keys()
+        )
+        filtered = [s for s in stations if s.native_id in usable]
+        logger.info(
+            "stations_filtered_to_series",
+            provider=self.slug,
+            raw=len(stations),
+            usable=len(filtered),
+        )
+        return filtered
 
     async def fetch_observations(
         self,
@@ -179,20 +214,33 @@ class ArgentinaSnihConnector(BaseConnector):
 
         'Altura hidrometrica' (stage, var id 2, metres) series are cached the
         same way. Each selected series' resolution is remembered: daily-mean
-        ("... medio diario") variants are DAILY_MEAN, the rest declare no
+        ("... medio diario") variants are DAILY_MEAN, monthly-mean
+        ("... medio mensual") variants are MONTHLY_MEAN, the rest declare no
         aggregation and stay UNKNOWN.
+
+        Series that have never held data (no ``count`` and no ``timeend`` --
+        ~2000 placeholder series in the live catalogue) are skipped entirely,
+        and on equal variant priority the series with the most recent
+        ``timeend`` wins, so a live series is never shadowed by a stale one.
         """
-        # estacion_id -> (priority, series_id); higher priority wins.
-        best_discharge: dict[str, tuple[int, int]] = {}
-        best_stage: dict[str, tuple[int, int]] = {}
+        # estacion_id -> (priority, timeend, series_id); higher wins.
+        best_discharge: dict[str, tuple[int, str, int]] = {}
+        best_stage: dict[str, tuple[int, str, int]] = {}
 
         def _priority(var_name: str) -> int:
             v = var_name.lower()
-            if "diario" in v:   # daily mean -- most reliably populated
+            if "diario" in v or "diaria" in v:  # daily mean -- most reliable
                 return 3
-            if "medio" in v:
+            if "medio" in v or "media" in v:
                 return 2
             return 1
+
+        def _resolution(v: str) -> Resolution:
+            if "diario" in v or "diaria" in v:
+                return Resolution.DAILY_MEAN
+            if "mensual" in v:
+                return Resolution.MONTHLY_MEAN
+            return Resolution.UNKNOWN
 
         next_url: str | None = "/obs/puntual/series"
         params: dict | None = {"format": "geojson"}
@@ -213,24 +261,24 @@ class ArgentinaSnihConnector(BaseConnector):
                 series_id = props.get("id")
                 if estacion_id is None or series_id is None:
                     continue
+                timeend = props.get("timeend") or ""
+                if not props.get("count") and not timeend:
+                    # Placeholder series that has never held an observation.
+                    continue
                 key = str(estacion_id)
-                prio = _priority(var_name)
-                if key not in best or prio > best[key][0]:
-                    best[key] = (prio, int(series_id))
-                self._series_resolution[int(series_id)] = (
-                    Resolution.DAILY_MEAN
-                    if "diario" in v or "diaria" in v
-                    else Resolution.UNKNOWN
-                )
+                candidate = (_priority(var_name), timeend, int(series_id))
+                if key not in best or candidate[:2] > best[key][:2]:
+                    best[key] = candidate
+                self._series_resolution[int(series_id)] = _resolution(v)
             if data.get("is_last_page"):
                 break
             # next_page_url already carries its own query string.
             next_url = data.get("next_page_url") or None
             params = None
 
-        for key, (_prio, series_id) in best_discharge.items():
+        for key, (_prio, _te, series_id) in best_discharge.items():
             self._station_to_series[key] = series_id
-        for key, (_prio, series_id) in best_stage.items():
+        for key, (_prio, _te, series_id) in best_stage.items():
             self._station_to_stage_series[key] = series_id
 
     async def _resolve_series(

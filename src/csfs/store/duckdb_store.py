@@ -430,6 +430,31 @@ class DuckDBStore(BaseStore):
         result = self.conn.execute(query, params).fetchone()
         return result[0] if result and result[0] else None
 
+    async def get_latest_timestamps(
+        self, station_ids: Sequence[str], variable: str | None = None
+    ) -> dict[str, datetime]:
+        """Newest observation timestamp per station, in one query.
+
+        Stations with no stored observations are absent from the result.
+        ``variable=None`` (the default) takes the max across all variables —
+        the acquisition watermark; pass a variable name to scope it.
+        """
+        ids = list(station_ids)
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        query = (
+            "SELECT station_id, MAX(timestamp) FROM observations "
+            f"WHERE station_id IN ({placeholders})"
+        )
+        params: list = list(ids)
+        if variable is not None:
+            query += " AND variable = ?"
+            params.append(variable)
+        query += " GROUP BY station_id"
+        rows = self.conn.execute(query, params).fetchall()
+        return {sid: ts for sid, ts in rows if ts is not None}
+
     async def record_acquisition(
         self,
         provider: str,
@@ -472,6 +497,7 @@ class DuckDBStore(BaseStore):
     async def get_connector_health(
         self,
         stale_after_hours: float = 168.0,
+        stale_after_by_provider: dict[str, float] | None = None,
     ) -> list[dict]:
         """Per-provider health derived from stored data and the acquisition log.
 
@@ -525,16 +551,18 @@ class DuckDBStore(BaseStore):
         """).fetchall()
 
         merged: dict[str, dict] = {}
+        overrides = stale_after_by_provider or {}
         for provider, stations, observations, latest_obs, last_fetch in coverage:
             staleness_hours: float | None = None
             if latest_obs is not None and now is not None:
                 staleness_hours = (now - latest_obs).total_seconds() / 3600.0
 
+            threshold = overrides.get(provider, stale_after_hours)
             if stations == 0:
                 data_health = "none"
             elif observations == 0:
                 data_health = "empty"
-            elif staleness_hours is not None and staleness_hours > stale_after_hours:
+            elif staleness_hours is not None and staleness_hours > threshold:
                 data_health = "stale"
             else:
                 data_health = "ok"

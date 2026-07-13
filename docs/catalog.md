@@ -16,13 +16,14 @@ Of the **98 cataloged sources**:
 
 | Status | Count | Meaning |
 | --- | ---: | --- |
-| `implemented` | 79 | Registered connector exists in `csfs/connectors/`, with tests |
+| `implemented` | 76 | Registered connector exists in `csfs/connectors/`, with tests |
 | `research` | 8 | API exists but needs investigation |
 | `fallback` | 5 | Community/research dataset used for gap-filling |
-| `manual` | 4 | No API; requires scraping or manual download |
-| `deprecated` | 2 | Source retired or superseded |
+| `manual` | 5 | No API; requires scraping or manual download |
+| `degraded` | 1 | Connector exists but the upstream source is impaired |
+| `deprecated` | 3 | Source retired or superseded |
 
-In code, **86 connectors are registered**. **36 of the 79 implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
+In code, **84 connectors are registered**. **34 of the 76 implemented providers deliver realtime or near-realtime data**; the remainder are recent/archive sources, including roughly a dozen offline research archives (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 
 !!! note "Live providers wobble"
     A connector being `implemented` means the code path is real and tested
@@ -34,13 +35,13 @@ In code, **86 connectors are registered**. **36 of the 79 implemented providers 
 
 | Provider | Country | Status | Realtime | Notes |
 | --- | --- | --- | --- | --- |
-| SNIH Argentina (`argentina_snih`) | AR | `implemented` | — |  |
-| WMO WHOS-Plata (`wmo_whos_plata`) | AR, BO, BR, PY, UY | `implemented` | yes | La Plata River Basin federated access. |
+| SNIH Argentina (INA a5) (`argentina_snih`) | AR | `implemented` | yes | INA Alerta a5 REST API (discharge 'caudal' + stage series). The raw station catalogue has ~4,664 points but only ~890 hold a populated disch... |
+| WMO WHOS-Plata (`wmo_whos_plata`) | AR, BO, BR, PY, UY | `degraded` | yes | La Plata River Basin federated access. Degraded 2026-07: ARG (INA-brokered) stations 500-error server-side, PRY/URY/BOL yield no data even o... |
 | eHYD Austria (BMLUK) (`austria_ehyd`) | AT | `implemented` | yes | Official WFS service from the Federal Ministry (BMLUK). |
 | LamaH-CE (Central Europe) (`lamah_ce`) | AT,DE,CZ | `implemented` | no | Danube basin focus. Hourly resolution available. |
 | Bureau of Meteorology Water Data Online (`australia_bom`) | AU | `implemented` | yes |  |
 | CAMELS-AUS (`camels_aus`) | AU | `fallback` | no |  |
-| FHMZ Bosnia (`bosnia_fhmz`) | BA | `implemented` | no | PDF hydrological yearbooks; requires tabula-style extraction. NOTE: the live FHMZ JSON API 404s and the site publishes only water LEVEL (vod... |
+| FHMZ Bosnia (`bosnia_fhmz`) | BA | `manual` | no | PDF hydrological yearbooks; requires tabula-style extraction. Connector removed 2026-07: the coded JSON API never existed (404 on every path... |
 | FFWC Bangladesh (BWDB) (`bangladesh_ffwc`) | BD | `research` | yes |  |
 | SPW Wallonia (`belgium_spw`) | BE | `implemented` | yes | No-redistribution license. |
 | Waterinfo Flanders (`belgium_waterinfo`) | BE | `implemented` | yes |  |
@@ -48,7 +49,7 @@ In code, **86 connectors are registered**. **36 of the 79 implemented providers 
 | EAEMDR Bulgaria (`bulgaria_eaemdr`) | BG | `implemented` | yes | Scrapes the daily Danube hydrology bulletin (/hidrology-en) for current discharge (m3/s) at 6 gauges (Novo Selo, Lom, Oryahovo, Svishtov, Ru... |
 | NIMH Bulgaria (open data) (`bulgaria_nimh`) | BG | `implemented` | no | Daily discharge (Q, m3/s) from the NIMH river-runoff page (POST mydate=YYYY-MM-DD -> HTML table, one row/gauge). ~68 gauges; comma decimals;... |
 | INE Bolivia (Caudales y Niveles) (`bolivia_ine`) | BO | `implemented` | no | NADA catalog dataset |
-| ANA HidroWeb / Telemetria (`brazil_ana`) | BR | `implemented` | yes |  |
+| ANA HidroWeb / Telemetria (`brazil_ana`) | BR | `implemented` | no | HidroSerieHistorica is the consolidated archive and lags 4-19 months (newest data anywhere as of 2026-07: March 2026, verified live on 11 ga... |
 | CAMELS-BR (`camels_br`) | BR | `fallback` | no |  |
 | Environment Canada Hydrometric Data (`environment_canada`) | CA | `implemented` | yes |  |
 | BAFU Hydrodaten (`switzerland_bafu`) | CH | `implemented` | yes |  |
@@ -68,7 +69,7 @@ In code, **86 connectors are registered**. **36 of the 79 implemented providers 
 | CAMELS-DK (`camels_dk`) | DK | `implemented` | no | Offline archive (CAMELS-DK, Zenodo). Returns a small seed catalogue only; observations require local downloaded dataset files (config['data_... |
 | VanDa Hydro (Denmark) (`denmark_dmihyd`) | DK | `implemented` | yes | Near-real-time river data via Danmarks Miljøportal (IoT). |
 | ADHI (African Database of Hydrometric Indices) (`adhi`) | DZ, AO, BJ, BW, BF, BI, CM, CF, TD, CG, CD, CI, DJ, EG, GQ, ER, SZ, ET, GA, GM, GH, GN, GW, KE, LS, LR, LY, MG, MW, ML, MR, MZ, NA, NE, NG, RW, SN, SL, SO, ZA, SD, TZ, TG, TN, UG, ZM, ZW | `implemented` | no | Pan-African monthly discharge series and hydrometric statistics. |
-| WMO WHOS-Africa (HydroSOS) (`wmo_whos_africa`) | DZ, AO, BJ, BW, BF, BI, CM, CF, TD, CG, CD, CI, DJ, EG, GQ, ER, SZ, ET, GA, GM, GH, GN, GW, KE, LS, LR, LY, MG, MW, ML, MR, MZ, NA, NE, NG, RW, SN, SL, SO, ZA, SD, TZ, TG, TN, UG, ZM, ZW | `implemented` | yes | Federated access for Africa RA1 (including Rwanda/Ethiopia). |
+| WMO WHOS-Africa (HydroSOS) (`wmo_whos_africa`) | DZ, AO, BJ, BW, BF, BI, CM, CF, TD, CG, CD, CI, DJ, EG, GQ, ER, SZ, ET, GA, GM, GH, GN, GW, KE, LS, LR, LY, MG, MW, ML, MR, MZ, NA, NE, NG, RW, SN, SL, SO, ZA, SD, TZ, TG, TN, UG, ZM, ZW | `deprecated` | no | Connector removed 2026-07: the whos-ra1 view was deleted upstream (HTTP 500 'View whos-ra1 not found' on every call, verified 2026-07-13); n... |
 | Ecuador INAMHI (GEOGLOWS) (`ecuador_inamhi`) | EC | `implemented` | yes | INAMHI Ecuador streamflow via the GEOGLOWS ECMWF model (reach-based, m3/s). Shares the GEOGLOWS backend with the global geoglows connector b... |
 | Ilmateenistus (Estonia) (`estonia_ilmateenistus`) | EE | `research` | no |  |
 | CEDEX Anuario de Aforos (`spain_cedex`) | ES | `implemented` | no | Offline archive connector. Returns the seed station catalogue, but yields observations only when config['data_dir'] points at downloaded yea... |
@@ -80,7 +81,7 @@ In code, **86 connectors are registered**. **36 of the 79 implemented providers 
 | CAMELS-GB (`camels_gb`) | GB | `fallback` | no |  |
 | SEPA (Scotland) (`scotland_sepa`) | GB | `implemented` | yes | Uses KISTERS KiWIS service. |
 | UK Environment Agency Hydrology API (`uk_ea`) | GB | `implemented` | yes | Open Government Licence. Covers England only. |
-| UK National River Flow Archive (`uk_nrfa`) | GB | `implemented` | no | Historical daily only; complements uk_ea for long records. |
+| UK National River Flow Archive (`uk_nrfa`) | GB | `implemented` | no | Historical daily only; complements uk_ea for long records. Gauged daily flow publishes ~annually per UK water year (archive currently ends 2... |
 | OpenHI Greece (`greece_openhi`) | GR | `implemented` | — |  |
 | DHMZ (Croatia) (`croatia_dhz`) | HR | `implemented` | yes | Real-time data via backend hisbaza.py API. NOTE: the zadnjipodaci feed serves water LEVEL (cm), not discharge — stored in the discharge fiel... |
 | OVF (Hungary) (`hungary_ovf`) | HU | `research` | yes |  |
@@ -120,7 +121,7 @@ In code, **86 connectors are registered**. **36 of the 79 implemented providers 
 | CAMELS (Catchment Attributes and Meteorology for Large-sample Studies) (`camels_us`) | US | `fallback` | no |  |
 | CAMELSH (Hourly US) (`camelsh`) | US | `implemented` | no | Hourly CAMELSH (Zenodo, 1980-2024). Offline archive: seed catalogue only; observations require local downloaded files (config['data_dir']).... |
 | USGS National Water Information System (NWIS) (`usgs`) | US | `implemented` | yes | Gold standard. Discharge param 00060 (cfs), convert to m3/s. |
-| Vietnam Mekong Delta (EIDC) (`vietnam_mekong`) | VN | `implemented` | no | Hourly discharge and sediment data via CEH EIDC. |
+| Vietnam Mekong Delta (EIDC) (`vietnam_mekong`) | VN | `implemented` | no | Static EIDC ratings archive (4 gauges, records end 2017-09) — backfill-only, like chile_cr2; scheduled short-lookback runs always yield 0, h... |
 | DWS South Africa (Verified Hydrology) (`southafrica_dws`) | ZA | `implemented` | no | Department of Water and Sanitation verified hydrology (HyData.aspx <pre> text): daily-mean discharge plus instantaneous discharge and stage... |
 | HYSETS (`hysets`) | ['CA', 'US', 'MX'] | `implemented` | no | Dataset artifact (HYSETS, OSF doi:10.17605/OSF.IO/RPC3W, CC-BY-4.0). Observed daily discharge (m3/s) is a discharge(watershed, time) variabl... |
 | CAMELS-SPAT (`camels_spat`) | ['US', 'CA'] | `manual` | no | Distribution-gated standalone (CAMELS-SPAT, FRDR doi:10.20383/103.01306, Globus-only; no HTTPS endpoint). NOT in the provenance-gated tier (... |

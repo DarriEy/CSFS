@@ -30,7 +30,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "belgium_waterinfo", "netherlands_rws", "thailand_hii",
         "slovenia_arso", "denmark_dmihyd", "croatia_dhz",
         "germany_bw", "germany_bavaria", "italy_emilia",
-        "wmo_whos_plata", "wmo_whos_africa",
+        "wmo_whos_plata",
         "bulgaria_eaemdr",
     ],
     "hourly": [
@@ -43,9 +43,9 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "daily": [
         "argentina_snih",
         "japan_mlit",
-        "bosnia_fhmz", "iceland_lamahice", "ecuador_inamhi",
+        "iceland_lamahice", "ecuador_inamhi",
         "pakistan_wapda",
-        "panama_stri", "vietnam_mekong",
+        "panama_stri",
         "bolivia_ine", "bulgaria_nimh",
         "israel_caravan", "czechia_chmu",
         "scotland_sepa", "belgium_spw", "taiwan_wra",
@@ -63,7 +63,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "camels_col", "camels_spat",
         "robin", "caravan_grdc",
         "germany_nrw",
-        "chile_cr2", "portugal_snirh",
+        "chile_cr2", "portugal_snirh", "vietnam_mekong",
     ],
 }
 
@@ -73,6 +73,39 @@ TIER_LOOKBACK: dict[str, int] = {
     "daily": 168,
     "weekly": 720,
 }
+
+# Freshness expectations for health classification ("stale" threshold in
+# hours). The weekly tier hosts archive-class sources that publish annually
+# (uk_nrfa: gauged daily flow lands ~once a year) or consolidate with
+# months of lag (brazil_ana) — flagging those against a 7-day horizon is
+# permanent noise, not signal. Live tiers keep the historical 7-day default.
+TIER_STALE_AFTER: dict[str, float] = {
+    "realtime": 168.0,
+    "hourly": 168.0,
+    "daily": 168.0,
+    "weekly": 26280.0,  # 3 years — tolerates annual archives + consolidation lag
+}
+
+# Per-provider overrides (take precedence over the tier value).
+PROVIDER_STALE_AFTER: dict[str, float] = {
+    # CR2 explorador re-serves a DGA snapshot frozen at 2020-06-05; the
+    # connector delivers everything the source offers, so "fresh" here
+    # means "the archive is loaded", not "recent data exists".
+    "chile_cr2": 87600.0,  # 10 years
+    # EIDC Mekong ratings archive is static and ends 2017-09.
+    "vietnam_mekong": 105120.0,  # 12 years
+}
+
+
+def stale_after_by_provider() -> dict[str, float]:
+    """Per-provider staleness thresholds derived from tiers + overrides."""
+    thresholds: dict[str, float] = {}
+    for tier, slugs in PROVIDER_TIERS.items():
+        tier_hours = TIER_STALE_AFTER.get(tier, 168.0)
+        for slug in slugs:
+            thresholds[slug] = tier_hours
+    thresholds.update(PROVIDER_STALE_AFTER)
+    return thresholds
 
 
 async def run_scheduled_cycle(

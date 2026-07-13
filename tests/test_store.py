@@ -359,3 +359,45 @@ async def test_get_observations_with_time_range(
         end=datetime(2024, 6, 2, 0, 0),
     )
     assert len(obs) == 2
+
+
+@pytest.mark.asyncio
+async def test_get_latest_timestamps_bulk(store: DuckDBStore, sample_station: Station):
+    await store.upsert_stations([sample_station])
+    await store.append_observations(_multivar_chunk())  # 2024-06-01, three variables
+    sid = "usgs:01646500"
+    later = datetime(2024, 6, 7, tzinfo=UTC)
+    await store.append_observations(TimeSeriesChunk(
+        station_id=sid, provider="usgs",
+        observations=[Observation(station_id=sid, timestamp=later,
+                                  variable=Variable.STAGE, value=1.0)],
+        fetched_at=later,
+    ))
+
+    # Default spans all variables: the stage row is the watermark.
+    marks = await store.get_latest_timestamps([sid, "usgs:none"])
+    assert set(marks) == {sid}
+    assert marks[sid].astimezone(UTC) == later
+
+    # Scoped to discharge, the older timestamp wins.
+    d_marks = await store.get_latest_timestamps([sid], variable="discharge")
+    assert d_marks[sid].astimezone(UTC) == datetime(2024, 6, 1, tzinfo=UTC)
+
+    assert await store.get_latest_timestamps([]) == {}
+
+
+@pytest.mark.asyncio
+async def test_connector_health_per_provider_staleness(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
+    """Archive-class providers get a longer staleness horizon via overrides."""
+    await store.upsert_stations([sample_station])
+    await store.append_observations(sample_chunk)  # 2024 data — stale by default
+
+    default_rows = await store.get_connector_health()
+    assert default_rows[0]["data_health"] == "stale"
+
+    tolerant = await store.get_connector_health(
+        stale_after_by_provider={"usgs": 10 * 365 * 24.0}
+    )
+    assert tolerant[0]["data_health"] == "ok"

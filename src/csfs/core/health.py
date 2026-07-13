@@ -47,13 +47,28 @@ async def gather_connector_health(
     *,
     stale_after_hours: float = 168.0,
     include_registered: bool = True,
+    tier_aware: bool = True,
 ) -> list[dict]:
     """Per-provider health, optionally padded with the full registered roster.
 
     Returns the same row shape as :meth:`BaseStore.get_connector_health`,
     sorted by provider slug when ``include_registered`` is set.
+
+    With ``tier_aware`` (the default), per-provider staleness expectations
+    from the scheduler roster apply (weekly-tier archives tolerate years of
+    lag; see ``TIER_STALE_AFTER`` / ``PROVIDER_STALE_AFTER`` in
+    ``csfs.scheduler.cron``); ``stale_after_hours`` remains the threshold
+    for providers without a roster entry.
     """
-    rows = await store.get_connector_health(stale_after_hours=stale_after_hours)
+    overrides: dict[str, float] | None = None
+    if tier_aware:
+        from csfs.scheduler.cron import stale_after_by_provider
+
+        overrides = stale_after_by_provider()
+    rows = await store.get_connector_health(
+        stale_after_hours=stale_after_hours,
+        stale_after_by_provider=overrides,
+    )
 
     if include_registered:
         from csfs.core.registry import discover

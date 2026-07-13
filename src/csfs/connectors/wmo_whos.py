@@ -64,7 +64,14 @@ _DISCHARGE_UOM = {"cubic metre per second", "m3/s", "m^3/s", "m3 s-1"}
 # ISO3 countries whose providers expose discharge via the default ``whos`` view.
 # Bounds the (otherwise ~20k-station) global view to a tractable subset.
 # Override with config["countries"] (list[str] of ISO3 codes).
-_DEFAULT_COUNTRIES = ["BRA", "ARG"]
+#
+# ARG was dropped 2026-07: the broker's INA-federated timeseries route
+# returns HTTP 500 ("Exception writing response") for nearly every Argentine
+# monitoring point (verified live across the ``whos`` and ``whos-plata``
+# views), and Argentine discharge is covered directly by the
+# ``argentina_snih`` connector. Re-add via config["countries"] if the broker
+# recovers.
+_DEFAULT_COUNTRIES = ["BRA"]
 
 # Hard cap on stations fetched per country (paging guard).
 _DEFAULT_LIMIT_PER_COUNTRY = 500
@@ -333,22 +340,9 @@ class WHOSPlataConnector(WHOSConnector):
         return ["ARG", "BOL", "BRA", "PRY", "URY"]
 
 
-@register("wmo_whos_africa")
-class WHOSAfricaConnector(WHOSConnector):
-    """WHOS view scoped to WMO RA1 / HydroSOS Africa (``whos-ra1``).
-
-    Note: the ``whos-ra1`` view may require a dedicated token; the public
-    portal token does not authorise it, in which case this connector degrades
-    (raises ConnectorError) rather than returning data.
-    """
-
-    slug = "wmo_whos_africa"
-    display_name = "WMO WHOS-Africa (HydroSOS)"
-    country_codes = ["global"]
-
-    @property
-    def _view(self) -> str:
-        return self.config.get("view") or "whos-ra1"
+# NOTE: a WHOS-Africa connector (view "whos-ra1") existed until 2026-07; the
+# view was removed upstream (every call returns HTTP 500 "GSException: View
+# whos-ra1 not found", verified 2026-07-13) with no replacement view found.
 
 
 def _fmt(dt: datetime) -> str:
