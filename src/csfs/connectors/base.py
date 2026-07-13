@@ -35,6 +35,9 @@ class BaseConnector(ABC):
     display_name: str  # e.g. "USGS NWIS"
     base_url: str
     country_codes: list[str]  # ISO 3166-1 alpha-2
+    # Variables this connector can emit (values of csfs.core.models.Variable).
+    # Connectors emit whatever variables they parse inside one TimeSeriesChunk.
+    supported_variables: tuple[str, ...] = ("discharge",)
     # Cap concurrent in-flight requests for rate-limited hosts (e.g. SEPA).
     # None = unlimited (bounded only by the scheduler's per-cycle concurrency).
     max_concurrent_requests: int | None = None

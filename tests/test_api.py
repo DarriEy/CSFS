@@ -11,7 +11,14 @@ fastapi = pytest.importorskip("fastapi")
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
 from csfs.api.app import create_app  # noqa: E402
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk  # noqa: E402
+from csfs.core.models import (  # noqa: E402
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.store.duckdb_store import DuckDBStore  # noqa: E402
 
 
@@ -50,6 +57,14 @@ async def populated_db(tmp_path):
                     station_id="usgs:01646500",
                     timestamp=datetime(2024, 6, 2, 0, 0),
                     discharge_m3s=145.2,
+                    quality=QualityFlag.GOOD,
+                ),
+                Observation(
+                    station_id="usgs:01646500",
+                    timestamp=datetime(2024, 6, 1, 0, 0),
+                    variable=Variable.STAGE,
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=2.31,
                     quality=QualityFlag.GOOD,
                 ),
             ],
@@ -146,12 +161,37 @@ async def test_list_stations_country_validation(client):
 # ---- /api/v1/observations endpoint ----
 
 async def test_get_observations(client):
+    """Defaults to the discharge variable — the seeded stage row is excluded."""
     resp = await client.get("/api/v1/observations/usgs:01646500")
     assert resp.status_code == 200
     data = resp.json()
     assert data["station_id"] == "usgs:01646500"
+    assert data["variable"] == "discharge"
     assert data["count"] == 2
     assert len(data["observations"]) == 2
+    assert all(o["variable"] == "discharge" for o in data["observations"])
+    assert data["observations"][0]["value"] == 150.5
+
+
+async def test_get_observations_variable_filter(client):
+    resp = await client.get(
+        "/api/v1/observations/usgs:01646500", params={"variable": "stage"}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["variable"] == "stage"
+    assert data["count"] == 1
+    assert data["observations"][0]["value"] == 2.31
+    assert data["observations"][0]["resolution"] == "instantaneous"
+
+
+async def test_get_observations_resolution_filter(client):
+    resp = await client.get(
+        "/api/v1/observations/usgs:01646500",
+        params={"variable": "stage", "resolution": "daily_mean"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 0
 
 
 async def test_get_observations_empty_station(client):
@@ -226,7 +266,8 @@ async def test_connector_health_detail(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["provider"] == "usgs"
-    assert data["observations"] == 2
+    # Health counts span all variables (2 discharge + 1 stage in the fixture).
+    assert data["observations"] == 3
     assert "recent_runs" in data
     assert data["recent_runs"] == []  # no acquisition log entries in fixture
 

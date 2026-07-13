@@ -5,7 +5,8 @@
 CSFS connects to open streamflow data providers around the world — national
 hydrological agencies, regional networks, research archives, and global model
 products — harmonizes their observations into one canonical station/observation
-schema (discharge in m³/s, timestamps in UTC), and maintains a near-real-time
+schema (SI units per variable — discharge m³/s, stage m, water temperature °C —
+timestamps in UTC), and maintains a near-real-time
 DuckDB store with scheduled acquisition, health monitoring, a CLI, and a
 FastAPI read layer.
 
@@ -36,7 +37,9 @@ actually does.
   are validated. The full inventory catalogs 104 sources. See the
   [Provider Catalog](catalog.md) for the honest breakdown.
 - **Canonical data model** — `Station`, `Observation`, `TimeSeriesChunk`
-  (pydantic), discharge in m³/s, UTC timestamps, ISO country codes.
+  (pydantic); multi-variable observations (discharge, stage, water
+  temperature, precipitation) in fixed SI units with declared temporal
+  resolution, UTC timestamps, ISO country codes.
 - **DuckDB store** — portable single-file analytics database with station
   upserts, deduplicated observation appends, and an acquisition log.
 - **Scheduler tiers** — realtime / hourly / daily / weekly cron tiers with

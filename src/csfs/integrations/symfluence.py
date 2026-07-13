@@ -74,7 +74,9 @@ extras carried through SYMFLUENCE's config):
     are read from the store instead of fetched live from the provider.
 
 CSFS guarantees discharge in m³/s and timestamps in UTC, so processing is a
-pure reshape — no unit conversion.
+pure reshape — no unit conversion. The CSFS store is multi-variable (stage,
+water temperature, ...); this handler consumes the ``discharge`` variable
+only and ignores rows for other variables.
 """
 
 from __future__ import annotations
@@ -205,9 +207,10 @@ def observations_to_raw_frame(observations: Any) -> pd.DataFrame:
     """Convert CSFS observations to the raw CSV frame written under raw_data/.
 
     Accepts an iterable of :class:`csfs.Observation` models (live-fetch path)
-    or of plain dicts (``DuckDBStore.get_observations`` rows). Returns a
-    DataFrame with the :data:`RAW_COLUMNS` columns; discharge stays in m³/s
-    and timestamps stay UTC.
+    or of plain dicts (``DuckDBStore.get_observations`` rows, pre- or
+    post-multi-variable shape). Rows for variables other than discharge are
+    skipped. Returns a DataFrame with the :data:`RAW_COLUMNS` columns;
+    discharge stays in m³/s and timestamps stay UTC.
     """
     _require_pandas()
     import pandas as pd
@@ -215,8 +218,13 @@ def observations_to_raw_frame(observations: Any) -> pd.DataFrame:
     rows = []
     for obs in observations:
         if isinstance(obs, dict):
-            ts, discharge, quality = obs.get("timestamp"), obs.get("discharge_m3s"), obs.get("quality")
+            if obs.get("variable", "discharge") != "discharge":
+                continue
+            ts, quality = obs.get("timestamp"), obs.get("quality")
+            discharge = obs["value"] if "value" in obs else obs.get("discharge_m3s")
         else:
+            if str(getattr(obs, "variable", "discharge")) != "discharge":
+                continue
             ts, discharge, quality = obs.timestamp, obs.discharge_m3s, getattr(obs, "quality", None)
         rows.append(
             {

@@ -28,10 +28,13 @@ from csfs.core.config import load_config
 from csfs.core.models import (
     OBSERVATION_SCHEMA,
     STATION_SCHEMA,
+    VARIABLE_UNITS,
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import discover, get_connector, list_providers
 from csfs.scheduler.runner import run_acquisition
@@ -42,11 +45,14 @@ __version__ = "0.3.0"
 __all__ = [
     "OBSERVATION_SCHEMA",
     "STATION_SCHEMA",
+    "VARIABLE_UNITS",
     "DuckDBStore",
     "Observation",
     "QualityFlag",
+    "Resolution",
     "Station",
     "TimeSeriesChunk",
+    "Variable",
     "__version__",
     "discover",
     "fetch_observations",

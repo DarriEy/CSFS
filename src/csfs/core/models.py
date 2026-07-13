@@ -6,9 +6,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class QualityFlag(StrEnum):
@@ -17,6 +18,42 @@ class QualityFlag(StrEnum):
     MISSING = "missing"
     ESTIMATED = "estimated"
     RAW = "raw"
+
+
+class Variable(StrEnum):
+    """Canonical observed variables. Values are stored in the SI unit
+    given by :data:`VARIABLE_UNITS`; there is no per-row unit column."""
+
+    DISCHARGE = "discharge"
+    STAGE = "stage"
+    WATER_TEMPERATURE = "water_temperature"
+    PRECIPITATION = "precipitation"
+
+
+#: Canonical SI unit implied by each variable.
+VARIABLE_UNITS: dict[Variable, str] = {
+    Variable.DISCHARGE: "m3/s",
+    Variable.STAGE: "m",
+    Variable.WATER_TEMPERATURE: "degC",
+    Variable.PRECIPITATION: "mm",
+}
+
+
+class Resolution(StrEnum):
+    """Temporal resolution + aggregation of an observed value.
+
+    ``UNKNOWN`` covers sources that do not declare their aggregation and
+    all rows ingested before the multi-variable schema existed.
+    """
+
+    INSTANTANEOUS = "instantaneous"
+    HOURLY_MEAN = "hourly_mean"
+    DAILY_MEAN = "daily_mean"
+    DAILY_MAX = "daily_max"
+    DAILY_MIN = "daily_min"
+    DAILY_SUM = "daily_sum"
+    MONTHLY_MEAN = "monthly_mean"
+    UNKNOWN = "unknown"
 
 
 class Station(BaseModel):
@@ -38,12 +75,55 @@ class Station(BaseModel):
 
 
 class Observation(BaseModel):
-    """A single streamflow observation."""
+    """A single observation of one variable at one station.
+
+    ``value`` is expressed in the SI unit implied by ``variable``
+    (see :data:`VARIABLE_UNITS`). The pre-multi-variable constructor
+    kwarg ``discharge_m3s=`` is still accepted as an alias for
+    ``value=`` with ``variable='discharge'``.
+    """
 
     station_id: str
     timestamp: datetime
-    discharge_m3s: float | None = None
+    variable: Variable = Variable.DISCHARGE
+    resolution: Resolution = Resolution.UNKNOWN
+    value: float | None = None
     quality: QualityFlag = QualityFlag.RAW
+
+    if TYPE_CHECKING:
+        # Type-checking-only signature so the transitional discharge_m3s=
+        # alias (handled by the before-validator) is a known kwarg.
+        def __init__(
+            self,
+            *,
+            station_id: str,
+            timestamp: datetime,
+            variable: Variable | str = ...,
+            resolution: Resolution | str = ...,
+            value: float | None = None,
+            discharge_m3s: float | None = None,
+            quality: QualityFlag | str = ...,
+        ) -> None: ...
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_discharge_m3s_alias(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "discharge_m3s" in data:
+            data = dict(data)
+            alias = data.pop("discharge_m3s")
+            if data.get("value") is not None:
+                raise ValueError("pass either value= or discharge_m3s=, not both")
+            variable = data.get("variable", Variable.DISCHARGE)
+            if variable not in (Variable.DISCHARGE, Variable.DISCHARGE.value):
+                raise ValueError("discharge_m3s= implies variable='discharge'")
+            data["value"] = alias
+            data["variable"] = Variable.DISCHARGE
+        return data
+
+    @property
+    def discharge_m3s(self) -> float | None:
+        """Compat accessor: the value when this is a discharge observation."""
+        return self.value if self.variable is Variable.DISCHARGE else None
 
 
 class TimeSeriesChunk(BaseModel):
@@ -58,7 +138,9 @@ class TimeSeriesChunk(BaseModel):
 OBSERVATION_SCHEMA = pa.schema([
     pa.field("station_id", pa.string(), nullable=False),
     pa.field("timestamp", pa.timestamp("s", tz="UTC"), nullable=False),
-    pa.field("discharge_m3s", pa.float64(), nullable=True),
+    pa.field("variable", pa.string(), nullable=False),
+    pa.field("resolution", pa.string(), nullable=False),
+    pa.field("value", pa.float64(), nullable=True),
     pa.field("quality", pa.string(), nullable=False),
 ])
 

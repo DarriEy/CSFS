@@ -38,7 +38,7 @@ def test_db(tmp_path):
     now = datetime.now(UTC)
     recent = now - timedelta(hours=2)
     conn.execute("""
-        INSERT INTO observations (station_id, timestamp, discharge_m3s, quality, fetched_at)
+        INSERT INTO observations (station_id, timestamp, value, quality, fetched_at)
         VALUES
             ('usgs:01646500', ?, 150.5, 'good', ?),
             ('usgs:01646500', ?, 145.2, 'good', ?),

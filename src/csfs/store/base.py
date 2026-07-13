@@ -19,7 +19,8 @@ class BaseStore(ABC):
 
     @abstractmethod
     async def append_observations(self, chunk: TimeSeriesChunk) -> int:
-        """Append observations, deduplicating by (station_id, timestamp). Returns rows written."""
+        """Append observations, deduplicating by
+        (station_id, variable, resolution, timestamp). Returns rows written."""
 
     @abstractmethod
     async def get_stations(
@@ -40,11 +41,19 @@ class BaseStore(ABC):
         end: datetime | None = None,
         limit: int | None = None,
         offset: int = 0,
+        variable: str | None = "discharge",
+        resolution: str | None = None,
     ) -> list[dict]:
-        """Return observations as list of dicts (for JSON serialization)."""
+        """Return observations as list of dicts (for JSON serialization).
+
+        Filtered to ``variable`` (default discharge; ``None`` for all) and
+        optionally to ``resolution``.
+        """
 
     @abstractmethod
-    async def get_latest_timestamp(self, station_id: str) -> datetime | None:
+    async def get_latest_timestamp(
+        self, station_id: str, variable: str | None = "discharge"
+    ) -> datetime | None:
         """Return the most recent observation timestamp for incremental fetches."""
 
     @abstractmethod

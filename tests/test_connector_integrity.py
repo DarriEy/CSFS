@@ -97,6 +97,23 @@ def test_connector_classes_have_required_metadata(registered):
     assert not problems, "connector metadata problems:\n" + "\n".join(problems)
 
 
+def test_connector_declares_supported_variables(registered):
+    """Every connector advertises which canonical variables it can emit."""
+    from csfs.core.models import Variable
+
+    known = {v.value for v in Variable}
+    problems: list[str] = []
+    for slug in sorted(registered):
+        variables = getattr(get_connector(slug), "supported_variables", None)
+        if not (isinstance(variables, tuple) and variables):
+            problems.append(f"{slug}: supported_variables missing or empty")
+        elif not set(variables) <= known:
+            problems.append(
+                f"{slug}: unknown variables {sorted(set(variables) - known)}"
+            )
+    assert not problems, "supported_variables problems:\n" + "\n".join(problems)
+
+
 @pytest.fixture(scope="module")
 def connector_test_corpus() -> tuple[set[str], str]:
     """(set of test filenames, concatenated source of all connector tests)."""

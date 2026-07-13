@@ -50,19 +50,44 @@ registration is automatic.
 
 All providers converge on three pydantic models (`csfs.core.models`):
 `Station` (provider-agnostic metadata, ISO country codes), `Observation`
-(**discharge in m³/s, timestamp in UTC**, a five-value quality flag), and
-`TimeSeriesChunk` (one fetch's batch with `fetched_at` provenance). Unit
-conversion (cfs, l/s, ...) and timezone normalization happen inside each
-connector, so nothing downstream ever sees provider-native conventions.
+(**one variable per row, timestamp in UTC**, a five-value quality flag),
+and `TimeSeriesChunk` (one fetch's batch with `fetched_at` provenance).
+
+An observation is a `(variable, resolution, value)` triple. `variable` is
+one of the canonical `Variable` values, each with a fixed SI unit
+(`VARIABLE_UNITS`):
+
+| Variable | Unit |
+| --- | --- |
+| `discharge` | m³/s |
+| `stage` | m |
+| `water_temperature` | °C |
+| `precipitation` | mm |
+
+`resolution` records the temporal aggregation (`instantaneous`,
+`hourly_mean`, `daily_mean`, `daily_max`, ..., or `unknown` for sources
+that don't declare it and for rows ingested before the multi-variable
+schema). Unit conversion (cfs, cm, l/s, ...) and timezone normalization
+happen inside each connector, so nothing downstream ever sees
+provider-native conventions. The pre-multi-variable constructor kwarg
+`Observation(discharge_m3s=...)` remains valid as an alias for
+`value=` + `variable='discharge'`.
 
 ## DuckDB store
 
 `DuckDBStore` persists everything in a single portable file: a `stations`
 table (upserted on every cycle), an `observations` table (append-only with
-`(station_id, timestamp)` dedup via an anti-join staging step), and an
-`acquisition_log` recording every run (status, counts, duration, error).
-Being plain DuckDB, the file is directly queryable from SQL, pandas, Arrow,
-or R without CSFS in the loop.
+`(station_id, variable, resolution, timestamp)` dedup via an anti-join
+staging step), and an `acquisition_log` recording every run (status,
+counts, duration, error). Being plain DuckDB, the file is directly
+queryable from SQL, pandas, Arrow, or R without CSFS in the loop.
+
+Databases created before the multi-variable schema are migrated
+automatically the first time they are opened writable: the observations
+table is rebuilt with the new key, existing rows are backfilled as
+`variable='discharge'`, `resolution='unknown'`, and `discharge_m3s`
+becomes the generic `value` column. Read-only opens of an unmigrated file
+fail fast with instructions instead of erroring mid-query.
 
 ## Scheduler tiers
 

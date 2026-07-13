@@ -179,8 +179,10 @@ Following SYMFLUENCE's observation conventions under
 `domain_{NAME}/data/observations/streamflow/`:
 
 - `raw_data/csfs_{provider}_{native_id}_raw.csv` — one per station, the
-  CSFS-native series (`timestamp`, `discharge_m3s`, `quality`). Existing raw
-  files are reused unless `FORCE_DOWNLOAD: true`.
+  CSFS-native series (`timestamp`, `discharge_m3s`, `quality`; this raw
+  layout is unchanged by CSFS's multi-variable store — the handler consumes
+  the `discharge` variable only). Existing raw files are reused unless
+  `FORCE_DOWNLOAD: true`.
 - `preprocessed/{DOMAIN_NAME}_streamflow_processed.csv` — the calibration
   pipeline's contract, identical to the USGS/WSC handlers: a `datetime`
   index column and a `discharge_cms` column, resampled to the configured

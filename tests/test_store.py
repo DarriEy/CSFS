@@ -4,7 +4,14 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.store.duckdb_store import DuckDBStore
 
 
@@ -54,6 +61,113 @@ async def test_deduplication(store: DuckDBStore, sample_station: Station, sample
 
     obs = await store.get_observations("usgs:01646500")
     assert len(obs) == 2  # no duplicates
+
+
+def _multivar_chunk() -> TimeSeriesChunk:
+    """Discharge + stage + temperature at one station, sharing a timestamp."""
+    ts = datetime(2024, 6, 1, tzinfo=UTC)
+    sid = "usgs:01646500"
+    return TimeSeriesChunk(
+        station_id=sid, provider="usgs",
+        observations=[
+            Observation(station_id=sid, timestamp=ts, variable=Variable.DISCHARGE,
+                        resolution=Resolution.DAILY_MEAN, value=150.5, quality=QualityFlag.GOOD),
+            Observation(station_id=sid, timestamp=ts, variable=Variable.STAGE,
+                        resolution=Resolution.DAILY_MEAN, value=2.31, quality=QualityFlag.GOOD),
+            Observation(station_id=sid, timestamp=ts, variable=Variable.WATER_TEMPERATURE,
+                        resolution=Resolution.DAILY_MEAN, value=14.2, quality=QualityFlag.GOOD),
+        ],
+        fetched_at=ts,
+    )
+
+
+@pytest.mark.asyncio
+async def test_multivariable_rows_share_a_timestamp(store: DuckDBStore, sample_station: Station):
+    """Same (station_id, timestamp), different variable -> distinct rows."""
+    await store.upsert_stations([sample_station])
+    n = await store.append_observations(_multivar_chunk())
+    assert n == 3
+
+    all_rows = await store.get_observations("usgs:01646500", variable=None)
+    assert len(all_rows) == 3
+    assert {r["variable"] for r in all_rows} == {"discharge", "stage", "water_temperature"}
+
+
+@pytest.mark.asyncio
+async def test_multivariable_deduplication(store: DuckDBStore, sample_station: Station):
+    """Re-appending the same multi-variable chunk adds nothing."""
+    await store.upsert_stations([sample_station])
+    await store.append_observations(_multivar_chunk())
+    n = await store.append_observations(_multivar_chunk())
+    assert n == 0
+    assert len(await store.get_observations("usgs:01646500", variable=None)) == 3
+
+
+@pytest.mark.asyncio
+async def test_get_observations_default_filters_to_discharge(
+    store: DuckDBStore, sample_station: Station,
+):
+    await store.upsert_stations([sample_station])
+    await store.append_observations(_multivar_chunk())
+
+    default_rows = await store.get_observations("usgs:01646500")
+    assert len(default_rows) == 1
+    assert default_rows[0]["variable"] == "discharge"
+    assert default_rows[0]["value"] == 150.5
+
+    stage_rows = await store.get_observations("usgs:01646500", variable="stage")
+    assert len(stage_rows) == 1
+    assert stage_rows[0]["value"] == 2.31
+
+    daily = await store.get_observations(
+        "usgs:01646500", variable=None, resolution="daily_mean"
+    )
+    assert len(daily) == 3
+
+
+@pytest.mark.asyncio
+async def test_observation_rows_use_canonical_keys(
+    store: DuckDBStore, sample_station: Station, sample_chunk: TimeSeriesChunk,
+):
+    await store.upsert_stations([sample_station])
+    await store.append_observations(sample_chunk)
+
+    row = (await store.get_observations("usgs:01646500"))[0]
+    assert {"station_id", "timestamp", "variable", "resolution", "value", "quality"} <= row.keys()
+    assert "discharge_m3s" not in row
+
+
+@pytest.mark.asyncio
+async def test_latest_timestamp_per_variable(store: DuckDBStore, sample_station: Station):
+    await store.upsert_stations([sample_station])
+    sid = "usgs:01646500"
+    t_old = datetime(2024, 6, 1, tzinfo=UTC)
+    t_new = datetime(2024, 6, 5, tzinfo=UTC)
+    chunk = TimeSeriesChunk(
+        station_id=sid, provider="usgs",
+        observations=[
+            Observation(station_id=sid, timestamp=t_old, discharge_m3s=1.0),
+            Observation(station_id=sid, timestamp=t_new, variable=Variable.STAGE,
+                        resolution=Resolution.INSTANTANEOUS, value=2.0),
+        ],
+        fetched_at=t_new,
+    )
+    await store.append_observations(chunk)
+
+    assert (await store.get_latest_timestamp(sid)).astimezone(UTC) == t_old  # discharge default
+    assert (await store.get_latest_timestamp(sid, variable="stage")).astimezone(UTC) == t_new
+    assert (await store.get_latest_timestamp(sid, variable=None)).astimezone(UTC) == t_new
+
+
+@pytest.mark.asyncio
+async def test_connector_health_counts_all_variables(
+    store: DuckDBStore, sample_station: Station,
+):
+    await store.upsert_stations([sample_station])
+    await store.append_observations(_multivar_chunk())
+
+    health = await store.get_connector_health()
+    assert health[0]["observations"] == 3  # liveness metric spans variables
 
 
 @pytest.mark.asyncio

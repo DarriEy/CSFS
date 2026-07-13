@@ -219,6 +219,40 @@ def test_observations_to_raw_frame_from_store_rows():
     assert frame["discharge_m3s"].isna().tolist() == [False, True]
 
 
+def test_observations_to_raw_frame_from_multivariable_store_rows():
+    pytest.importorskip("pandas")
+    rows = [
+        {"station_id": STATION, "timestamp": datetime(2020, 1, 1, tzinfo=UTC),
+         "variable": "discharge", "resolution": "unknown", "value": 5.5, "quality": "good"},
+        {"station_id": STATION, "timestamp": datetime(2020, 1, 1, tzinfo=UTC),
+         "variable": "stage", "resolution": "instantaneous", "value": 1.2, "quality": "good"},
+        {"station_id": STATION, "timestamp": datetime(2020, 1, 2, tzinfo=UTC),
+         "variable": "discharge", "resolution": "unknown", "value": None, "quality": None},
+    ]
+    frame = integration.observations_to_raw_frame(rows)
+    assert list(frame.columns) == integration.RAW_COLUMNS
+    # The stage row is excluded; discharge values land in discharge_m3s.
+    assert len(frame) == 2
+    assert frame["discharge_m3s"].isna().tolist() == [False, True]
+    assert frame["discharge_m3s"].tolist()[0] == 5.5
+
+
+def test_observations_to_raw_frame_skips_non_discharge_models():
+    pytest.importorskip("pandas")
+    from csfs.core.models import Observation, QualityFlag, Resolution, Variable
+
+    observations = [
+        Observation(station_id=STATION, timestamp=datetime(2020, 1, 1, tzinfo=UTC),
+                    discharge_m3s=10.0, quality=QualityFlag.GOOD),
+        Observation(station_id=STATION, timestamp=datetime(2020, 1, 1, tzinfo=UTC),
+                    variable=Variable.STAGE, resolution=Resolution.INSTANTANEOUS,
+                    value=2.1, quality=QualityFlag.GOOD),
+    ]
+    frame = integration.observations_to_raw_frame(observations)
+    assert len(frame) == 1
+    assert frame["discharge_m3s"].tolist() == [10.0]
+
+
 def test_observations_to_raw_frame_empty():
     pytest.importorskip("pandas")
     frame = integration.observations_to_raw_frame([])
@@ -545,9 +579,12 @@ class TestSymfluenceIntegration:
         db_path = tmp_path / "csfs.duckdb"
         db_path.write_bytes(b"")  # existence check only; store is monkeypatched
 
+        # Post-multi-variable store row shape (variable/resolution/value keys).
         rows = [
-            {"timestamp": datetime(2020, 1, 1, tzinfo=UTC), "discharge_m3s": 7.0, "quality": "good"},
-            {"timestamp": datetime(2020, 1, 2, tzinfo=UTC), "discharge_m3s": 8.0, "quality": "good"},
+            {"timestamp": datetime(2020, 1, 1, tzinfo=UTC), "variable": "discharge",
+             "resolution": "unknown", "value": 7.0, "quality": "good"},
+            {"timestamp": datetime(2020, 1, 2, tzinfo=UTC), "variable": "discharge",
+             "resolution": "unknown", "value": 8.0, "quality": "good"},
         ]
 
         class FakeStore:

@@ -8,9 +8,10 @@
 CSFS connects to open streamflow data providers worldwide — national
 hydrological agencies, regional networks, research archives, and global model
 products — harmonizes their observations into one canonical
-station/observation schema (discharge in m³/s, timestamps in UTC), and
-maintains a near-real-time DuckDB store with scheduled acquisition, health
-monitoring, a CLI, and a FastAPI read layer.
+station/observation schema (SI units per variable — discharge m³/s, stage m,
+water temperature °C — timestamps in UTC), and maintains a near-real-time
+DuckDB store with scheduled acquisition, health monitoring, a CLI, and a
+FastAPI read layer.
 
 **Documentation:** <https://darriey.github.io/CSFS/>
 
@@ -82,7 +83,7 @@ async def main() -> None:
         # pandas DataFrame indexed by timestamp (needs the [pandas] extra);
         # get_observations() / get_observations_arrow() need no extra.
         df = await store.get_observations_df(stations[0].id)
-        print(df["discharge_m3s"].describe())
+        print(df["value"].describe())
 
 
 asyncio.run(main())

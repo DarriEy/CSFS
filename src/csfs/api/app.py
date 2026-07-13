@@ -69,15 +69,19 @@ def create_app(db_path: Path | str = "csfs.duckdb") -> FastAPI:
         station_id: str,
         start: datetime | None = None,
         end: datetime | None = None,
+        variable: str = Query("discharge", description="Observed variable, e.g. discharge, stage"),
+        resolution: str | None = Query(None, description="Temporal resolution, e.g. daily_mean"),
         limit: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE),
         offset: int = Query(0, ge=0),
     ):
         store: DuckDBStore = request.app.state.store
         obs = await store.get_observations(
             station_id, start=start, end=end, limit=limit, offset=offset,
+            variable=variable, resolution=resolution,
         )
         return {
             "station_id": station_id,
+            "variable": variable,
             "count": len(obs),
             "limit": limit,
             "offset": offset,
