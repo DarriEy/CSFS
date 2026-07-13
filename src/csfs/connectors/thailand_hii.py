@@ -10,7 +10,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -24,6 +31,7 @@ class ThailandHiiConnector(BaseConnector):
     display_name = "HII (Thailand)"
     base_url = "https://api-v3.thaiwater.net/api/v1"
     country_codes = ["TH"]
+    supported_variables = ("discharge", "stage")
 
     async def fetch_stations(self) -> list[Station]:
         """Return stations extracted from the waterlevel_load endpoint."""
@@ -227,12 +235,38 @@ class ThailandHiiConnector(BaseConnector):
                 else QualityFlag.MISSING
             )
 
+            # Real-time telemetry snapshot: point readings.
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=Variable.DISCHARGE,
+                resolution=Resolution.INSTANTANEOUS,
+                value=discharge,
                 quality=quality,
             ))
+
+            # Water level: waterlevel_msl is metres above mean sea level
+            # (already the canonical stage unit — no conversion).
+            level_raw = rec.get(
+                "waterlevel_msl",
+                rec.get("waterlevel_m", None),
+            )
+            level: float | None = None
+            if level_raw is not None:
+                try:
+                    level = float(str(level_raw))
+                except (ValueError, TypeError):
+                    level = None
+
+            if level is not None:
+                observations.append(Observation(
+                    station_id=station_id,
+                    timestamp=ts,
+                    variable=Variable.STAGE,
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=level,
+                    quality=QualityFlag.RAW,
+                ))
 
         return TimeSeriesChunk(
             station_id=station_id,

@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.lithuania_lhmt import LithuaniaLhmtConnector
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://api.meteo.lt"
 
@@ -174,7 +175,7 @@ async def test_fetch_stations_handles_empty():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_single_day():
-    """Observations for a single day are parsed correctly."""
+    """Stage (cm -> m) and water temperature are emitted; no discharge."""
     respx.get(
         f"{BASE_URL}/v1/hydro-stations/nemunas-kaunas"
         f"/observations/measured/2024-06-01",
@@ -191,9 +192,26 @@ async def test_fetch_observations_single_day():
 
     assert chunk.provider == "lithuania_lhmt"
     assert chunk.station_id == "lithuania_lhmt:nemunas-kaunas"
-    assert len(chunk.observations) == 2
-    assert chunk.observations[0].discharge_m3s == pytest.approx(152.3)
-    assert chunk.observations[0].quality.value == "raw"
+    # 2 entries x (stage + water_temperature)
+    assert len(chunk.observations) == 4
+
+    # The API measures water level/temperature only -- never discharge.
+    assert all(
+        o.variable is not Variable.DISCHARGE for o in chunk.observations
+    )
+    assert all(
+        o.resolution is Resolution.INSTANTANEOUS for o in chunk.observations
+    )
+
+    stage = chunk.observations[0]
+    assert stage.variable is Variable.STAGE
+    assert stage.value == pytest.approx(1.523)  # 152.3 cm -> 1.523 m
+    assert stage.quality.value == "raw"
+
+    temp = chunk.observations[1]
+    assert temp.variable is Variable.WATER_TEMPERATURE
+    assert temp.value == pytest.approx(15.2)  # degC, unconverted
+    assert temp.quality.value == "raw"
 
 
 @pytest.mark.asyncio
@@ -220,13 +238,14 @@ async def test_fetch_observations_multi_day():
             end=datetime(2024, 6, 2),
         )
 
-    assert len(chunk.observations) == 3
+    # 3 entries x (stage + water_temperature)
+    assert len(chunk.observations) == 6
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_null_water_level():
-    """A null water level results in MISSING quality flag."""
+    """Null level -> MISSING stage; null temperature emits nothing."""
     respx.get(
         f"{BASE_URL}/v1/hydro-stations/nemunas-kaunas"
         f"/observations/measured/2024-06-01",
@@ -242,8 +261,10 @@ async def test_fetch_observations_null_water_level():
         )
 
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s is None
-    assert chunk.observations[0].quality.value == "missing"
+    obs = chunk.observations[0]
+    assert obs.variable is Variable.STAGE
+    assert obs.value is None
+    assert obs.quality.value == "missing"
 
 
 @pytest.mark.asyncio
@@ -278,6 +299,7 @@ def test_connector_is_registered():
 
     cls = get_connector("lithuania_lhmt")
     assert cls is LithuaniaLhmtConnector
+    assert cls.supported_variables == ("stage", "water_temperature")
 
 
 # ======================================================================
@@ -395,7 +417,8 @@ async def test_parse_observations_missing_timestamp_skipped():
         )
 
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(152.0)
+    assert chunk.observations[0].variable is Variable.STAGE
+    assert chunk.observations[0].value == pytest.approx(1.52)
 
 
 @pytest.mark.asyncio
@@ -429,4 +452,5 @@ async def test_parse_observations_invalid_timestamp_skipped():
         )
 
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(152.0)
+    assert chunk.observations[0].variable is Variable.STAGE
+    assert chunk.observations[0].value == pytest.approx(1.52)

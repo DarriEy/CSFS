@@ -3,7 +3,8 @@
 HVZ ships its station catalogue as a JavaScript file containing a
 ``HVZ_Site.PEG_DB = [ ... ];`` array. These tests mock that file and verify:
   * only discharge-capable stations are returned;
-  * the current discharge value is parsed in m³/s (Abfluss), NOT water level;
+  * the current discharge value is parsed in m³/s (Abfluss);
+  * the current water level (W, cm) is emitted as stage in metres;
   * timestamps are converted from MESZ/MEZ local time to UTC;
   * the connector is registered.
 """
@@ -15,6 +16,7 @@ import pytest
 import respx
 
 from csfs.connectors.germany_bw import GermanyBwConnector
+from csfs.core.models import Resolution, Variable
 
 _CATALOGUE_URL = "https://www.hvz.baden-wuerttemberg.de/js/hvz_peg_stmn.js"
 
@@ -39,6 +41,10 @@ MOCK_CATALOGUE = (
     " ['00076','Rengers','Untere Argen',1,'34','cm','02.01.2026 06:00 MEZ',"
     "'0.42','m³/s','02.01.2026 06:00 MEZ',0,'file'" + _MID + ","
     "9.95,47.65" + _PAD + "],\n"
+    # Station D: discharge only, no current water level (W == '--').
+    " ['00600','NoLevel','Neckar',1,'--','cm','--',"
+    "'5.0','m³/s','02.06.2026 07:00 MESZ',0,'file'" + _MID + ","
+    "9.20,48.80" + _PAD + "],\n"
     "];\n"
 )
 
@@ -56,7 +62,7 @@ async def test_fetch_stations_filters_discharge():
 
     # Station B (water level only) is excluded.
     native_ids = {s.native_id for s in stations}
-    assert native_ids == {"00435", "00076"}
+    assert native_ids == {"00435", "00076", "00600"}
 
     a = next(s for s in stations if s.native_id == "00435")
     assert a.id == "germany_bw:00435"
@@ -70,8 +76,8 @@ async def test_fetch_stations_filters_discharge():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_parses_discharge_in_m3s():
-    """The current discharge value is parsed in m³/s (Abfluss, not water level)."""
+async def test_fetch_observations_parses_discharge_and_stage():
+    """The current discharge (m³/s) and water level (cm → m) are both emitted."""
     respx.get(_CATALOGUE_URL).mock(
         return_value=httpx.Response(200, text=MOCK_CATALOGUE)
     )
@@ -85,14 +91,46 @@ async def test_fetch_observations_parses_discharge_in_m3s():
 
     assert chunk.provider == "germany_bw"
     assert chunk.station_id == "germany_bw:00435"
-    assert len(chunk.observations) == 1
+    assert len(chunk.observations) == 2
 
-    obs = chunk.observations[0]
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
     # 12.6 m³/s — the discharge column, NOT 52 (water level in cm) or 0.52 m.
-    assert obs.discharge_m3s == pytest.approx(12.6)
-    assert obs.quality.value == "raw"
+    assert discharge.value == pytest.approx(12.6)
+    assert discharge.discharge_m3s == pytest.approx(12.6)
+    assert discharge.resolution is Resolution.INSTANTANEOUS
+    assert discharge.quality.value == "raw"
     # 07:00 MESZ (UTC+2) -> 05:00 UTC.
-    assert obs.timestamp == datetime(2026, 6, 2, 5, 0, tzinfo=UTC)
+    assert discharge.timestamp == datetime(2026, 6, 2, 5, 0, tzinfo=UTC)
+
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    # 52 cm (W column) -> 0.52 m.
+    assert stage.value == pytest.approx(0.52)
+    assert stage.resolution is Resolution.INSTANTANEOUS
+    assert stage.quality.value == "raw"
+    assert stage.timestamp == datetime(2026, 6, 2, 5, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_no_current_level_yields_discharge_only():
+    """A station whose W column is '--' emits only the discharge observation."""
+    respx.get(_CATALOGUE_URL).mock(
+        return_value=httpx.Response(200, text=MOCK_CATALOGUE)
+    )
+
+    async with GermanyBwConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "germany_bw:00600",
+            start=datetime(2026, 6, 1, tzinfo=UTC),
+            end=datetime(2026, 6, 3, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    obs = chunk.observations[0]
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.value == pytest.approx(5.0)
 
 
 @pytest.mark.asyncio
@@ -110,11 +148,18 @@ async def test_fetch_observations_mez_winter_time():
             end=datetime(2026, 1, 3, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 1
-    obs = chunk.observations[0]
-    assert obs.discharge_m3s == pytest.approx(0.42)
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    assert discharge.value == pytest.approx(0.42)
     # 06:00 MEZ (UTC+1) -> 05:00 UTC.
-    assert obs.timestamp == datetime(2026, 1, 2, 5, 0, tzinfo=UTC)
+    assert discharge.timestamp == datetime(2026, 1, 2, 5, 0, tzinfo=UTC)
+
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    # 34 cm -> 0.34 m, same MEZ conversion.
+    assert stage.value == pytest.approx(0.34)
+    assert stage.timestamp == datetime(2026, 1, 2, 5, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
@@ -151,7 +196,7 @@ async def test_fetch_observations_resolves_when_not_cached():
             end=datetime(2026, 6, 3, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 1
+    assert len(chunk.observations) == 2
     assert "00435" in conn._catalogue
 
 
@@ -197,3 +242,4 @@ def test_registration():
     cls = get_connector("germany_bw")
     assert cls is GermanyBwConnector
     assert cls.slug == "germany_bw"
+    assert cls.supported_variables == ("discharge", "stage")

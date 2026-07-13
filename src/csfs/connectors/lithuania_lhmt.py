@@ -14,11 +14,11 @@ Endpoints used
 * Measured observations (one day at a time):
   GET https://api.meteo.lt/v1/hydro-stations/{code}/observations/measured/{YYYY-MM-DD}
   Returns JSON ``{observations: [{observationTimeUtc, waterLevel, waterTemperature}]}``.
-  Hourly readings (up to 24 per day).
+  Hourly point readings (up to 24 per day).
 
-**Important:** This API provides *water level* (cm), **not** discharge.
-The ``discharge_m3s`` field in the returned observations stores water level
-values for downstream mapping convenience.
+**Important:** This API provides *water level* (cm) and *water temperature*
+(degC), **not** discharge. ``waterLevel`` is emitted as ``stage`` (converted
+cm -> m) and ``waterTemperature`` as ``water_temperature``.
 """
 
 from __future__ import annotations
@@ -34,8 +34,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -46,14 +48,15 @@ logger = structlog.get_logger()
 class LithuaniaLhmtConnector(BaseConnector):
     """Connector for Lithuanian Hydrometeorological Service (meteo.lt).
 
-    Observations are *water level* (cm), not discharge (m3/s).
-    Values are stored in ``discharge_m3s`` for interface compatibility.
+    Observations are *water level* (cm, emitted as ``stage`` in metres) and
+    *water temperature* (degC); the API provides no discharge (m3/s).
     """
 
     slug = "lithuania_lhmt"
     display_name = "LHMT (Lithuania)"
     base_url = "https://api.meteo.lt"
     country_codes = ["LT"]
+    supported_variables = ("stage", "water_temperature")
 
     # -----------------------------------------------------------------
     # Public API
@@ -87,7 +90,8 @@ class LithuaniaLhmtConnector(BaseConnector):
         The API serves one calendar day per request, so we iterate
         day-by-day from *start* to *end* (inclusive).
 
-        **Note:** returned values are water level (cm), not discharge.
+        **Note:** returned observations are stage (m) and water
+        temperature (degC), not discharge.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
         observations: list[Observation] = []
@@ -209,8 +213,9 @@ class LithuaniaLhmtConnector(BaseConnector):
     ) -> list[Observation]:
         """Parse a day's observations into ``Observation`` models.
 
-        ``waterLevel`` is stored in ``discharge_m3s`` (it is actually
-        water level in cm).
+        ``waterLevel`` (cm) is emitted as ``stage`` in metres and
+        ``waterTemperature`` (degC) as ``water_temperature``. The feed
+        carries hourly point readings, so both are INSTANTANEOUS.
         """
         observations: list[Observation] = []
         for entry in items:
@@ -228,23 +233,38 @@ class LithuaniaLhmtConnector(BaseConnector):
                 )
                 continue
 
-            value_raw = entry.get("waterLevel")
-            water_level: float | None = None
-            if value_raw is not None:
+            level_raw = entry.get("waterLevel")
+            stage_m: float | None = None
+            if level_raw is not None:
                 with contextlib.suppress(ValueError, TypeError):
-                    water_level = float(str(value_raw))
-
-            quality = (
-                QualityFlag.MISSING
-                if water_level is None
-                else QualityFlag.RAW
-            )
+                    stage_m = float(str(level_raw)) / 100.0  # cm -> m
 
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=water_level,
-                quality=quality,
+                variable=Variable.STAGE,
+                resolution=Resolution.INSTANTANEOUS,
+                value=stage_m,
+                quality=(
+                    QualityFlag.MISSING
+                    if stage_m is None
+                    else QualityFlag.RAW
+                ),
             ))
+
+            temp_raw = entry.get("waterTemperature")
+            temperature: float | None = None
+            if temp_raw is not None:
+                with contextlib.suppress(ValueError, TypeError):
+                    temperature = float(str(temp_raw))
+            if temperature is not None:
+                observations.append(Observation(
+                    station_id=station_id,
+                    timestamp=ts,
+                    variable=Variable.WATER_TEMPERATURE,
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=temperature,
+                    quality=QualityFlag.RAW,
+                ))
 
         return observations

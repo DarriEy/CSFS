@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.argentina_snih import ArgentinaSnihConnector
+from csfs.core.models import Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = [
     {
@@ -89,6 +90,15 @@ MOCK_OBSERVATIONS_RESPONSE = [
     },
 ]
 
+# Stage ("Altura hidrometrica", var id 2) series 55 -- values in metres.
+MOCK_STAGE_OBSERVATIONS_RESPONSE = [
+    {
+        "series_id": 55,
+        "timestart": "2024-01-01T03:00:00.000Z",
+        "valor": 2.31,
+    },
+]
+
 
 @pytest.mark.asyncio
 @respx.mock
@@ -165,9 +175,12 @@ async def test_fetch_observations_parses_values():
     assert chunk.provider == "argentina_snih"
     assert chunk.station_id == "argentina_snih:101"
     assert len(chunk.observations) == 3
-    assert chunk.observations[0].discharge_m3s == pytest.approx(5.21)
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    # Plain "Caudal" declares no aggregation.
+    assert chunk.observations[0].resolution is Resolution.UNKNOWN
+    assert chunk.observations[0].value == pytest.approx(5.21)
     assert chunk.observations[0].quality.value == "raw"
-    assert chunk.observations[2].discharge_m3s is None
+    assert chunk.observations[2].value is None
     assert chunk.observations[2].quality.value == "missing"
 
 
@@ -218,7 +231,7 @@ async def test_resolve_series_id_from_cache():
 @pytest.mark.asyncio
 @respx.mock
 async def test_resolve_series_id_fetches_metadata():
-    """When cache is empty, series metadata is fetched first."""
+    """When cache is empty, series metadata is fetched; both variables emitted."""
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/series"
     ).mock(return_value=httpx.Response(200, json=MOCK_SERIES_GEOJSON))
@@ -228,6 +241,11 @@ async def test_resolve_series_id_fetches_metadata():
     ).mock(
         return_value=httpx.Response(200, json=MOCK_OBSERVATIONS_RESPONSE)
     )
+    respx.get(
+        "https://alerta.ina.gob.ar/a5/obs/puntual/series/55/observaciones"
+    ).mock(
+        return_value=httpx.Response(200, json=MOCK_STAGE_OBSERVATIONS_RESPONSE)
+    )
 
     async with ArgentinaSnihConnector() as conn:
         chunk = await conn.fetch_observations(
@@ -236,15 +254,25 @@ async def test_resolve_series_id_fetches_metadata():
             end=datetime(2024, 1, 2),
         )
 
-    assert len(chunk.observations) == 3
+    # 3 discharge (series 31) + 1 stage (series 55) observations.
+    assert len(chunk.observations) == 4
     assert conn._station_to_series["101"] == 31
     assert conn._station_to_series["202"] == 42
+    assert conn._station_to_stage_series["101"] == 55
+
+    stage = [
+        o for o in chunk.observations if o.variable is Variable.STAGE
+    ]
+    assert len(stage) == 1
+    # "Altura hidrometrica" is served in metres -- no conversion.
+    assert stage[0].value == pytest.approx(2.31)
+    assert stage[0].resolution is Resolution.UNKNOWN
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_resolve_series_id_raises_on_unknown_station():
-    """If no discharge series exists for the station, an error is raised."""
+    """If no discharge or stage series exists for the station, an error is raised."""
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/series"
     ).mock(return_value=httpx.Response(200, json=MOCK_SERIES_GEOJSON))
@@ -252,7 +280,7 @@ async def test_resolve_series_id_raises_on_unknown_station():
     from csfs.core.exceptions import DataFormatError
 
     async with ArgentinaSnihConnector() as conn:
-        with pytest.raises(DataFormatError, match="No discharge series"):
+        with pytest.raises(DataFormatError, match="No discharge or stage series"):
             await conn.fetch_observations(
                 "argentina_ina:999",
                 start=datetime(2024, 1, 1),
@@ -262,8 +290,8 @@ async def test_resolve_series_id_raises_on_unknown_station():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_build_series_cache_filters_discharge_only():
-    """Only series whose var_nombre contains 'caudal' are cached."""
+async def test_build_series_cache_classifies_variables():
+    """Caudal series go to the discharge cache, altura series to the stage cache."""
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/series"
     ).mock(return_value=httpx.Response(200, json=MOCK_SERIES_GEOJSON))
@@ -272,12 +300,17 @@ async def test_build_series_cache_filters_discharge_only():
     async with conn:
         await conn._build_series_cache()
 
-    # Station 101 has Caudal (id=31) and Altura (id=55); only Caudal cached
-    assert conn._station_to_series["101"] == 31
-    # Station 202 has "Caudal medio diario" -> also matched
-    assert conn._station_to_series["202"] == 42
-    # Only 2 entries total (Altura was excluded)
-    assert len(conn._station_to_series) == 2
+    # Station 101 has Caudal (id=31) and Altura (id=55).
+    assert conn._station_to_series == {"101": 31, "202": 42}
+    assert conn._station_to_stage_series == {"101": 55}
+
+    # Resolutions: "Caudal medio diario" is a daily mean; the plain
+    # "Caudal"/"Altura hidrometrica" series declare no aggregation.
+    assert conn._series_resolution[42] is Resolution.DAILY_MEAN
+    assert conn._series_resolution[31] is Resolution.UNKNOWN
+    assert conn._series_resolution[55] is Resolution.UNKNOWN
+
+    assert ArgentinaSnihConnector.supported_variables == ("discharge", "stage")
 
 
 @pytest.mark.asyncio

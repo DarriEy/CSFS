@@ -9,7 +9,7 @@ import pytest
 import respx
 
 from csfs.connectors.croatia_dhz import CroatiaDhzConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 MOCK_STATIONS_TEXT = """
 {'success': 'true', 'postaje': [
@@ -59,6 +59,9 @@ async def test_fetch_latest():
     assert len(chunk.observations) == 1
     
     obs = chunk.observations[0]
+    assert obs.variable == Variable.DISCHARGE
+    assert obs.resolution == Resolution.INSTANTANEOUS
+    assert obs.value == 12.3
     assert obs.discharge_m3s == 12.3
     assert obs.timestamp == datetime(2026, 6, 1, 5, 0, tzinfo=UTC)
     assert obs.quality == QualityFlag.RAW
@@ -72,8 +75,17 @@ async def test_fetch_latest_level():
     )
 
     async with CroatiaDhzConnector() as conn:
-        # Station 5001 has 'cm' in mock
+        # Station 5001 has 'cm' in mock -> stage in metres
         chunk = await conn.fetch_latest("croatia_dhz:5001")
 
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == 50.0
+    obs = chunk.observations[0]
+    assert obs.variable == Variable.STAGE
+    assert obs.resolution == Resolution.INSTANTANEOUS
+    assert obs.value == pytest.approx(0.50)  # 50 cm -> 0.50 m
+    assert obs.discharge_m3s is None
+    assert obs.quality == QualityFlag.RAW
+
+
+def test_supported_variables():
+    assert CroatiaDhzConnector.supported_variables == ("discharge", "stage")

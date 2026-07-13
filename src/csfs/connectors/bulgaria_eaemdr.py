@@ -11,8 +11,9 @@ There is no queryable historical API and no JSON/CSV feed: the page is a single
 live snapshot (re-rendered each load). The static "Open Data" portal only offers
 historical PDF reports (1941-2019), which are not machine-readable. This
 connector therefore scrapes the live snapshot table and returns, per station,
-the current daily discharge value as a single observation timestamped at the
-bulletin date.
+the current discharge (m3/s), stage (published in cm, emitted in m) and water
+temperature (degC) as single observations timestamped at the bulletin date.
+The bulletin does not declare an aggregation, so resolution is UNKNOWN.
 
 References
 ----------
@@ -31,8 +32,10 @@ from csfs.connectors.base import BaseConnector
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -65,10 +68,10 @@ _ROW_RE = re.compile(
     r"<tr>\s*"
     r"<td>(?P<name>[^<]+?)</td>\s*"            # station name
     r"<td>[^<]*</td>\s*"                        # kilometre
-    r"<td>\s*<span[^>]*>[^<]*</span>\s*</td>\s*"  # water level (cm)
+    r"<td>\s*<span[^>]*>(?P<h>[^<]*)</span>\s*</td>\s*"  # water level (cm)
     r"<td>(?P<q>[^<]*)</td>\s*"                 # discharge (m3/s), possibly empty
     r"<td>[^<]*</td>\s*"                        # 24h difference
-    r"<td>\s*<span[^>]*>[^<]*</span>\s*</td>",  # t water
+    r"<td>\s*<span[^>]*>(?P<t>[^<]*)</span>\s*</td>",  # t water (degC)
     re.DOTALL,
 )
 
@@ -81,11 +84,15 @@ class EAEMDRConnector(BaseConnector):
     display_name = "EAEMDR (Bulgaria)"
     base_url = _EAEMDR_BASE_URL
     country_codes = ["BG"]
+    supported_variables = ("discharge", "stage", "water_temperature")
 
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
-        # Cache of the parsed bulletin: {native_id: (timestamp, discharge)}.
-        self._snapshot: dict[str, tuple[datetime, float]] | None = None
+        # Cache of the parsed bulletin:
+        # {native_id: (timestamp, discharge_m3s, stage_m, temperature_c)}.
+        self._snapshot: dict[
+            str, tuple[datetime, float, float | None, float | None]
+        ] | None = None
 
     async def fetch_stations(self) -> list[Station]:
         """Return Danube gauges that currently report discharge (m3/s)."""
@@ -123,7 +130,7 @@ class EAEMDRConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Return the current daily discharge for one station (single snapshot)."""
+        """Return the current discharge/stage/temperature for one station."""
         native_id = station_id.removeprefix(f"{self.slug}:")
 
         try:
@@ -140,16 +147,25 @@ class EAEMDRConnector(BaseConnector):
         observations: list[Observation] = []
         entry = snapshot.get(native_id)
         if entry is not None:
-            ts, discharge = entry
+            ts, discharge, stage_m, temperature = entry
             if start <= ts <= end:
-                observations.append(
-                    Observation(
-                        station_id=station_id,
-                        timestamp=ts,
-                        discharge_m3s=discharge,
-                        quality=QualityFlag.RAW,
+                for variable, value in (
+                    (Variable.DISCHARGE, discharge),
+                    (Variable.STAGE, stage_m),
+                    (Variable.WATER_TEMPERATURE, temperature),
+                ):
+                    if value is None:
+                        continue
+                    observations.append(
+                        Observation(
+                            station_id=station_id,
+                            timestamp=ts,
+                            variable=variable,
+                            resolution=Resolution.UNKNOWN,
+                            value=value,
+                            quality=QualityFlag.RAW,
+                        )
                     )
-                )
         return self._chunk(station_id, observations)
 
     # ------------------------------------------------------------------
@@ -161,23 +177,42 @@ class EAEMDRConnector(BaseConnector):
         resp = await self._get(_HIDROLOGY_PATH, timeout=15.0)
         return resp.text
 
-    def _parse_bulletin(self, html: str) -> dict[str, tuple[datetime, float]]:
-        """Parse the summary table into {station: (timestamp, discharge_m3s)}."""
+    def _parse_bulletin(
+        self, html: str
+    ) -> dict[str, tuple[datetime, float, float | None, float | None]]:
+        """Parse the summary table into {station: (ts, discharge, stage, temp)}.
+
+        Discharge stays in m3/s, water level (cm) is converted to stage in
+        metres, and water temperature stays in degC.
+        """
         ts = self._parse_date(html)
-        result: dict[str, tuple[datetime, float]] = {}
+        result: dict[str, tuple[datetime, float, float | None, float | None]] = {}
         for m in _ROW_RE.finditer(html):
             name = m.group("name").strip()
             if name not in _STATION_META:
                 continue
-            q_raw = m.group("q").strip()
-            if not q_raw:
+            discharge = self._parse_float(m.group("q"))
+            if discharge is None:
                 continue  # level-only gauge (e.g. Vidin, Nikopol)
-            try:
-                discharge = float(q_raw.replace(" ", ""))
-            except ValueError:
-                continue
-            result[name] = (ts, discharge)
+            stage_m = self._parse_float(m.group("h"))
+            if stage_m is not None:
+                stage_m /= 100.0  # cm -> m
+            temperature = self._parse_float(m.group("t"))
+            result[name] = (ts, discharge, stage_m, temperature)
         return result
+
+    @staticmethod
+    def _parse_float(raw: str | None) -> float | None:
+        """Parse a table cell as a float; empty/malformed cells become None."""
+        if raw is None:
+            return None
+        cleaned = raw.strip().replace(" ", "")
+        if not cleaned:
+            return None
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
 
     def _parse_date(self, html: str) -> datetime:
         """Extract the bulletin date; fall back to today (UTC midnight)."""

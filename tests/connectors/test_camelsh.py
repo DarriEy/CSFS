@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from csfs.connectors.camelsh import _SEED_STATIONS, CAMELSHConnector
+from csfs.core.models import Resolution, Variable
 
 # Hourly per-station CSV: timestamp + streamflow (m3/s) + water level (m)
 SAMPLE_CSV = (
@@ -84,16 +85,30 @@ async def test_fetch_observations_from_csv(tmp_path: Path):
             end=datetime(2020, 1, 1, 2, 0, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 3
-    assert chunk.observations[0].discharge_m3s == pytest.approx(12.34)
-    # NOTE: the Observation model has no water_level_m field, so the
-    # connector's water_level kwarg is dropped by pydantic; only discharge
-    # is asserted here.
-    assert chunk.observations[0].timestamp == datetime(
-        2020, 1, 1, 0, 0, tzinfo=UTC
+    # One discharge + one stage observation per CSV row.
+    assert len(chunk.observations) == 6
+    discharge = [
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    ]
+    stage = [o for o in chunk.observations if o.variable is Variable.STAGE]
+    assert len(discharge) == 3
+    assert len(stage) == 3
+
+    assert discharge[0].value == pytest.approx(12.34)
+    assert discharge[0].discharge_m3s == pytest.approx(12.34)
+    assert discharge[0].timestamp == datetime(2020, 1, 1, 0, 0, tzinfo=UTC)
+    assert discharge[0].quality.value == "raw"
+    assert discharge[2].value == pytest.approx(18.20)
+
+    # water_level_m is already in metres — no conversion.
+    assert stage[0].value == pytest.approx(1.10)
+    assert stage[0].timestamp == datetime(2020, 1, 1, 0, 0, tzinfo=UTC)
+    assert stage[2].value == pytest.approx(1.40)
+
+    # CAMELSH does not declare its aggregation -> UNKNOWN resolution.
+    assert all(
+        o.resolution == Resolution.UNKNOWN for o in chunk.observations
     )
-    assert chunk.observations[0].quality.value == "raw"
-    assert chunk.observations[2].discharge_m3s == pytest.approx(18.20)
 
 
 @pytest.mark.asyncio
@@ -109,8 +124,13 @@ async def test_fetch_observations_hourly_filtering(tmp_path: Path):
             end=datetime(2020, 1, 1, 1, 0, tzinfo=UTC),
         )
 
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(15.50)
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    assert discharge.value == pytest.approx(15.50)
+    assert stage.value == pytest.approx(1.25)
 
 
 @pytest.mark.asyncio
@@ -129,8 +149,38 @@ async def test_fetch_observations_q_h_aliases(tmp_path: Path):
             end=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
         )
 
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    assert discharge.value == pytest.approx(9.0)
+    assert stage.value == pytest.approx(2.0)
+
+
+@pytest.mark.asyncio
+async def test_fetch_observations_discharge_only_csv(tmp_path: Path):
+    """A CSV without a water level column emits only discharge."""
+    (tmp_path / "01013500.csv").write_text(
+        "date,streamflow_m3s\n2020-01-01 00:00:00,7.5\n",
+        encoding="utf-8",
+    )
+
+    config = {"data_dir": str(tmp_path)}
+    async with CAMELSHConnector(config=config) as conn:
+        chunk = await conn.fetch_observations(
+            "camelsh:01013500",
+            start=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+            end=datetime(2020, 1, 1, 0, 0, tzinfo=UTC),
+        )
+
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(9.0)
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].value == pytest.approx(7.5)
+
+
+def test_supported_variables():
+    assert CAMELSHConnector.supported_variables == ("discharge", "stage")
 
 
 def test_registration():

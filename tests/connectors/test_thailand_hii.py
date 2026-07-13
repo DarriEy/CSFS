@@ -8,7 +8,7 @@ import respx
 
 from csfs.connectors.thailand_hii import ThailandHiiConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 # -- Mock response data ------------------------------------------------
 
@@ -23,6 +23,7 @@ MOCK_WATERLEVEL_RESPONSE = {
             },
             "datetime": "2024-06-01T12:00:00",
             "discharge": 450.5,
+            "waterlevel_msl": 24.51,
         },
         {
             "station": {
@@ -33,6 +34,7 @@ MOCK_WATERLEVEL_RESPONSE = {
             },
             "datetime": "2024-06-01T12:00:00",
             "discharge": 123.8,
+            "waterlevel_msl": 112.04,
         },
     ],
 }
@@ -45,6 +47,7 @@ MOCK_WATERLEVEL_FLAT_RESPONSE = [
         "lon": 100.13,
         "datetime": "2024-06-01T12:00:00",
         "discharge": 450.5,
+        "waterlevel_msl": 24.51,
     },
     {
         "id": "WL002",
@@ -53,6 +56,7 @@ MOCK_WATERLEVEL_FLAT_RESPONSE = [
         "lon": 104.85,
         "datetime": "2024-06-01T12:00:00",
         "discharge": None,
+        "waterlevel_msl": 112.04,
     },
 ]
 
@@ -172,9 +176,21 @@ async def test_fetch_observations_returns_latest_snapshot():
 
     assert chunk.provider == "thailand_hii"
     assert chunk.station_id == "thailand_hii:WL001"
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
-    assert chunk.observations[0].quality == QualityFlag.RAW
+    assert len(chunk.observations) == 2
+
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    assert discharge.value == pytest.approx(450.5)
+    assert discharge.discharge_m3s == pytest.approx(450.5)
+    assert discharge.resolution == Resolution.INSTANTANEOUS
+    assert discharge.quality == QualityFlag.RAW
+
+    # waterlevel_msl is metres above MSL — passed through unconverted.
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    assert stage.value == pytest.approx(24.51)
+    assert stage.resolution == Resolution.INSTANTANEOUS
+    assert stage.quality == QualityFlag.RAW
 
 
 @pytest.mark.asyncio
@@ -198,7 +214,7 @@ async def test_fetch_observations_station_not_found_returns_empty():
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_null_discharge_is_missing():
-    """When discharge is null, quality is MISSING."""
+    """When discharge is null, quality is MISSING; stage is still emitted."""
     respx.get(f"{BASE}/thaiwater30/public/waterlevel_load").mock(
         return_value=httpx.Response(200, json=MOCK_WATERLEVEL_FLAT_RESPONSE),
     )
@@ -210,9 +226,17 @@ async def test_fetch_observations_null_discharge_is_missing():
             end=datetime(2024, 6, 2),
         )
 
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s is None
-    assert chunk.observations[0].quality == QualityFlag.MISSING
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    assert discharge.value is None
+    assert discharge.discharge_m3s is None
+    assert discharge.quality == QualityFlag.MISSING
+
+    stage = next(o for o in chunk.observations if o.variable is Variable.STAGE)
+    assert stage.value == pytest.approx(112.04)
+    assert stage.quality == QualityFlag.RAW
 
 
 @pytest.mark.asyncio
@@ -226,8 +250,11 @@ async def test_fetch_latest_delegates():
     async with ThailandHiiConnector() as conn:
         chunk = await conn.fetch_latest("thailand_hii:WL001")
 
-    assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(450.5)
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    assert discharge.value == pytest.approx(450.5)
 
 
 @pytest.mark.asyncio
@@ -258,6 +285,7 @@ def test_connector_class_attributes():
     assert ThailandHiiConnector.slug == "thailand_hii"
     assert ThailandHiiConnector.country_codes == ["TH"]
     assert "thaiwater.net" in ThailandHiiConnector.base_url
+    assert ThailandHiiConnector.supported_variables == ("discharge", "stage")
 
 
 # ======================================================================

@@ -7,6 +7,7 @@ import pytest
 import respx
 
 from csfs.connectors.greece_openhi import GreeceOpenhiConnector
+from csfs.core.models import Resolution, Variable
 
 BASE_URL = "https://system.openhi.net"
 
@@ -184,8 +185,9 @@ async def test_fetch_observations_parses_csv_with_tz_conversion():
     ).mock(return_value=httpx.Response(200, text=MOCK_CSV))
 
     async with GreeceOpenhiConnector() as conn:
-        # Pre-seed the discharge ref so we only exercise the data path.
-        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        # Pre-seed the series refs so we only exercise the data path.
+        conn._series_ref[("100", 2)] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 14)] = None  # no stage series
         chunk = await conn.fetch_observations(
             "greece_openhi:100",
             start=datetime(2024, 6, 1, tzinfo=UTC),
@@ -196,21 +198,63 @@ async def test_fetch_observations_parses_csv_with_tz_conversion():
     assert chunk.provider == "greece_openhi"
     assert len(chunk.observations) == 4
 
+    # The CSV export declares no aggregation.
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.UNKNOWN for o in chunk.observations)
+
     # Etc/GMT-2 == UTC+2, so local 02:00 -> 00:00 UTC.
     assert chunk.observations[0].timestamp == datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
-    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    assert chunk.observations[0].value == pytest.approx(45.3)
     assert chunk.observations[0].quality.value == "good"  # VALIDATED
 
     # Empty flag -> RAW
-    assert chunk.observations[1].discharge_m3s == pytest.approx(44.1)
+    assert chunk.observations[1].value == pytest.approx(44.1)
     assert chunk.observations[1].quality.value == "raw"
 
     # Empty value -> MISSING
-    assert chunk.observations[2].discharge_m3s is None
+    assert chunk.observations[2].value is None
     assert chunk.observations[2].quality.value == "missing"
 
     # SUSPECT flag
     assert chunk.observations[3].quality.value == "suspect"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_emits_discharge_and_stage():
+    """A station with both series yields discharge and stage observations."""
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/6/timeseries/9001/data/",
+    ).mock(return_value=httpx.Response(
+        200, text="2024-06-01 02:00,45.3,VALIDATED\n",
+    ))
+    respx.get(
+        f"{BASE_URL}/api/stations/100/timeseriesgroups/5/timeseries/9002/data/",
+    ).mock(return_value=httpx.Response(
+        200, text="2024-06-01 02:00,2.31,VALIDATED\n",
+    ))
+
+    async with GreeceOpenhiConnector() as conn:
+        conn._series_ref[("100", 2)] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 14)] = (5, 9002, "Etc/GMT-2")
+        chunk = await conn.fetch_observations(
+            "greece_openhi:100",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 2
+    discharge = next(
+        o for o in chunk.observations if o.variable is Variable.DISCHARGE
+    )
+    stage = next(
+        o for o in chunk.observations if o.variable is Variable.STAGE
+    )
+    assert discharge.value == pytest.approx(45.3)  # m3/s
+    # Enhydris serves stage in metres already -- no conversion.
+    assert stage.value == pytest.approx(2.31)
+    assert stage.resolution is Resolution.UNKNOWN
+    assert stage.timestamp == datetime(2024, 6, 1, 0, 0, tzinfo=UTC)
 
 
 @pytest.mark.asyncio
@@ -222,7 +266,8 @@ async def test_fetch_observations_sends_local_date_bounds():
     ).mock(return_value=httpx.Response(200, text=""))
 
     async with GreeceOpenhiConnector() as conn:
-        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 2)] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 14)] = None
         await conn.fetch_observations(
             "greece_openhi:100",
             start=datetime(2024, 6, 1, 0, 0, tzinfo=UTC),
@@ -237,15 +282,43 @@ async def test_fetch_observations_sends_local_date_bounds():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_no_discharge_returns_empty():
-    """A station without a discharge group yields an empty chunk."""
+async def test_fetch_observations_stage_only_station():
+    """A station with only a stage group yields stage observations."""
     respx.get(f"{BASE_URL}/api/stations/200/timeseriesgroups/").mock(
         return_value=httpx.Response(200, json=_groups((5, 14))),
     )
+    respx.get(
+        f"{BASE_URL}/api/stations/200/timeseriesgroups/5/timeseries/",
+    ).mock(return_value=httpx.Response(200, json=_timeseries(9100)))
+    respx.get(
+        f"{BASE_URL}/api/stations/200/timeseriesgroups/5/timeseries/9100/data/",
+    ).mock(return_value=httpx.Response(
+        200, text="2024-06-01 02:00,1.05,\n",
+    ))
 
     async with GreeceOpenhiConnector() as conn:
         chunk = await conn.fetch_observations(
             "greece_openhi:200",
+            start=datetime(2024, 6, 1, tzinfo=UTC),
+            end=datetime(2024, 6, 2, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].variable is Variable.STAGE
+    assert chunk.observations[0].value == pytest.approx(1.05)  # metres
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_no_supported_variable_returns_empty():
+    """A station without discharge or stage groups yields an empty chunk."""
+    respx.get(f"{BASE_URL}/api/stations/400/timeseriesgroups/").mock(
+        return_value=httpx.Response(200, json=_groups((8, 99))),
+    )
+
+    async with GreeceOpenhiConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "greece_openhi:400",
             start=datetime(2024, 6, 1, tzinfo=UTC),
             end=datetime(2024, 6, 2, tzinfo=UTC),
         )
@@ -264,7 +337,8 @@ async def test_fetch_observations_http_error_raises_connector_error():
     ).mock(return_value=httpx.Response(500))
 
     async with GreeceOpenhiConnector() as conn:
-        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 2)] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 14)] = None
         with pytest.raises(ConnectorError, match="Failed to fetch observations"):
             await conn.fetch_observations(
                 "greece_openhi:100",
@@ -284,22 +358,24 @@ async def test_fetch_latest_delegates():
     ))
 
     async with GreeceOpenhiConnector() as conn:
-        conn._discharge_ref["100"] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 2)] = (6, 9001, "Etc/GMT-2")
+        conn._series_ref[("100", 14)] = None
         chunk = await conn.fetch_latest("greece_openhi:100")
 
     assert len(chunk.observations) == 1
-    assert chunk.observations[0].discharge_m3s == pytest.approx(45.3)
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].value == pytest.approx(45.3)
 
 
 # ======================================================================
-# Discharge-ref resolution
+# Series-ref resolution
 # ======================================================================
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_resolve_discharge_ref_caches():
-    """The discharge ref is resolved once and cached."""
+async def test_resolve_series_ref_caches():
+    """The discharge series ref is resolved once and cached."""
     groups_route = respx.get(
         f"{BASE_URL}/api/stations/100/timeseriesgroups/",
     ).mock(return_value=httpx.Response(200, json=_groups((6, 2))))
@@ -308,8 +384,10 @@ async def test_resolve_discharge_ref_caches():
     ).mock(return_value=httpx.Response(200, json=_timeseries(9001)))
 
     async with GreeceOpenhiConnector() as conn:
-        ref1 = await conn._resolve_discharge_ref("100", _station(100, "X", 22.0, 39.0))
-        ref2 = await conn._resolve_discharge_ref("100")
+        ref1 = await conn._resolve_series_ref(
+            "100", 2, _station(100, "X", 22.0, 39.0),
+        )
+        ref2 = await conn._resolve_series_ref("100", 2)
 
     assert ref1 == (6, 9001, "Etc/GMT-2")
     assert ref2 == ref1
@@ -318,19 +396,22 @@ async def test_resolve_discharge_ref_caches():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_resolve_discharge_ref_no_timeseries_returns_none():
-    """A discharge group with no timeseries resolves to None."""
-    respx.get(f"{BASE_URL}/api/stations/300/timeseriesgroups/").mock(
-        return_value=httpx.Response(200, json=_groups((7, 2))),
-    )
+async def test_resolve_series_ref_no_timeseries_returns_none():
+    """A discharge group with no timeseries resolves to None (and is cached)."""
+    groups_route = respx.get(
+        f"{BASE_URL}/api/stations/300/timeseriesgroups/",
+    ).mock(return_value=httpx.Response(200, json=_groups((7, 2))))
     respx.get(
         f"{BASE_URL}/api/stations/300/timeseriesgroups/7/timeseries/",
     ).mock(return_value=httpx.Response(200, json={"results": []}))
 
     async with GreeceOpenhiConnector() as conn:
-        ref = await conn._resolve_discharge_ref("300")
+        ref = await conn._resolve_series_ref("300", 2)
+        ref_again = await conn._resolve_series_ref("300", 2)
 
     assert ref is None
+    assert ref_again is None
+    assert groups_route.call_count == 1  # negative result cached
 
 
 # ======================================================================
@@ -412,3 +493,4 @@ def test_connector_is_registered():
 
     cls = get_connector("greece_openhi")
     assert cls is GreeceOpenhiConnector
+    assert cls.supported_variables == ("discharge", "stage")

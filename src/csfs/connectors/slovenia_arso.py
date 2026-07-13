@@ -20,8 +20,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -38,6 +40,16 @@ class SloveniaArsoConnector(BaseConnector):
     display_name = "ARSO (Slovenia)"
     base_url = "https://www.arso.gov.si"
     country_codes = ["SI"]
+    supported_variables = ("discharge", "stage", "water_temperature")
+
+    # XML tag -> (canonical variable, factor converting to the SI unit).
+    # ARSO serves 'vodostaj' (water level) in cm, 'pretok' (discharge) in
+    # m3/s and 'temp_vode' (water temperature) in degC.
+    _VARIABLE_TAGS: tuple[tuple[str, Variable, float], ...] = (
+        ("pretok", Variable.DISCHARGE, 1.0),
+        ("vodostaj", Variable.STAGE, 0.01),  # cm -> m
+        ("temp_vode", Variable.WATER_TEMPERATURE, 1.0),
+    )
 
     async def fetch_stations(self) -> list[Station]:
         """Fetch all stations from the real-time XML feed."""
@@ -96,23 +108,33 @@ class SloveniaArsoConnector(BaseConnector):
         for postaja in root.findall("postaja"):
             if postaja.get("sifra") == native_id:
                 raw_time = postaja.findtext("datum") # YYYY-MM-DD HH:mm
-                raw_val = postaja.findtext("pretok") # discharge in m3/s
-                
-                if not raw_time or not raw_val:
+
+                if not raw_time:
                     continue
 
                 try:
                     ts = datetime.fromisoformat(raw_time.replace(" ", "T")).replace(tzinfo=UTC)
-                    discharge = float(raw_val)
-                    
+                except (ValueError, TypeError):
+                    continue
+
+                # Latest-observations realtime feed: point readings.
+                for tag, variable, factor in self._VARIABLE_TAGS:
+                    raw_val = postaja.findtext(tag)
+                    if not raw_val:
+                        continue
+                    try:
+                        value = float(raw_val) * factor
+                    except (ValueError, TypeError):
+                        continue
+
                     observations.append(Observation(
                         station_id=station_id,
                         timestamp=ts,
-                        discharge_m3s=discharge,
+                        variable=variable,
+                        resolution=Resolution.INSTANTANEOUS,
+                        value=value,
                         quality=QualityFlag.RAW,
                     ))
-                except (ValueError, TypeError):
-                    continue
 
         return TimeSeriesChunk(
             station_id=station_id,

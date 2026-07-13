@@ -8,6 +8,7 @@ import respx
 
 from csfs.connectors.uk_ea import UKEnvironmentAgencyConnector
 from csfs.core.exceptions import ConnectorError
+from csfs.core.models import Resolution, Variable
 
 MOCK_STATIONS_RESPONSE = {
     "items": [
@@ -71,10 +72,44 @@ MOCK_MEASURES_RESPONSE = {
     ]
 }
 
+MOCK_MEASURES_FLOW_ONLY = {
+    "items": [
+        {"notation": "3400TH-flow-i-900-m3s-qualified", "parameterName": "Water Flow"},
+    ]
+}
+
+MOCK_MEASURES_DAILY_FLOW_ONLY = {
+    "items": [
+        {"notation": "3400TH-flow-m-86400-m3s-qualified", "parameterName": "Water Flow"},
+    ]
+}
+
 MOCK_MEASURES_NO_FLOW = {
     "items": [
         {"notation": "3400TH-level-i-900-m-qualified", "parameterName": "Water Level"},
     ]
+}
+
+MOCK_MEASURES_NEITHER = {
+    "items": [
+        {"notation": "3400TH-rainfall-t-900-mm-qualified", "parameterName": "Rainfall"},
+    ]
+}
+
+MOCK_LEVEL_READINGS_RESPONSE = {
+    "items": [
+        {
+            "dateTime": "2024-06-01T12:00:00Z",
+            "value": 3.42,
+            "quality": "Good",
+        },
+        {
+            "dateTime": "2024-06-01T12:15:00Z",
+            "value": 3.44,
+            "quality": "Unchecked",
+        },
+    ],
+    "links": [],
 }
 
 MOCK_READINGS_RESPONSE = {
@@ -207,6 +242,34 @@ async def test_find_flow_measure_prefers_instantaneous():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_find_level_measure_prefers_instantaneous():
+    """_find_level_measure picks the i-900 level measure."""
+    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+        return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
+    )
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        measure = await conn._find_level_measure("3400TH")
+
+    assert measure == "3400TH-level-i-900-m-qualified"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_find_level_measure_returns_none_when_no_level():
+    """No level measures returns None."""
+    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+        return_value=httpx.Response(200, json=MOCK_MEASURES_FLOW_ONLY)
+    )
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        measure = await conn._find_level_measure("3400TH")
+
+    assert measure is None
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_find_flow_measure_returns_none_when_no_flow():
     """No flow measures returns None."""
     respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
@@ -235,9 +298,52 @@ async def test_find_flow_measure_handles_error():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_parses_readings():
+async def test_fetch_observations_parses_flow_and_level_readings():
+    """Discharge and stage are both emitted, tagged with their resolutions."""
     respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
+    )
+    respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/3400TH-flow-").mock(
+        return_value=httpx.Response(200, json=MOCK_READINGS_RESPONSE)
+    )
+    respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/3400TH-level-").mock(
+        return_value=httpx.Response(200, json=MOCK_LEVEL_READINGS_RESPONSE)
+    )
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "uk_ea:3400TH",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert chunk.provider == "uk_ea"
+    assert chunk.station_id == "uk_ea:3400TH"
+
+    flows = [o for o in chunk.observations if o.variable is Variable.DISCHARGE]
+    assert len(flows) == 4
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in flows)
+    assert flows[0].value == pytest.approx(42.5)
+    assert flows[0].discharge_m3s == pytest.approx(42.5)
+    assert flows[0].quality.value == "good"
+    assert flows[1].quality.value == "suspect"
+    assert flows[2].quality.value == "estimated"
+    assert flows[3].quality.value == "raw"
+
+    stages = [o for o in chunk.observations if o.variable is Variable.STAGE]
+    assert len(stages) == 2
+    assert all(o.resolution is Resolution.INSTANTANEOUS for o in stages)
+    # EA levels are already in metres — no conversion.
+    assert stages[0].value == pytest.approx(3.42)
+    assert stages[1].value == pytest.approx(3.44)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_daily_mean_flow_resolution():
+    """m-86400 flow measures are tagged Resolution.DAILY_MEAN."""
+    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+        return_value=httpx.Response(200, json=MOCK_MEASURES_DAILY_FLOW_ONLY)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
         return_value=httpx.Response(200, json=MOCK_READINGS_RESPONSE)
@@ -250,26 +356,45 @@ async def test_fetch_observations_parses_readings():
             end=datetime(2024, 6, 2),
         )
 
-    assert chunk.provider == "uk_ea"
-    assert chunk.station_id == "uk_ea:3400TH"
     assert len(chunk.observations) == 4
-    assert chunk.observations[0].discharge_m3s == pytest.approx(42.5)
-    assert chunk.observations[0].quality.value == "good"
-    assert chunk.observations[1].quality.value == "suspect"
-    assert chunk.observations[2].quality.value == "estimated"
-    assert chunk.observations[3].quality.value == "raw"
+    assert all(o.variable is Variable.DISCHARGE for o in chunk.observations)
+    assert all(o.resolution is Resolution.DAILY_MEAN for o in chunk.observations)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_level_only_station_yields_stage():
+    """A station with only level measures yields stage instead of raising."""
+    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+        return_value=httpx.Response(200, json=MOCK_MEASURES_NO_FLOW)
+    )
+    respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
+        return_value=httpx.Response(200, json=MOCK_LEVEL_READINGS_RESPONSE)
+    )
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "uk_ea:3400TH",
+            start=datetime(2024, 6, 1),
+            end=datetime(2024, 6, 2),
+        )
+
+    assert len(chunk.observations) == 2
+    assert all(o.variable is Variable.STAGE for o in chunk.observations)
+    assert chunk.observations[0].value == pytest.approx(3.42)
+    assert chunk.observations[0].resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_observations_no_measure_raises():
-    """ConnectorError raised when no flow measure found."""
+    """ConnectorError raised when neither flow nor level measures exist."""
     respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
-        return_value=httpx.Response(200, json=MOCK_MEASURES_NO_FLOW)
+        return_value=httpx.Response(200, json=MOCK_MEASURES_NEITHER)
     )
 
     async with UKEnvironmentAgencyConnector() as conn:
-        with pytest.raises(ConnectorError, match="No flow measure"):
+        with pytest.raises(ConnectorError, match="No flow or level measure"):
             await conn.fetch_observations(
                 "uk_ea:3400TH",
                 start=datetime(2024, 6, 1),
@@ -282,7 +407,7 @@ async def test_fetch_observations_no_measure_raises():
 async def test_parse_readings_skips_malformed():
     """Malformed readings are skipped without raising."""
     respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
-        return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
+        return_value=httpx.Response(200, json=MOCK_MEASURES_FLOW_ONLY)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
         return_value=httpx.Response(200, json=MOCK_READINGS_MALFORMED)
