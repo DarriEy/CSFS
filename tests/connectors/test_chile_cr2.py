@@ -70,6 +70,13 @@ MOCK_EXPORT_JSON = (
     '{"url": "http://localhost:8080/tmp/map_abc123/EC_series.csv"}}}'
 )
 
+# Shape observed live later on 2026-07-13 (the API shifted again within
+# hours): export.series.url is a bare RELATIVE path, no scheme/host.
+MOCK_EXPORT_JSON_RELATIVE = (
+    '{"errors": [], "export": {"series": '
+    '{"url": "tmp/map_abc123/EC_series.csv"}}}'
+)
+
 # Legacy shape: HTML page embedding an absolute link on the public host.
 MOCK_EXPORT_HTML = (
     "<html><body><a href="
@@ -157,6 +164,26 @@ async def test_fetch_observations_parses_and_slices():
         assert obs.resolution == Resolution.DAILY_MEAN
         assert obs.quality == QualityFlag.RAW
         assert obs.timestamp.tzinfo == UTC
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_observations_relative_export_url():
+    """The live API also emits a bare relative tmp/... path (seen 2026-07-13)."""
+    respx.get(f"{BASE}/request.php").mock(
+        return_value=httpx.Response(200, text=MOCK_EXPORT_JSON_RELATIVE)
+    )
+    csv_route = respx.get(f"{BASE}/tmp/map_abc123/EC_series.csv").mock(
+        return_value=httpx.Response(200, text=MOCK_CSV)
+    )
+
+    async with ChileCr2Connector(config={"pacing_s": 0}) as conn:
+        chunk = await conn.fetch_observations(
+            "chile_cr2:01201005", WINDOW_START, WINDOW_END,
+        )
+
+    assert csv_route.called
+    assert [obs.value for obs in chunk.observations] == [1.1, 2.3, 4.0]
 
 
 @pytest.mark.asyncio
