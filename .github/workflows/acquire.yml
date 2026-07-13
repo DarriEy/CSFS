@@ -23,6 +23,10 @@ on:
         type: choice
         default: daily
         options: [realtime, hourly, daily, weekly]
+      providers:
+        description: "Optional space-separated provider slugs (overrides tier for the fetch)"
+        type: string
+        default: ""
 
 # One acquisition at a time — concurrent runs would race the shared DB asset.
 concurrency:
@@ -81,9 +85,22 @@ jobs:
         env:
           MAX_STATIONS: "500"
           CONCURRENCY: "12"
+          PROVIDERS: ${{ inputs.providers }}
+          # CI-specific provider config: dataset auto-downloads disabled
+          # (they exhaust the runner's disk), southafrica_dws mirror.
+          CSFS_CONFIG: .github/csfs-ci.yaml
         run: |
-          csfs fetch --tier "${{ steps.tier.outputs.tier }}" \
-            --max-stations "$MAX_STATIONS" --concurrency "$CONCURRENCY"
+          df -h / | tail -1
+          if [ -n "$PROVIDERS" ]; then
+            ARGS=""
+            for p in $PROVIDERS; do ARGS="$ARGS -p $p"; done
+            csfs --config "$CSFS_CONFIG" fetch $ARGS \
+              --max-stations "$MAX_STATIONS" --concurrency "$CONCURRENCY"
+          else
+            csfs --config "$CSFS_CONFIG" fetch --tier "${{ steps.tier.outputs.tier }}" \
+              --max-stations "$MAX_STATIONS" --concurrency "$CONCURRENCY"
+          fi
+          df -h / | tail -1
 
       - name: Save DB snapshot
         env:
