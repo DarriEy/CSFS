@@ -1,6 +1,6 @@
 """Tests for the UK Environment Agency connector with mocked HTTP responses."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -230,7 +230,10 @@ async def test_fetch_stations_pagination():
 @respx.mock
 async def test_find_flow_measure_prefers_instantaneous():
     """_find_flow_measure picks the preferred measure suffix."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
     )
 
@@ -244,7 +247,10 @@ async def test_find_flow_measure_prefers_instantaneous():
 @respx.mock
 async def test_find_level_measure_prefers_instantaneous():
     """_find_level_measure picks the i-900 level measure."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
     )
 
@@ -258,7 +264,10 @@ async def test_find_level_measure_prefers_instantaneous():
 @respx.mock
 async def test_find_level_measure_returns_none_when_no_level():
     """No level measures returns None."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_FLOW_ONLY)
     )
 
@@ -272,7 +281,10 @@ async def test_find_level_measure_returns_none_when_no_level():
 @respx.mock
 async def test_find_flow_measure_returns_none_when_no_flow():
     """No flow measures returns None."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_NO_FLOW)
     )
 
@@ -286,7 +298,10 @@ async def test_find_flow_measure_returns_none_when_no_flow():
 @respx.mock
 async def test_find_flow_measure_handles_error():
     """HTTP error in measure discovery returns None."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(500)
     )
 
@@ -300,7 +315,10 @@ async def test_find_flow_measure_handles_error():
 @respx.mock
 async def test_fetch_observations_parses_flow_and_level_readings():
     """Discharge and stage are both emitted, tagged with their resolutions."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_RESPONSE)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/3400TH-flow-").mock(
@@ -342,7 +360,10 @@ async def test_fetch_observations_parses_flow_and_level_readings():
 @respx.mock
 async def test_fetch_observations_daily_mean_flow_resolution():
     """m-86400 flow measures are tagged Resolution.DAILY_MEAN."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_DAILY_FLOW_ONLY)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
@@ -365,7 +386,10 @@ async def test_fetch_observations_daily_mean_flow_resolution():
 @respx.mock
 async def test_fetch_observations_level_only_station_yields_stage():
     """A station with only level measures yields stage instead of raising."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_NO_FLOW)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
@@ -389,7 +413,10 @@ async def test_fetch_observations_level_only_station_yields_stage():
 @respx.mock
 async def test_fetch_observations_no_measure_raises():
     """ConnectorError raised when neither flow nor level measures exist."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_NEITHER)
     )
 
@@ -406,7 +433,10 @@ async def test_fetch_observations_no_measure_raises():
 @respx.mock
 async def test_parse_readings_skips_malformed():
     """Malformed readings are skipped without raising."""
-    respx.get("https://environment.data.gov.uk/hydrology/id/stations/3400TH/measures").mock(
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(
         return_value=httpx.Response(200, json=MOCK_MEASURES_FLOW_ONLY)
     )
     respx.get(url__startswith="https://environment.data.gov.uk/hydrology/id/measures/").mock(
@@ -435,3 +465,38 @@ async def test_fetch_stations_empty():
         stations = await conn.fetch_stations()
 
     assert len(stations) == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_stale_preferred_flow_measure_falls_back_to_daily_mean():
+    """The preferred i-900 flow feed can freeze upstream (seen 2026-06-15);
+    an empty preferred measure must fall through to the next candidate."""
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures",
+        params={"station.stationReference": "3400TH"},
+    ).mock(return_value=httpx.Response(200, json={"items": [
+        {"notation": "guid-flow-i-900-m3s-qualified", "parameterName": "Flow"},
+        {"notation": "guid-flow-m-86400-m3s-qualified", "parameterName": "Flow"},
+    ]}))
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures/guid-flow-i-900-m3s-qualified/readings"
+    ).mock(return_value=httpx.Response(200, json={"items": []}))
+    respx.get(
+        "https://environment.data.gov.uk/hydrology/id/measures/guid-flow-m-86400-m3s-qualified/readings"
+    ).mock(return_value=httpx.Response(200, json={"items": [
+        {"dateTime": "2026-07-12T09:00:00", "value": 8.775, "quality": "Good"},
+    ]}))
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "uk_ea:3400TH",
+            datetime(2026, 7, 11, tzinfo=UTC),
+            datetime(2026, 7, 13, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    obs = chunk.observations[0]
+    assert obs.variable is Variable.DISCHARGE
+    assert obs.resolution is Resolution.DAILY_MEAN
+    assert obs.value == pytest.approx(8.775)

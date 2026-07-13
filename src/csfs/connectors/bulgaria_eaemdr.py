@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import structlog
 
@@ -215,20 +216,28 @@ class EAEMDRConnector(BaseConnector):
             return None
 
     def _parse_date(self, html: str) -> datetime:
-        """Extract the bulletin date; fall back to today (UTC midnight)."""
+        """Extract the bulletin date as midnight Europe/Sofia, in UTC.
+
+        The bulletin is stamped with the Bulgarian calendar date; reading it
+        as UTC midnight put the observation up to 3 h in the future during
+        the nightly window where Sofia has rolled to the next day but UTC
+        has not — and the fetch window filter then dropped it.
+        """
+        sofia = ZoneInfo("Europe/Sofia")
         m = _DATE_RE.search(html)
         if m:
             try:
-                return datetime(
+                local = datetime(
                     int(m.group("y")),
                     int(m.group("m")),
                     int(m.group("d")),
-                    tzinfo=UTC,
+                    tzinfo=sofia,
                 )
+                return local.astimezone(UTC)
             except ValueError:
                 pass
-        now = datetime.now(UTC)
-        return datetime(now.year, now.month, now.day, tzinfo=UTC)
+        now = datetime.now(sofia)
+        return datetime(now.year, now.month, now.day, tzinfo=sofia).astimezone(UTC)
 
     def _chunk(
         self, station_id: str, observations: list[Observation]

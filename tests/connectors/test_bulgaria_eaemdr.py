@@ -109,8 +109,28 @@ async def test_fetch_observations_returns_all_three_variables():
     for obs in chunk.observations:
         # The bulletin declares no aggregation for its snapshot values.
         assert obs.resolution is Resolution.UNKNOWN
-        assert obs.timestamp == datetime(2026, 6, 2, tzinfo=UTC)
+        # Bulletin date 02.06.2026 = midnight Europe/Sofia (EEST, UTC+3).
+        assert obs.timestamp == datetime(2026, 6, 1, 21, 0, tzinfo=UTC)
         assert obs.quality == QualityFlag.RAW
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_bulletin_dated_tomorrow_in_sofia_is_not_future():
+    """Late UTC evening: Sofia has rolled to the next day; the bulletin's
+    timestamp must still be <= 'now' so the fetch window keeps it."""
+    _mock_bulletin()
+    # Simulated "now": 2026-06-01 22:30 UTC == 2026-06-02 01:30 in Sofia,
+    # i.e. the bulletin (dated 02.06.2026) appears one calendar day ahead
+    # of the UTC date. Before the timezone fix this fetch returned nothing.
+    end = datetime(2026, 6, 1, 22, 30, tzinfo=UTC)
+    start = end - timedelta(hours=4)
+
+    async with EAEMDRConnector() as conn:
+        chunk = await conn.fetch_observations("bulgaria_eaemdr:Ruse", start, end)
+
+    assert len(chunk.observations) == 3
+    assert all(o.timestamp <= end for o in chunk.observations)
 
 
 @pytest.mark.asyncio

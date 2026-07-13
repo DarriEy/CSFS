@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import httpx
+import structlog
+
 from csfs.connectors.base import BaseConnector
 from csfs.core.models import (
     Observation,
@@ -14,6 +17,8 @@ from csfs.core.models import (
     Variable,
 )
 from csfs.core.registry import register
+
+logger = structlog.get_logger()
 
 _QUAL_MAP = {
     16: QualityFlag.GOOD,       # Bon
@@ -115,12 +120,28 @@ class FranceHubEauConnector(BaseConnector):
             )
 
         # Within the real-time depth → sub-daily values from observations_tr.
+        # The tr endpoint has suffered extended server-side outages (HTTP 500
+        # on every call while obs_elab stayed healthy, observed 2026-06/07);
+        # rather than failing the whole fetch, degrade to elaborated daily
+        # means for the recent part of the window too.
         if end >= cutoff:
-            observations.extend(
-                await self._fetch_realtime(
+            try:
+                realtime = await self._fetch_realtime(
                     native_id, station_id, max(start, cutoff), end,
                 )
-            )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code < 500:
+                    raise
+                logger.warning(
+                    "hubeau_tr_unavailable_falling_back_to_obs_elab",
+                    provider=self.slug,
+                    station=station_id,
+                    status=exc.response.status_code,
+                )
+                realtime = await self._fetch_elaborated(
+                    native_id, station_id, max(start, cutoff), end,
+                )
+            observations.extend(realtime)
 
         return TimeSeriesChunk(
             station_id=station_id,

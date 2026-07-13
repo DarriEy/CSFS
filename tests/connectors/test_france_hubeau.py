@@ -183,3 +183,41 @@ async def test_fetch_observations_spanning_window_hits_both_endpoints():
     assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
     assert chunk.observations[1].discharge_m3s == pytest.approx(2.0)
     assert chunk.observations[1].resolution is Resolution.INSTANTANEOUS
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tr_outage_falls_back_to_obs_elab():
+    """observations_tr 500s (extended upstream outage, seen 2026-06/07):
+    the recent window degrades to obs_elab daily means instead of failing."""
+    from datetime import timedelta
+
+    now = datetime.now(UTC)
+    respx.get(f"{BASE}/observations_tr").mock(
+        return_value=httpx.Response(500, text="Internal Server Error"),
+    )
+    elab_page = {
+        "data": [
+            {
+                "date_obs_elab": (now - timedelta(days=1)).strftime("%Y-%m-%d"),
+                "resultat_obs_elab": 3000.0,
+                "code_qualification": 16,
+            },
+        ],
+        "next": None,
+    }
+    elab_route = respx.get(f"{BASE}/obs_elab").mock(
+        return_value=httpx.Response(200, json=elab_page),
+    )
+
+    async with FranceHubEauConnector() as conn:
+        chunk = await conn.fetch_observations(
+            "france_hubeau:A001",
+            start=now - timedelta(hours=48),
+            end=now,
+        )
+
+    assert elab_route.called
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].value == pytest.approx(3.0)  # L/s -> m3/s
+    assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
