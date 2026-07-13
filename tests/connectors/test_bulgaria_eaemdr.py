@@ -17,7 +17,7 @@ import pytest
 import respx
 
 from csfs.connectors.bulgaria_eaemdr import _HIDROLOGY_PATH, EAEMDRConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 from csfs.core.registry import get_connector
 
 _BULLETIN_URL = f"https://appd-bg.org{_HIDROLOGY_PATH}"
@@ -85,8 +85,8 @@ async def test_fetch_stations_only_discharge_gauges():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_fetch_observations_returns_discharge_m3s():
-    """A station's current discharge is returned as a single m3/s observation."""
+async def test_fetch_observations_returns_all_three_variables():
+    """A discharge gauge emits discharge (m3/s), stage (cm -> m) and t water."""
     _mock_bulletin()
     end = datetime(2026, 6, 2, 12, 0, tzinfo=UTC)
     start = end - timedelta(days=30)
@@ -96,11 +96,21 @@ async def test_fetch_observations_returns_discharge_m3s():
 
     assert chunk.station_id == "bulgaria_eaemdr:Ruse"
     assert chunk.provider == "bulgaria_eaemdr"
-    assert len(chunk.observations) == 1
-    obs = chunk.observations[0]
-    assert obs.discharge_m3s == 3289.0  # m3/s
-    assert obs.timestamp == datetime(2026, 6, 2, tzinfo=UTC)
-    assert obs.quality == QualityFlag.RAW
+    assert len(chunk.observations) == 3
+
+    by_var = {o.variable: o for o in chunk.observations}
+    assert set(by_var) == {
+        Variable.DISCHARGE, Variable.STAGE, Variable.WATER_TEMPERATURE,
+    }
+    assert by_var[Variable.DISCHARGE].value == 3289.0  # m3/s, unconverted
+    assert by_var[Variable.STAGE].value == pytest.approx(0.72)  # 72 cm -> m
+    assert by_var[Variable.WATER_TEMPERATURE].value == pytest.approx(21.6)
+
+    for obs in chunk.observations:
+        # The bulletin declares no aggregation for its snapshot values.
+        assert obs.resolution is Resolution.UNKNOWN
+        assert obs.timestamp == datetime(2026, 6, 2, tzinfo=UTC)
+        assert obs.quality == QualityFlag.RAW
 
 
 @pytest.mark.asyncio
@@ -155,3 +165,4 @@ def test_registered():
     assert cls is EAEMDRConnector
     assert cls.slug == "bulgaria_eaemdr"
     assert cls.country_codes == ["BG"]
+    assert cls.supported_variables == ("discharge", "stage", "water_temperature")

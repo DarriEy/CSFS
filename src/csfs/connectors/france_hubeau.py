@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from csfs.connectors.base import BaseConnector
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 _QUAL_MAP = {
@@ -23,6 +30,7 @@ class FranceHubEauConnector(BaseConnector):
     display_name = "Hub'Eau Hydrométrie"
     base_url = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
     country_codes = ["FR"]
+    supported_variables = ("discharge",)
 
     async def fetch_stations(self) -> list[Station]:
         stations = []
@@ -156,7 +164,9 @@ class FranceHubEauConnector(BaseConnector):
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=datetime.fromisoformat(item["date_obs"]),
-                    discharge_m3s=float(val) / 1000.0 if val is not None else None,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.INSTANTANEOUS,
+                    value=float(val) / 1000.0 if val is not None else None,
                     quality=_QUAL_MAP.get(qual_code, QualityFlag.RAW) if val is not None else QualityFlag.MISSING,
                 ))
 
@@ -205,7 +215,9 @@ class FranceHubEauConnector(BaseConnector):
                     timestamp=datetime.fromisoformat(
                         item["date_obs_elab"]
                     ).replace(tzinfo=UTC),
-                    discharge_m3s=float(val) / 1000.0 if val is not None else None,
+                    variable=Variable.DISCHARGE,
+                    resolution=Resolution.DAILY_MEAN,
+                    value=float(val) / 1000.0 if val is not None else None,
                     quality=_QUAL_MAP.get(qual_code, QualityFlag.RAW) if val is not None else QualityFlag.MISSING,
                 ))
 

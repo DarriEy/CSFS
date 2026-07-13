@@ -8,14 +8,21 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import DataFormatError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
 # Variable IDs used by INA's Alerta system.
 _DISCHARGE_VAR_NAMES = {"caudal"}
-_WATER_LEVEL_VAR_ID = 2  # Altura hidrometrica
+_WATER_LEVEL_VAR_ID = 2  # Altura hidrometrica (stage, served in metres)
 
 
 @register("argentina_snih")
@@ -24,11 +31,15 @@ class ArgentinaSnihConnector(BaseConnector):
     display_name = "SNIH Argentina (INA)"
     base_url = "https://alerta.ina.gob.ar/a5"
     country_codes = ["AR"]
+    supported_variables = ("discharge", "stage")
 
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
-        # Cache: native station id -> discharge series_id
+        # Caches: native station id -> discharge / stage series_id, plus the
+        # resolution declared by each selected series' var_nombre.
         self._station_to_series: dict[str, int] = {}
+        self._station_to_stage_series: dict[str, int] = {}
+        self._series_resolution: dict[int, Resolution] = {}
 
     async def fetch_stations(self) -> list[Station]:
         """Return all stations from the INA Alerta system."""
@@ -41,18 +52,32 @@ class ArgentinaSnihConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Fetch discharge observations for a station over a time range."""
+        """Fetch discharge and stage observations for a station over a time range."""
         native_id = station_id.removeprefix(f"{self.slug}:")
-        series_id = await self._resolve_series_id(native_id)
+        series = await self._resolve_series(native_id)
 
-        resp = await self._get(
-            f"/obs/puntual/series/{series_id}/observaciones",
-            params={
-                "timestart": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "timeend": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
+        observations: list[Observation] = []
+        for series_id, variable in series:
+            resp = await self._get(
+                f"/obs/puntual/series/{series_id}/observaciones",
+                params={
+                    "timestart": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "timeend": end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+            )
+            observations.extend(self._parse_observations(
+                resp.json(),
+                station_id,
+                variable,
+                self._series_resolution.get(series_id, Resolution.UNKNOWN),
+            ))
+
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=observations,
+            fetched_at=datetime.now(UTC),
         )
-        return self._parse_observations(resp.json(), station_id)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -100,9 +125,17 @@ class ArgentinaSnihConnector(BaseConnector):
         return stations
 
     def _parse_observations(
-        self, data: list[dict], station_id: str
-    ) -> TimeSeriesChunk:
-        """Parse the observations JSON array into a TimeSeriesChunk."""
+        self,
+        data: list[dict],
+        station_id: str,
+        variable: Variable,
+        resolution: Resolution,
+    ) -> list[Observation]:
+        """Parse the observations JSON array into ``Observation`` models.
+
+        Values are already in canonical units: caudal in m3/s, altura
+        hidrometrica in metres.
+        """
         observations: list[Observation] = []
         for entry in data:
             try:
@@ -113,28 +146,25 @@ class ArgentinaSnihConnector(BaseConnector):
                     f"Invalid timestamp in observation: {exc}",
                 ) from exc
 
-            value = entry.get("valor")
-            discharge = (
-                float(str(value)) if value is not None else None
+            value_raw = entry.get("valor")
+            value = (
+                float(str(value_raw)) if value_raw is not None else None
             )
 
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=variable,
+                resolution=resolution,
+                value=value,
                 quality=(
                     QualityFlag.RAW
-                    if discharge is not None
+                    if value is not None
                     else QualityFlag.MISSING
                 ),
             ))
 
-        return TimeSeriesChunk(
-            station_id=station_id,
-            provider=self.slug,
-            observations=observations,
-            fetched_at=datetime.now(UTC),
-        )
+        return observations
 
     async def _build_series_cache(self) -> None:
         """Fetch the (paginated) series metadata and cache station -> series.
@@ -146,9 +176,15 @@ class ArgentinaSnihConnector(BaseConnector):
             the plain "Caudal" series is frequently empty while a daily-mean
             ("Caudal medio diario") variant carries the data -- so prefer the
             daily-mean variant rather than the first one seen.
+
+        'Altura hidrometrica' (stage, var id 2, metres) series are cached the
+        same way. Each selected series' resolution is remembered: daily-mean
+        ("... medio diario") variants are DAILY_MEAN, the rest declare no
+        aggregation and stay UNKNOWN.
         """
         # estacion_id -> (priority, series_id); higher priority wins.
-        best: dict[str, tuple[int, int]] = {}
+        best_discharge: dict[str, tuple[int, int]] = {}
+        best_stage: dict[str, tuple[int, int]] = {}
 
         def _priority(var_name: str) -> int:
             v = var_name.lower()
@@ -166,7 +202,12 @@ class ArgentinaSnihConnector(BaseConnector):
             for feat in data.get("features", []):
                 props = feat.get("properties", {})
                 var_name = props.get("var_nombre") or ""
-                if not any(kw in var_name.lower() for kw in _DISCHARGE_VAR_NAMES):
+                v = var_name.lower()
+                if any(kw in v for kw in _DISCHARGE_VAR_NAMES):
+                    best = best_discharge
+                elif props.get("var_id") == _WATER_LEVEL_VAR_ID or "altura" in v:
+                    best = best_stage
+                else:
                     continue
                 estacion_id = props.get("estacion_id")
                 series_id = props.get("id")
@@ -176,29 +217,48 @@ class ArgentinaSnihConnector(BaseConnector):
                 prio = _priority(var_name)
                 if key not in best or prio > best[key][0]:
                     best[key] = (prio, int(series_id))
+                self._series_resolution[int(series_id)] = (
+                    Resolution.DAILY_MEAN
+                    if "diario" in v or "diaria" in v
+                    else Resolution.UNKNOWN
+                )
             if data.get("is_last_page"):
                 break
             # next_page_url already carries its own query string.
             next_url = data.get("next_page_url") or None
             params = None
 
-        for key, (_prio, series_id) in best.items():
+        for key, (_prio, series_id) in best_discharge.items():
             self._station_to_series[key] = series_id
+        for key, (_prio, series_id) in best_stage.items():
+            self._station_to_stage_series[key] = series_id
 
-    async def _resolve_series_id(self, native_id: str) -> int:
-        """Return the discharge series_id for a station.
+    async def _resolve_series(
+        self, native_id: str
+    ) -> list[tuple[int, Variable]]:
+        """Return the (series_id, variable) pairs to fetch for a station.
 
-        Uses the cache first; falls back to fetching the series
-        metadata if the mapping is empty.
+        Uses the caches first; falls back to fetching the series metadata if
+        the station is not mapped yet. Raises if the station has neither a
+        discharge nor a stage series.
         """
-        if native_id in self._station_to_series:
-            return self._station_to_series[native_id]
+        if (
+            native_id not in self._station_to_series
+            and native_id not in self._station_to_stage_series
+        ):
+            await self._build_series_cache()
 
-        await self._build_series_cache()
+        series: list[tuple[int, Variable]] = []
+        discharge_id = self._station_to_series.get(native_id)
+        if discharge_id is not None:
+            series.append((discharge_id, Variable.DISCHARGE))
+        stage_id = self._station_to_stage_series.get(native_id)
+        if stage_id is not None:
+            series.append((stage_id, Variable.STAGE))
 
-        if native_id not in self._station_to_series:
+        if not series:
             raise DataFormatError(
                 self.slug,
-                f"No discharge series found for station '{native_id}'",
+                f"No discharge or stage series found for station '{native_id}'",
             )
-        return self._station_to_series[native_id]
+        return series

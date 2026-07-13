@@ -30,8 +30,10 @@ from csfs.core.exceptions import ConnectorError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -68,6 +70,7 @@ class CAMELSHConnector(BaseConnector):
     display_name = "CAMELSH (Hourly US)"
     base_url = "https://zenodo.org/api"
     country_codes = ["US"]
+    supported_variables = ("discharge", "stage")
 
     async def fetch_stations(self) -> list[Station]:
         stations: list[Station] = []
@@ -122,16 +125,32 @@ class CAMELSHConnector(BaseConnector):
 
                     if start <= ts <= end:
                         q = row.get("streamflow_m3s") or row.get("q")
-                        # The Observation model only tracks discharge; water level is
-                        # ignored (CSFS is a streamflow service).
+                        h = row.get("water_level_m") or row.get("h")
+                        # CAMELSH is an hourly dataset but does not declare the
+                        # aggregation of its values (mean vs point reading), so
+                        # the resolution is left UNKNOWN.
                         observations.append(
                             Observation(
                                 station_id=station_id,
                                 timestamp=ts,
-                                discharge_m3s=float(q) if q else None,
+                                variable=Variable.DISCHARGE,
+                                resolution=Resolution.UNKNOWN,
+                                value=float(q) if q else None,
                                 quality=QualityFlag.RAW,
                             )
                         )
+                        if h:
+                            # water_level_m is already in metres.
+                            observations.append(
+                                Observation(
+                                    station_id=station_id,
+                                    timestamp=ts,
+                                    variable=Variable.STAGE,
+                                    resolution=Resolution.UNKNOWN,
+                                    value=float(h),
+                                    quality=QualityFlag.RAW,
+                                )
+                            )
         except Exception as exc:
             raise ConnectorError(self.slug, f"Failed to parse {file_path}: {exc}") from exc
 

@@ -14,8 +14,9 @@ Enhydris data model
 
 * Timeseries groups for a station:
   ``GET /api/stations/{id}/timeseriesgroups/`` -> each group has a ``variable``
-  id. Discharge is variable id ``2`` (``Stage`` is ``14``); only ~8 of the 64
-  stations have a discharge group.
+  id. Discharge is variable id ``2`` and stage is ``14``; only ~8 of the 64
+  stations have a discharge group. Both are fetched (discharge in m3/s,
+  stage in m).
 
 * Timeseries within a group:
   ``GET /api/stations/{id}/timeseriesgroups/{tg}/timeseries/``.
@@ -36,13 +37,28 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
 
-# Enhydris variable id for discharge in the OpenHI instance (Stage is 14).
+# Enhydris variable ids in the OpenHI instance.
 _DISCHARGE_VARIABLE_ID = 2
+_STAGE_VARIABLE_ID = 14
+
+# Enhydris variable id -> canonical CSFS variable. OpenHI serves discharge
+# in m3/s and stage in m, so no unit conversion is needed.
+_VARIABLE_BY_ID: dict[int, Variable] = {
+    _DISCHARGE_VARIABLE_ID: Variable.DISCHARGE,
+    _STAGE_VARIABLE_ID: Variable.STAGE,
+}
 
 # Enhydris data endpoint expects/returns local ("display_timezone") wall-clock.
 _TS_DATE_FMT = "%Y-%m-%d %H:%M"
@@ -83,12 +99,16 @@ class GreeceOpenhiConnector(BaseConnector):
     display_name = "OpenHI (Greece)"
     base_url = "https://system.openhi.net"
     country_codes = ["GR"]
+    supported_variables = ("discharge", "stage")
 
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
-        # native_id -> (timeseriesgroup_id, timeseries_id, display_timezone)
-        # for the station's discharge series.
-        self._discharge_ref: dict[str, tuple[int, int, str]] = {}
+        # (native_id, enhydris_variable_id) ->
+        # (timeseriesgroup_id, timeseries_id, display_timezone), or None if
+        # the station has no timeseries group for that variable.
+        self._series_ref: dict[
+            tuple[str, int], tuple[int, int, str] | None
+        ] = {}
 
     # -----------------------------------------------------------------
     # Public API
@@ -108,7 +128,9 @@ class GreeceOpenhiConnector(BaseConnector):
             native_id = str(entry.get("id", "")).strip()
             if not native_id:
                 continue
-            ref = await self._resolve_discharge_ref(native_id, entry)
+            ref = await self._resolve_series_ref(
+                native_id, _DISCHARGE_VARIABLE_ID, entry,
+            )
             if ref is not None:
                 discharge_dicts.append(entry)
 
@@ -127,43 +149,58 @@ class GreeceOpenhiConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Fetch discharge observations for *station_id* over [start, end]."""
+        """Fetch discharge and stage observations for *station_id* over [start, end]."""
         native_id = station_id.removeprefix(f"{self.slug}:")
 
-        ref = await self._resolve_discharge_ref(native_id)
-        if ref is None:
+        observations: list[Observation] = []
+        found_any = False
+        for variable_id, variable in _VARIABLE_BY_ID.items():
+            ref = await self._resolve_series_ref(native_id, variable_id)
+            if ref is None:
+                continue
+            found_any = True
+
+            tg_id, ts_id, tzname = ref
+            tz = self._zone(tzname)
+            params = {
+                "start_date": self._fmt_query_date(start, tz),
+                "end_date": self._fmt_query_date(end, tz),
+                "fmt": "csv",
+            }
+
+            try:
+                resp = await self._get(
+                    f"/api/stations/{native_id}/timeseriesgroups/"
+                    f"{tg_id}/timeseries/{ts_id}/data/",
+                    params=params,
+                )
+            except httpx.HTTPStatusError as exc:
+                raise ConnectorError(
+                    self.slug,
+                    f"Failed to fetch observations for {native_id}: "
+                    f"HTTP {exc.response.status_code}",
+                ) from exc
+
+            observations.extend(
+                self._parse_csv(resp.text, station_id, tz, variable),
+            )
+
+        if not found_any:
             logger.info(
-                "greece_no_discharge_timeseries",
+                "greece_no_supported_timeseries",
                 provider=self.slug,
                 station=native_id,
             )
-            return self._empty_chunk(station_id)
 
-        tg_id, ts_id, tzname = ref
-        tz = self._zone(tzname)
-        params = {
-            "start_date": self._fmt_query_date(start, tz),
-            "end_date": self._fmt_query_date(end, tz),
-            "fmt": "csv",
-        }
-
-        try:
-            resp = await self._get(
-                f"/api/stations/{native_id}/timeseriesgroups/"
-                f"{tg_id}/timeseries/{ts_id}/data/",
-                params=params,
-            )
-        except httpx.HTTPStatusError as exc:
-            raise ConnectorError(
-                self.slug,
-                f"Failed to fetch observations for {native_id}: "
-                f"HTTP {exc.response.status_code}",
-            ) from exc
-
-        return self._parse_csv(resp.text, station_id, tz)
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=observations,
+            fetched_at=datetime.now(UTC),
+        )
 
     async def fetch_latest(self, station_id: str) -> TimeSeriesChunk:
-        """Fetch the most recent discharge observations (last 24 h)."""
+        """Fetch the most recent discharge/stage observations (last 24 h)."""
         now = datetime.now(UTC)
         return await self.fetch_observations(
             station_id,
@@ -199,17 +236,20 @@ class GreeceOpenhiConnector(BaseConnector):
             page += 1
         return out
 
-    async def _resolve_discharge_ref(
+    async def _resolve_series_ref(
         self,
         native_id: str,
+        variable_id: int,
         station_dict: dict | None = None,
     ) -> tuple[int, int, str] | None:
-        """Resolve and cache the discharge (tg_id, ts_id, tzname) for a station.
+        """Resolve and cache a station variable's (tg_id, ts_id, tzname).
 
-        Returns ``None`` if the station has no discharge timeseries group.
+        Returns ``None`` if the station has no timeseries group for
+        *variable_id*. Absence is cached; transient HTTP errors are not.
         """
-        if native_id in self._discharge_ref:
-            return self._discharge_ref[native_id]
+        key = (native_id, variable_id)
+        if key in self._series_ref:
+            return self._series_ref[key]
 
         tzname = str((station_dict or {}).get("display_timezone") or "") or "UTC"
 
@@ -224,11 +264,12 @@ class GreeceOpenhiConnector(BaseConnector):
         group = next(
             (
                 g for g in groups
-                if g.get("variable") == _DISCHARGE_VARIABLE_ID
+                if g.get("variable") == variable_id
             ),
             None,
         )
         if group is None or group.get("id") is None:
+            self._series_ref[key] = None
             return None
         tg_id = int(group["id"])
 
@@ -240,11 +281,12 @@ class GreeceOpenhiConnector(BaseConnector):
             return None
         ts_list = ts_resp.json().get("results", [])
         if not ts_list or ts_list[0].get("id") is None:
+            self._series_ref[key] = None
             return None
         ts_id = int(ts_list[0]["id"])
 
         ref = (tg_id, ts_id, tzname)
-        self._discharge_ref[native_id] = ref
+        self._series_ref[key] = ref
         return ref
 
     def _parse_stations(self, items: list[dict]) -> list[Station]:
@@ -329,11 +371,13 @@ class GreeceOpenhiConnector(BaseConnector):
         text: str,
         station_id: str,
         tz: ZoneInfo,
-    ) -> TimeSeriesChunk:
-        """Parse an Enhydris CSV data export into a ``TimeSeriesChunk``.
+        variable: Variable,
+    ) -> list[Observation]:
+        """Parse an Enhydris CSV data export into ``Observation`` models.
 
         Each row is ``timestamp,value,flags``. Timestamps are in the station's
         display timezone and are converted to UTC. Empty values are gaps.
+        The export declares no aggregation, so resolution is UNKNOWN.
         """
         observations: list[Observation] = []
         for line in text.splitlines():
@@ -352,29 +396,26 @@ class GreeceOpenhiConnector(BaseConnector):
             flag_raw = parts[2].strip() if len(parts) > 2 else ""
 
             if value_raw == "" or value_raw.lower() == "nan":
-                discharge: float | None = None
+                value: float | None = None
                 quality = QualityFlag.MISSING
             else:
                 try:
-                    discharge = float(value_raw)
+                    value = float(value_raw)
                     quality = _flag_to_quality(flag_raw or None)
                 except ValueError:
-                    discharge = None
+                    value = None
                     quality = QualityFlag.MISSING
 
             observations.append(Observation(
                 station_id=station_id,
                 timestamp=ts,
-                discharge_m3s=discharge,
+                variable=variable,
+                resolution=Resolution.UNKNOWN,
+                value=value,
                 quality=quality,
             ))
 
-        return TimeSeriesChunk(
-            station_id=station_id,
-            provider=self.slug,
-            observations=observations,
-            fetched_at=datetime.now(UTC),
-        )
+        return observations
 
     @staticmethod
     def _parse_timestamp(ts_raw: str, tz: ZoneInfo) -> datetime | None:

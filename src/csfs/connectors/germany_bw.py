@@ -11,18 +11,21 @@ ships to its frontend inside a JavaScript "Stammdaten" file -- a big
 This connector therefore parses that catalogue file:
   * ``fetch_stations()`` returns every station that publishes a discharge
     (Abfluss / Q) value in m³/s.
-  * ``fetch_observations()`` returns the single most-recent discharge value
-    for the requested station (filtered to the requested window). HVZ is a
-    "latest value only" provider; there is no historical time series available
-    in structured form.
+  * ``fetch_observations()`` returns the most-recent discharge (Q, m³/s) and
+    water-level (W, cm → converted to m) values for the requested station
+    (filtered to the requested window). HVZ is a "latest value only" provider;
+    there is no historical time series available in structured form.
 
 Column layout of each PEG_DB row (subset we use), per ``js/hvz_peg_var.js``::
 
     0  DASA   station id (native_id)
     1  NAME   station name
     2  GEW    river (Gewässer)
+    4  W      current water level value (Wasserstand), e.g. "52" or "--"
+    5  WD     water level unit, "cm"
+    6  WZ     water level timestamp, "DD.MM.YYYY HH:MM MESZ"
     7  Q      current discharge value (Abfluss), e.g. "12.6" or "--"
-    8  QD     discharge unit, "m³/s" (water level "W" is col 4, unit "cm")
+    8  QD     discharge unit, "m³/s"
     9  QZ     discharge timestamp, "DD.MM.YYYY HH:MM MESZ"
     20 GL     geographic longitude
     21 GB     geographic latitude
@@ -48,8 +51,10 @@ from csfs.core.exceptions import DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -62,6 +67,9 @@ _CATALOGUE_PATH = "/js/hvz_peg_stmn.js"
 _COL_DASA = 0
 _COL_NAME = 1
 _COL_RIVER = 2
+_COL_W = 4
+_COL_WDIM = 5
+_COL_WDAT = 6
 _COL_Q = 7
 _COL_QDIM = 8
 _COL_QDAT = 9
@@ -69,6 +77,7 @@ _COL_LON = 20
 _COL_LAT = 21
 
 _DISCHARGE_UNIT = "m³/s"
+_LEVEL_UNIT = "cm"
 
 # HVZ timestamps look like "02.06.2026 07:00 MESZ". MESZ = CEST = UTC+2,
 # MEZ = CET = UTC+1.
@@ -93,6 +102,7 @@ class GermanyBwConnector(BaseConnector):
     display_name = "HVZ Baden-Württemberg (LUBW)"
     base_url = "https://www.hvz.baden-wuerttemberg.de"
     country_codes = ["DE"]
+    supported_variables = ("discharge", "stage")
 
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
@@ -110,19 +120,21 @@ class GermanyBwConnector(BaseConnector):
         start: datetime,
         end: datetime,
     ) -> TimeSeriesChunk:
-        """Return the current discharge value for a station (latest-only).
+        """Return the current discharge and water-level values (latest-only).
 
         HVZ does not expose historical time series, so this yields at most one
-        observation: the catalogue's current discharge reading, included only if
-        its timestamp falls within ``[start, end]``.
+        observation per variable: the catalogue's current discharge (Q) and
+        water level (W) readings, each included only if its timestamp falls
+        within ``[start, end]``.
         """
         native_id = station_id.removeprefix(f"{self.slug}:")
         row = await self._resolve_row(native_id)
 
-        observations: list[Observation] = []
-        obs = self._row_to_observation(row, station_id)
-        if obs is not None and start <= obs.timestamp <= end:
-            observations.append(obs)
+        observations = [
+            obs
+            for obs in self._row_to_observations(row, station_id)
+            if start <= obs.timestamp <= end
+        ]
 
         return TimeSeriesChunk(
             station_id=station_id,
@@ -203,35 +215,58 @@ class GermanyBwConnector(BaseConnector):
 
         return stations
 
-    def _row_to_observation(
+    def _row_to_observations(
         self, fields: list[str], station_id: str
-    ) -> Observation | None:
-        """Convert a catalogue row's current discharge into an Observation.
+    ) -> list[Observation]:
+        """Convert a catalogue row's current readings into Observations.
 
-        Returns ``None`` if the station has no current discharge value.
+        Emits the current discharge (Q, m³/s) and water level (W, cm → m)
+        when present. HVZ carries a single spot reading per variable, so
+        both are tagged instantaneous.
         """
-        if fields[_COL_QDIM] != _DISCHARGE_UNIT:
-            return None
+        observations: list[Observation] = []
 
-        raw_value = fields[_COL_Q]
-        if raw_value in ("--", ""):
-            return None
+        if fields[_COL_QDIM] == _DISCHARGE_UNIT:
+            discharge = self._parse_value(fields[_COL_Q])
+            ts = self._parse_timestamp(fields[_COL_QDAT])
+            if discharge is not None and ts is not None:
+                observations.append(
+                    Observation(
+                        station_id=station_id,
+                        timestamp=ts,
+                        variable=Variable.DISCHARGE,
+                        resolution=Resolution.INSTANTANEOUS,
+                        value=discharge,
+                        quality=QualityFlag.RAW,
+                    )
+                )
 
+        if fields[_COL_WDIM] == _LEVEL_UNIT:
+            level = self._parse_value(fields[_COL_W])
+            ts = self._parse_timestamp(fields[_COL_WDAT])
+            if level is not None and ts is not None:
+                observations.append(
+                    Observation(
+                        station_id=station_id,
+                        timestamp=ts,
+                        variable=Variable.STAGE,
+                        resolution=Resolution.INSTANTANEOUS,
+                        value=level / 100.0,  # HVZ levels are cm; store metres
+                        quality=QualityFlag.RAW,
+                    )
+                )
+
+        return observations
+
+    @staticmethod
+    def _parse_value(raw: str) -> float | None:
+        """Parse a catalogue value cell; '--' and '' mean no current value."""
+        if raw in ("--", ""):
+            return None
         try:
-            discharge = float(raw_value)
+            return float(raw)
         except ValueError:
             return None
-
-        ts = self._parse_timestamp(fields[_COL_QDAT])
-        if ts is None:
-            return None
-
-        return Observation(
-            station_id=station_id,
-            timestamp=ts,
-            discharge_m3s=discharge,
-            quality=QualityFlag.RAW,
-        )
 
     @staticmethod
     def _parse_timestamp(raw: str) -> datetime | None:

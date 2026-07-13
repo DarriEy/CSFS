@@ -8,7 +8,7 @@ import pytest
 import respx
 
 from csfs.connectors.france_hubeau import FranceHubEauConnector
-from csfs.core.models import QualityFlag
+from csfs.core.models import QualityFlag, Resolution, Variable
 
 BASE = "https://hubeau.eaufrance.fr/api/v2/hydrometrie"
 
@@ -80,8 +80,11 @@ async def test_fetch_observations_recent_uses_realtime():
     assert not elab_route.called  # recent window must not hit the historical API
     assert len(chunk.observations) == 2
     assert chunk.observations[0].discharge_m3s == 1.5
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.INSTANTANEOUS
     assert chunk.observations[0].quality == QualityFlag.GOOD
     assert chunk.observations[1].discharge_m3s == 1.6
+    assert chunk.observations[1].resolution is Resolution.INSTANTANEOUS
 
 
 @pytest.mark.asyncio
@@ -126,8 +129,11 @@ async def test_fetch_observations_old_uses_elaborated():
     assert len(chunk.observations) == 2
     # resultat is in L/s; connector converts to m3/s.
     assert chunk.observations[0].discharge_m3s == pytest.approx(28.858)
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
     assert chunk.observations[0].quality == QualityFlag.GOOD
     assert chunk.observations[1].quality == QualityFlag.SUSPECT
+    assert chunk.observations[1].resolution is Resolution.DAILY_MEAN
 
 
 @pytest.mark.asyncio
@@ -172,5 +178,8 @@ async def test_fetch_observations_spanning_window_hits_both_endpoints():
     assert elab_route.called
     assert tr_route.called
     assert len(chunk.observations) == 2
+    # obs_elab daily mean first, then the observations_tr instantaneous value.
     assert chunk.observations[0].discharge_m3s == pytest.approx(1.0)
+    assert chunk.observations[0].resolution is Resolution.DAILY_MEAN
     assert chunk.observations[1].discharge_m3s == pytest.approx(2.0)
+    assert chunk.observations[1].resolution is Resolution.INSTANTANEOUS

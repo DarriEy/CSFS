@@ -8,7 +8,14 @@ import structlog
 
 from csfs.connectors.base import BaseConnector
 from csfs.core.exceptions import ConnectorError
-from csfs.core.models import Observation, QualityFlag, Station, TimeSeriesChunk
+from csfs.core.models import (
+    Observation,
+    QualityFlag,
+    Resolution,
+    Station,
+    TimeSeriesChunk,
+    Variable,
+)
 from csfs.core.registry import register
 
 logger = structlog.get_logger()
@@ -20,6 +27,7 @@ class UKEnvironmentAgencyConnector(BaseConnector):
     display_name = "UK Environment Agency"
     base_url = "https://environment.data.gov.uk/hydrology"
     country_codes = ["GB"]
+    supported_variables = ("discharge", "stage")
 
     async def fetch_stations(self) -> list[Station]:
         stations = []
@@ -62,8 +70,11 @@ class UKEnvironmentAgencyConnector(BaseConnector):
 
         return stations
 
-    # Preferred measure suffixes in priority order: mean daily, instantaneous 15-min
+    # Preferred measure suffixes in priority order: instantaneous 15-min, mean daily
     _MEASURE_PREFS = ["-flow-i-900-m3s-qualified", "-flow-m-86400-m3s-qualified"]
+    # Level measure notations vary in their unit token (m / mAOD / mASD, all
+    # metres), so prefer by period substring: instantaneous 15-min, mean daily.
+    _LEVEL_MEASURE_PREFS = ["-level-i-900-", "-level-m-86400-"]
 
     async def _find_flow_measure(self, native_id: str) -> str | None:
         """Discover the best flow measure notation for a station."""
@@ -84,6 +95,38 @@ class UKEnvironmentAgencyConnector(BaseConnector):
             pass
         return None
 
+    async def _find_level_measure(self, native_id: str) -> str | None:
+        """Discover the best water-level measure notation for a station."""
+        try:
+            resp = await self._get(f"/id/stations/{native_id}/measures")
+            data = resp.json()
+            measures: list[str] = [
+                item.get("notation", "")
+                for item in data.get("items", [])
+                if "level" in item.get("parameterName", "").lower()
+            ]
+            for pref in self._LEVEL_MEASURE_PREFS:
+                for m in measures:
+                    if pref in m:
+                        return m
+            return measures[0] if measures else None
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _measure_resolution(measure: str) -> Resolution:
+        """Infer temporal resolution from an EA measure notation.
+
+        ``i-900`` measures are instantaneous 15-min readings; ``m-86400``
+        measures are daily means.
+        """
+        if "-i-900-" in measure:
+            return Resolution.INSTANTANEOUS
+        if "-m-86400-" in measure:
+            return Resolution.DAILY_MEAN
+        return Resolution.UNKNOWN
+
     async def fetch_observations(
         self,
         station_id: str,
@@ -91,11 +134,44 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         end: datetime,
     ) -> TimeSeriesChunk:
         native_id = station_id.removeprefix(f"{self.slug}:")
-        measure = await self._find_flow_measure(native_id)
-        if not measure:
-            raise ConnectorError(self.slug, f"No flow measure found for station {native_id}")
+        flow_measure = await self._find_flow_measure(native_id)
+        level_measure = await self._find_level_measure(native_id)
+        if not flow_measure and not level_measure:
+            raise ConnectorError(
+                self.slug, f"No flow or level measure found for station {native_id}"
+            )
 
         all_observations: list[Observation] = []
+        if flow_measure:
+            all_observations.extend(await self._fetch_readings(
+                flow_measure, station_id, start, end,
+                Variable.DISCHARGE, self._measure_resolution(flow_measure),
+            ))
+        if level_measure:
+            # EA levels are already in metres (m / mAOD / mASD).
+            all_observations.extend(await self._fetch_readings(
+                level_measure, station_id, start, end,
+                Variable.STAGE, self._measure_resolution(level_measure),
+            ))
+
+        return TimeSeriesChunk(
+            station_id=station_id,
+            provider=self.slug,
+            observations=all_observations,
+            fetched_at=datetime.now(UTC),
+        )
+
+    async def _fetch_readings(
+        self,
+        measure: str,
+        station_id: str,
+        start: datetime,
+        end: datetime,
+        variable: Variable,
+        resolution: Resolution,
+    ) -> list[Observation]:
+        """Fetch and parse all readings pages for one measure."""
+        observations: list[Observation] = []
         url: str | None = f"/id/measures/{measure}/readings"
         params: dict | None = {
             "min-date": start.strftime("%Y-%m-%d"),
@@ -106,8 +182,9 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         while url:
             resp = await self._get(url, params=params)
             data = resp.json()
-            chunk = self._parse_readings(data, station_id)
-            all_observations.extend(chunk.observations)
+            observations.extend(
+                self._parse_readings(data, station_id, variable, resolution)
+            )
 
             next_link: str | None = None
             for link in data.get("links", []):
@@ -117,32 +194,30 @@ class UKEnvironmentAgencyConnector(BaseConnector):
             url = next_link
             params = None
 
-        return TimeSeriesChunk(
-            station_id=station_id,
-            provider=self.slug,
-            observations=all_observations,
-            fetched_at=datetime.now(UTC),
-        )
+        return observations
 
-    def _parse_readings(self, data: dict, station_id: str) -> TimeSeriesChunk:
+    def _parse_readings(
+        self,
+        data: dict,
+        station_id: str,
+        variable: Variable,
+        resolution: Resolution,
+    ) -> list[Observation]:
         observations = []
         for item in data.get("items", []):
             try:
                 observations.append(Observation(
                     station_id=station_id,
                     timestamp=datetime.fromisoformat(item["dateTime"]),
-                    discharge_m3s=float(item["value"]),
+                    variable=variable,
+                    resolution=resolution,
+                    value=float(item["value"]),
                     quality=self._map_quality(item.get("quality", "")),
                 ))
             except (KeyError, ValueError, TypeError):
                 continue
 
-        return TimeSeriesChunk(
-            station_id=station_id,
-            provider=self.slug,
-            observations=observations,
-            fetched_at=datetime.now(UTC),
-        )
+        return observations
 
     @staticmethod
     def _map_quality(flag: str) -> QualityFlag:

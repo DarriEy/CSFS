@@ -22,8 +22,10 @@ from csfs.core.exceptions import ConnectorError, DataFormatError
 from csfs.core.models import (
     Observation,
     QualityFlag,
+    Resolution,
     Station,
     TimeSeriesChunk,
+    Variable,
 )
 from csfs.core.registry import register
 
@@ -40,6 +42,7 @@ class CroatiaDhzConnector(BaseConnector):
     display_name = "DHMZ (Croatia)"
     base_url = _BASE_URL
     country_codes = ["HR"]
+    supported_variables = ("discharge", "stage")
 
     async def fetch_stations(self) -> list[Station]:
         """Fetch all stations from the DHMZ backend API."""
@@ -132,25 +135,37 @@ class CroatiaDhzConnector(BaseConnector):
 
                 try:
                     ts = self._parse_dhmz_date(raw_time)
-                    
+
                     # Parse value and unit
                     val_match = re.search(r"([0-9.,-]+)", raw_val.replace(",", "."))
                     if not val_match:
                         continue
                     val = float(val_match.group(1))
-                    
-                    # We only care about discharge (m3/s) for CSFS primary field
-                    # DHMZ latest data returns level (cm) for most, but some have flow.
-                    # If it's cm, we store it for now, but real-time flow is preferred.
-                    # Flow (m3/s) is preferred; for level-only (cm) stations we follow the
-                    # project convention of storing the level in discharge_m3s when flow is
-                    # missing. Either way the value we keep is ``val``.
-                    discharge = val
-                    
+
+                    # zpod carries the unit inline: flow stations report
+                    # 'm3/s' (discharge) and level stations report 'cm'
+                    # (water level, converted to metres for STAGE).
+                    if "m3/s" in raw_val:
+                        variable = Variable.DISCHARGE
+                        value = val
+                    elif "cm" in raw_val:
+                        variable = Variable.STAGE
+                        value = val / 100.0  # cm -> m
+                    else:
+                        logger.debug(
+                            "unrecognised_unit_skipped",
+                            provider=self.slug,
+                            station=station_id,
+                            raw_value=raw_val,
+                        )
+                        continue
+
                     observations.append(Observation(
                         station_id=station_id,
                         timestamp=ts,
-                        discharge_m3s=discharge,
+                        variable=variable,
+                        resolution=Resolution.INSTANTANEOUS,
+                        value=value,
                         quality=QualityFlag.RAW,
                     ))
                 except (ValueError, TypeError):
