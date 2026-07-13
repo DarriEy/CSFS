@@ -201,3 +201,33 @@ def test_committed_config_references_only_registered_providers(registered):
     configured = set(load_config(config_path))
     unknown = sorted(configured - registered)
     assert not unknown, f"csfs.yaml configures unregistered providers: {unknown}"
+
+
+def test_catalog_and_readme_numbers_are_current(registered):
+    """docs/catalog.md and the README roster block are generated artifacts.
+
+    Regenerate them in memory via scripts/gen_catalog.py and compare with the
+    committed copies, so published numbers can never drift from the inventory
+    and the registry. Fix drift with: python scripts/gen_catalog.py
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "gen_catalog", _REPO_ROOT / "scripts" / "gen_catalog.py"
+    )
+    assert spec is not None and spec.loader is not None
+    gen = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gen)
+
+    entries = gen.load_inventory()
+    slugs = sorted(registered)
+
+    committed_catalog = (_REPO_ROOT / "docs" / "catalog.md").read_text(encoding="utf-8")
+    assert committed_catalog == gen.render_catalog(entries, slugs), (
+        "docs/catalog.md is stale — regenerate with: python scripts/gen_catalog.py"
+    )
+
+    readme = (_REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert gen.updated_readme(readme, gen.render_readme_stats(entries, slugs)) == readme, (
+        "README roster numbers are stale — regenerate with: python scripts/gen_catalog.py"
+    )

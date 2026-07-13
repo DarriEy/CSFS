@@ -38,7 +38,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "australia_bom", "finland_syke", "greece_openhi",
         "newzealand_hilltop",
         "lithuania_lhmt", "austria_ehyd",
-        "camelsh",
+        "camelsh", "germany_berlin",
     ],
     "daily": [
         "argentina_snih",
@@ -47,9 +47,10 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "pakistan_wapda",
         "panama_stri", "vietnam_mekong",
         "bolivia_ine", "bulgaria_nimh",
-        "israel_caravan", "chile_dga", "czechia_chmu",
+        "israel_caravan", "czechia_chmu",
         "scotland_sepa", "belgium_spw", "taiwan_wra",
         "glofas", "wmo_whos", "geoglows",
+        "southafrica_dws",
     ],
     "weekly": [
         "grdc", "estreams", "ca_discharge", "caravan", "gsim",
@@ -62,6 +63,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "camels_col", "camels_spat",
         "robin", "caravan_grdc",
         "germany_nrw",
+        "chile_cr2", "portugal_snirh",
     ],
 }
 
