@@ -186,7 +186,7 @@
   stability: stable
   license: ogl_v3
   status: implemented
-  notes: Historical daily only; complements uk_ea for long records.
+  notes: "Historical daily only; complements uk_ea for long records. Gauged daily flow publishes ~annually per UK water year (archive currently ends 2024-09-30 across all 1,601 stations, verified 2026-07) — months of staleness is normal, covered by the weekly-tier health horizon."
   estreams_id: GB_NRFA
 
 - slug: brazil_ana
@@ -198,12 +198,12 @@
   web_url: https://www.snirh.gov.br/hidroweb/
   format: [xml]
   access: open
-  realtime: true
-  realtime_latency: 1h
+  realtime: false
   stations: ~4500 (telemetric), ~30000 (historical)
   stability: moderate
   license: open
   status: implemented
+  notes: "HidroSerieHistorica is the consolidated archive and lags 4-19 months (newest data anywhere as of 2026-07: March 2026, verified live on 11 gauges) — the weekly-tier health horizon covers this. Needs a one-time long-lookback backfill to seed watermarks before incremental fetches catch new consolidations."
 
 - slug: chile_dga
   name: DGA Chile (SNIA)
@@ -372,17 +372,18 @@
   notes: Distributed across basin authorities (Ebro, Guadalquivir, etc.).
 
 - slug: argentina_snih
-  name: SNIH Argentina
+  name: SNIH Argentina (INA a5)
   country: AR
   region: south_america
-  api_type: web_scraping
-  base_url: https://snih.hidricosargentina.gob.ar/
-  format: [html]
+  api_type: rest
+  base_url: https://alerta.ina.gob.ar/a5
+  format: [json]
   access: open
-  realtime: limited
-  stations: ~1500
-  stability: fragile
+  realtime: true
+  stations: ~890
+  stability: moderate
   status: implemented
+  notes: "INA Alerta a5 REST API (discharge 'caudal' + stage series). The raw station catalogue has ~4,664 points but only ~890 hold a populated discharge/stage series; fetch_stations filters to those (fixed 2026-07 — previously the dead points starved capped runs)."
 
 - slug: mexico_conagua
   name: CONAGUA BANDAS
@@ -579,8 +580,8 @@
   realtime: false
   stations: 91
   stability: fragile
-  status: implemented
-  notes: "PDF hydrological yearbooks; requires tabula-style extraction. NOTE: the live FHMZ JSON API 404s and the site publishes only water LEVEL (vodostaj, cm), not discharge — NOT a streamflow drop-in."
+  status: manual
+  notes: "PDF hydrological yearbooks; requires tabula-style extraction. Connector removed 2026-07: the coded JSON API never existed (404 on every path, station IDs were invented) and the site publishes only water LEVEL (vodostaj, cm), not discharge. Yearbook extraction would be a manual workflow."
   estreams_id: BA_FHMZ
 
 # ──────────────────────────────────────────────
@@ -1070,8 +1071,8 @@
   format: [json]
   access: open
   realtime: true
-  status: implemented
-  notes: La Plata River Basin federated access.
+  status: degraded
+  notes: "La Plata River Basin federated access. Degraded 2026-07: ARG (INA-brokered) stations 500-error server-side, PRY/URY/BOL yield no data even over year-long windows; only its Brazil stations work, duplicating wmo_whos. Code kept — may recover when the broker fixes the INA source."
 
 - slug: wmo_whos_africa
   name: WMO WHOS-Africa (HydroSOS)
@@ -1081,9 +1082,9 @@
   base_url: https://whos.geodab.eu/gs-service/
   format: [json]
   access: open
-  realtime: true
-  status: implemented
-  notes: Federated access for Africa RA1 (including Rwanda/Ethiopia).
+  realtime: false
+  status: deprecated
+  notes: "Connector removed 2026-07: the whos-ra1 view was deleted upstream (HTTP 500 'View whos-ra1 not found' on every call, verified 2026-07-13); no replacement view found. Revisit if WHOS re-publishes an Africa/HydroSOS view."
 
 
 - slug: turkey_dsi
@@ -1320,7 +1321,7 @@
   access: open
   realtime: false
   status: implemented
-  notes: Hourly discharge and sediment data via CEH EIDC.
+  notes: "Static EIDC ratings archive (4 gauges, records end 2017-09) — backfill-only, like chile_cr2; scheduled short-lookback runs always yield 0, hence weekly tier. 2-digit-year rows fixed 2026-07 (were silently dropped)."
 
 - slug: ecuador_inamhi
   name: Ecuador INAMHI (GEOGLOWS)

@@ -32,9 +32,9 @@ mechanically, with CI-enforced integrity tests.
 
 <!-- stats:start -->
 - **98 sources cataloged** in [`inventory/providers.yaml`](inventory/providers.yaml),
-  labeled by readiness: **79 implemented**, 8 research, 5 fallback, 4 manual, 2 deprecated.
-- **86 connectors registered in code** — the 79 `implemented` entries plus 7 still labeled `research`/`degraded` while their upstream data paths are validated.
-- **36 implemented providers are realtime/near-realtime**; the rest are
+  labeled by readiness: **76 implemented**, 8 research, 5 fallback, 5 manual, 1 degraded, 3 deprecated.
+- **84 connectors registered in code** — the 76 `implemented` entries plus 8 still labeled `research`/`degraded` while their upstream data paths are validated.
+- **34 implemented providers are realtime/near-realtime**; the rest are
   recent/archive sources, including roughly a dozen offline research archives
   (GRDC, Caravan, GSIM, EStreams, LamaH, CAMELS variants, ROBIN, ADHI, SIEREM).
 <!-- stats:end -->

@@ -49,6 +49,8 @@ MOCK_SERIES_GEOJSON = {
                 "estacion_id": 101,
                 "var_id": 4,
                 "var_nombre": "Caudal",
+                "count": 120,
+                "timeend": "2026-07-12T00:00:00",
             },
         },
         {
@@ -58,6 +60,8 @@ MOCK_SERIES_GEOJSON = {
                 "estacion_id": 101,
                 "var_id": 2,
                 "var_nombre": "Altura hidrometrica",
+                "count": 88,
+                "timeend": "2026-07-12T00:00:00",
             },
         },
         {
@@ -67,10 +71,23 @@ MOCK_SERIES_GEOJSON = {
                 "estacion_id": 202,
                 "var_id": 4,
                 "var_nombre": "Caudal medio diario",
+                "count": 300,
+                "timeend": "2026-07-11T00:00:00",
             },
         },
     ],
 }
+
+
+def _mock_series_route(payload: dict | None = None) -> None:
+    """Mock the paginated series-catalogue endpoint."""
+    respx.get(
+        "https://alerta.ina.gob.ar/a5/obs/puntual/series"
+    ).mock(
+        return_value=httpx.Response(
+            200, json=payload if payload is not None else MOCK_SERIES_GEOJSON
+        )
+    )
 
 MOCK_OBSERVATIONS_RESPONSE = [
     {
@@ -103,10 +120,11 @@ MOCK_STAGE_OBSERVATIONS_RESPONSE = [
 @pytest.mark.asyncio
 @respx.mock
 async def test_fetch_stations_parses_list():
-    """Stations with valid geometry are parsed correctly."""
+    """Stations with valid geometry and a data series are returned."""
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
+    _mock_series_route()
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
@@ -119,11 +137,54 @@ async def test_fetch_stations_parses_list():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_stations_filters_to_series_holders():
+    """Stations without any discharge/stage series are dropped."""
+    data = MOCK_STATIONS_RESPONSE + [
+        {
+            "id": 404,
+            "nombre": "Precip Only",
+            "geom": {"type": "Point", "coordinates": [-60.0, -30.0]},
+            "rio": None,
+            "tipo": "M",
+        },
+    ]
+    respx.get(
+        "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
+    ).mock(return_value=httpx.Response(200, json=data))
+    _mock_series_route()
+
+    async with ArgentinaSnihConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    # 404 has no series in the catalogue -> filtered out.
+    assert {s.native_id for s in stations} == {"101", "202"}
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_stations_unfiltered_when_series_unavailable():
+    """If the series catalogue cannot be fetched, the raw roster is kept."""
+    respx.get(
+        "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
+    ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
+    respx.get(
+        "https://alerta.ina.gob.ar/a5/obs/puntual/series"
+    ).mock(return_value=httpx.Response(500))
+
+    async with ArgentinaSnihConnector() as conn:
+        stations = await conn.fetch_stations()
+
+    assert {s.native_id for s in stations} == {"101", "202"}
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_stations_field_values():
     """Station fields are mapped correctly."""
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=MOCK_STATIONS_RESPONSE))
+    _mock_series_route()
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
@@ -145,6 +206,7 @@ async def test_fetch_stations_handles_empty():
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=[]))
+    _mock_series_route()
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
@@ -315,6 +377,52 @@ async def test_build_series_cache_classifies_variables():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_series_cache_skips_dataless_and_prefers_fresh():
+    """Placeholder series are skipped; ties break on newest timeend."""
+    _mock_series_route({
+        "features": [
+            # Dataless placeholder (no count, no timeend) -- skipped.
+            {
+                "properties": {
+                    "id": 90, "estacion_id": 700, "var_nombre": "Caudal",
+                },
+            },
+            # Same variant priority, stale timeend.
+            {
+                "properties": {
+                    "id": 91, "estacion_id": 700, "var_nombre": "Caudal",
+                    "count": 5, "timeend": "2020-01-01T00:00:00",
+                },
+            },
+            # Same variant priority, fresh timeend -- wins.
+            {
+                "properties": {
+                    "id": 92, "estacion_id": 700, "var_nombre": "Caudal",
+                    "count": 5, "timeend": "2026-07-12T00:00:00",
+                },
+            },
+            # Monthly-mean variant carries its own resolution.
+            {
+                "properties": {
+                    "id": 93, "estacion_id": 701,
+                    "var_nombre": "caudal medio mensual",
+                    "count": 5, "timeend": "2026-06-01T00:00:00",
+                },
+            },
+        ],
+    })
+
+    conn = ArgentinaSnihConnector()
+    async with conn:
+        await conn._build_series_cache()
+
+    assert conn._station_to_series == {"700": 92, "701": 93}
+    assert 90 not in conn._series_resolution
+    assert conn._series_resolution[93] is Resolution.MONTHLY_MEAN
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_stations_skip_missing_id():
     """Stations without an 'id' field are skipped."""
     data = [
@@ -326,6 +434,7 @@ async def test_stations_skip_missing_id():
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
+    _mock_series_route()
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
@@ -365,6 +474,28 @@ async def test_stations_invalid_coords_skipped():
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
+    _mock_series_route({
+        "features": [
+            {
+                "properties": {
+                    "id": 71,
+                    "estacion_id": 501,
+                    "var_nombre": "Caudal",
+                    "count": 10,
+                    "timeend": "2026-07-12T00:00:00",
+                },
+            },
+            {
+                "properties": {
+                    "id": 72,
+                    "estacion_id": 502,
+                    "var_nombre": "Caudal",
+                    "count": 10,
+                    "timeend": "2026-07-12T00:00:00",
+                },
+            },
+        ],
+    })
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()
@@ -400,6 +531,19 @@ async def test_stations_append_failure_skipped():
     respx.get(
         "https://alerta.ina.gob.ar/a5/obs/puntual/estaciones"
     ).mock(return_value=httpx.Response(200, json=data))
+    _mock_series_route({
+        "features": [
+            {
+                "properties": {
+                    "id": 81,
+                    "estacion_id": 601,
+                    "var_nombre": "Caudal",
+                    "count": 10,
+                    "timeend": "2026-07-12T00:00:00",
+                },
+            },
+        ],
+    })
 
     async with ArgentinaSnihConnector() as conn:
         stations = await conn.fetch_stations()

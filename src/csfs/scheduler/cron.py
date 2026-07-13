@@ -30,7 +30,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "belgium_waterinfo", "netherlands_rws", "thailand_hii",
         "slovenia_arso", "denmark_dmihyd", "croatia_dhz",
         "germany_bw", "germany_bavaria", "italy_emilia",
-        "wmo_whos_plata", "wmo_whos_africa",
+        "wmo_whos_plata",
         "bulgaria_eaemdr",
     ],
     "hourly": [
@@ -43,9 +43,9 @@ PROVIDER_TIERS: dict[str, list[str]] = {
     "daily": [
         "argentina_snih",
         "japan_mlit",
-        "bosnia_fhmz", "iceland_lamahice", "ecuador_inamhi",
+        "iceland_lamahice", "ecuador_inamhi",
         "pakistan_wapda",
-        "panama_stri", "vietnam_mekong",
+        "panama_stri",
         "bolivia_ine", "bulgaria_nimh",
         "israel_caravan", "czechia_chmu",
         "scotland_sepa", "belgium_spw", "taiwan_wra",
@@ -63,7 +63,7 @@ PROVIDER_TIERS: dict[str, list[str]] = {
         "camels_col", "camels_spat",
         "robin", "caravan_grdc",
         "germany_nrw",
-        "chile_cr2", "portugal_snirh",
+        "chile_cr2", "portugal_snirh", "vietnam_mekong",
     ],
 }
 
@@ -92,6 +92,8 @@ PROVIDER_STALE_AFTER: dict[str, float] = {
     # connector delivers everything the source offers, so "fresh" here
     # means "the archive is loaded", not "recent data exists".
     "chile_cr2": 87600.0,  # 10 years
+    # EIDC Mekong ratings archive is static and ends 2017-09.
+    "vietnam_mekong": 105120.0,  # 12 years
 }
 
 
