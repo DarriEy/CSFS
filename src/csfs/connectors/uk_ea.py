@@ -76,43 +76,59 @@ class UKEnvironmentAgencyConnector(BaseConnector):
     # metres), so prefer by period substring: instantaneous 15-min, mean daily.
     _LEVEL_MEASURE_PREFS = ["-level-i-900-", "-level-m-86400-"]
 
-    async def _find_flow_measure(self, native_id: str) -> str | None:
-        """Discover the best flow measure notation for a station."""
+    async def _station_measures(self, native_id: str) -> list[dict]:
+        """All measure items for a station.
+
+        Queried by ``station.stationReference`` rather than the station-path
+        form: EA migrated station ids to GUIDs (2026-07), after which
+        ``/id/stations/<wiski-ref>/measures`` returns an empty item list
+        while the reference query still resolves.
+        """
         try:
-            resp = await self._get(f"/id/stations/{native_id}/measures")
-            data = resp.json()
-            measures: list[str] = [
-                item.get("notation", "")
-                for item in data.get("items", [])
-                if "flow" in item.get("parameterName", "").lower()
-            ]
-            for pref in self._MEASURE_PREFS:
-                for m in measures:
-                    if m.endswith(pref):
-                        return m
-            return measures[0] if measures else None
+            resp = await self._get(
+                "/id/measures", params={"station.stationReference": native_id}
+            )
+            return list(resp.json().get("items", []))
         except Exception:
-            pass
-        return None
+            return []
+
+    @staticmethod
+    def _ordered(measures: list[str], prefs: list[str], *, suffix: bool) -> list[str]:
+        """Order candidate notations by preference, best first, no dupes."""
+        ranked: list[str] = []
+        for pref in prefs:
+            for m in measures:
+                match = m.endswith(pref) if suffix else (pref in m)
+                if match and m not in ranked:
+                    ranked.append(m)
+        ranked.extend(m for m in measures if m not in ranked)
+        return ranked
+
+    def _flow_candidates(self, items: list[dict]) -> list[str]:
+        measures = [
+            item.get("notation", "")
+            for item in items
+            if "flow" in item.get("parameterName", "").lower()
+        ]
+        return self._ordered(measures, self._MEASURE_PREFS, suffix=True)
+
+    async def _find_flow_measure(self, native_id: str) -> str | None:
+        """Best flow measure notation for a station (compat helper)."""
+        candidates = self._flow_candidates(await self._station_measures(native_id))
+        return candidates[0] if candidates else None
+
+    def _level_candidates(self, items: list[dict]) -> list[str]:
+        measures = [
+            item.get("notation", "")
+            for item in items
+            if "level" in item.get("parameterName", "").lower()
+        ]
+        return self._ordered(measures, self._LEVEL_MEASURE_PREFS, suffix=False)
 
     async def _find_level_measure(self, native_id: str) -> str | None:
-        """Discover the best water-level measure notation for a station."""
-        try:
-            resp = await self._get(f"/id/stations/{native_id}/measures")
-            data = resp.json()
-            measures: list[str] = [
-                item.get("notation", "")
-                for item in data.get("items", [])
-                if "level" in item.get("parameterName", "").lower()
-            ]
-            for pref in self._LEVEL_MEASURE_PREFS:
-                for m in measures:
-                    if pref in m:
-                        return m
-            return measures[0] if measures else None
-        except Exception:
-            pass
-        return None
+        """Best water-level measure notation for a station (compat helper)."""
+        candidates = self._level_candidates(await self._station_measures(native_id))
+        return candidates[0] if candidates else None
 
     @staticmethod
     def _measure_resolution(measure: str) -> Resolution:
@@ -134,25 +150,36 @@ class UKEnvironmentAgencyConnector(BaseConnector):
         end: datetime,
     ) -> TimeSeriesChunk:
         native_id = station_id.removeprefix(f"{self.slug}:")
-        flow_measure = await self._find_flow_measure(native_id)
-        level_measure = await self._find_level_measure(native_id)
-        if not flow_measure and not level_measure:
+        items = await self._station_measures(native_id)
+        flow_candidates = self._flow_candidates(items)
+        level_candidates = self._level_candidates(items)
+        if not flow_candidates and not level_candidates:
             raise ConnectorError(
                 self.slug, f"No flow or level measure found for station {native_id}"
             )
 
         all_observations: list[Observation] = []
-        if flow_measure:
-            all_observations.extend(await self._fetch_readings(
-                flow_measure, station_id, start, end,
-                Variable.DISCHARGE, self._measure_resolution(flow_measure),
-            ))
-        if level_measure:
+        # Try candidates in preference order until one yields readings:
+        # individual EA feeds go stale (the 15-min flow product froze on
+        # 2026-06-15 while the daily-mean product stayed current), so an
+        # empty preferred measure must not mask a healthy fallback.
+        for measure in flow_candidates[:2]:
+            flow_obs = await self._fetch_readings(
+                measure, station_id, start, end,
+                Variable.DISCHARGE, self._measure_resolution(measure),
+            )
+            if flow_obs:
+                all_observations.extend(flow_obs)
+                break
+        for measure in level_candidates[:2]:
             # EA levels are already in metres (m / mAOD / mASD).
-            all_observations.extend(await self._fetch_readings(
-                level_measure, station_id, start, end,
-                Variable.STAGE, self._measure_resolution(level_measure),
-            ))
+            level_obs = await self._fetch_readings(
+                measure, station_id, start, end,
+                Variable.STAGE, self._measure_resolution(measure),
+            )
+            if level_obs:
+                all_observations.extend(level_obs)
+                break
 
         return TimeSeriesChunk(
             station_id=station_id,
