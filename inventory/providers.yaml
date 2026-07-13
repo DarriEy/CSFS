@@ -465,7 +465,7 @@
   stations: ~715
   stability: fragile
   status: implemented
-  notes: "Daily-mean discharge (pars 1850) and stage (pars 1845) scraped from the janela_verdados.php HTML tables; bundled 715-gauge seed catalog (code -> numeric SNIRH id + coords). Server ignores tmin/tmax (full record returned; sliced client-side). SNIRH's edge IP-blocks some networks (bare 403) — parser verified against captured/archived responses; watch csfs health from the acquisition runner."
+  notes: "Daily-mean discharge (pars 1850) and stage (pars 1845) scraped from the janela_verdados.php HTML tables; bundled 715-gauge seed catalog (code -> numeric SNIRH id + coords). Server ignores tmin/tmax (full record returned; sliced client-side). SNIRH's edge IP-blocks many networks with a bare 403 — confirmed to include GitHub Actions runners (2026-07-13), so scheduled acquisition yields no data; needs an EU/residential egress or the paraCSV/dados_csv.php route investigated."
   estreams_id: PT_SNIRH
 
 - slug: belgium_waterinfo

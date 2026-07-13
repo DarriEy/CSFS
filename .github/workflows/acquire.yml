@@ -27,6 +27,10 @@ on:
         description: "Optional space-separated provider slugs (overrides tier for the fetch)"
         type: string
         default: ""
+      lookback:
+        description: "Optional lookback hours for a providers= dispatch (e.g. 460000 to backfill a frozen archive)"
+        type: string
+        default: ""
 
 # One acquisition at a time — concurrent runs would race the shared DB asset.
 concurrency:
@@ -86,6 +90,7 @@ jobs:
           MAX_STATIONS: "500"
           CONCURRENCY: "12"
           PROVIDERS: ${{ inputs.providers }}
+          LOOKBACK: ${{ inputs.lookback }}
           # CI-specific provider config: dataset auto-downloads disabled
           # (they exhaust the runner's disk), southafrica_dws mirror.
           CSFS_CONFIG: .github/csfs-ci.yaml
@@ -94,6 +99,7 @@ jobs:
           if [ -n "$PROVIDERS" ]; then
             ARGS=""
             for p in $PROVIDERS; do ARGS="$ARGS -p $p"; done
+            [ -n "$LOOKBACK" ] && ARGS="$ARGS --lookback $LOOKBACK"
             csfs --config "$CSFS_CONFIG" fetch $ARGS \
               --max-stations "$MAX_STATIONS" --concurrency "$CONCURRENCY"
           else

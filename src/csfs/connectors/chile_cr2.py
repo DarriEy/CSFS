@@ -54,8 +54,10 @@ logger = structlog.get_logger()
 _REQUEST_PATH = "/request.php"
 
 #: Path of the server-generated CSV inside the request.php response. Only the
-#: path is used — the advertised scheme/host is broken (localhost:8080).
-_TMP_CSV_RE = re.compile(r"/tmp/[^\"'\s>]+?\.csv")
+#: path is used — the advertised scheme/host is broken (localhost:8080),
+#: and the API has also been observed emitting a bare relative path
+#: ("tmp/<token>/EC_series.csv", no leading slash) — accept both.
+_TMP_CSV_RE = re.compile(r"/?tmp/[^\"'\s>]+?\.csv")
 
 #: Epoch bounds mirroring the explorador UI's full-range query (1940-01-01).
 _EPOCH_START = -946771200
@@ -282,9 +284,11 @@ class ChileCr2Connector(BaseConnector):
         """Extract the /tmp/... CSV path from a request.php response.
 
         The current API returns JSON with ``export.series.url``; older
-        deployments returned HTML with an embedded absolute link. Either way
-        only the path is trusted — the advertised host is rewritten to
-        ``base_url`` (the server currently emits ``http://localhost:8080``).
+        deployments returned HTML with an embedded absolute link. The url
+        value itself has shifted shape between deployments — an absolute
+        ``http://localhost:8080/tmp/...`` link and a bare relative
+        ``tmp/...`` path have both been observed — so only the ``tmp/...``
+        path is trusted and it is resolved against ``base_url``.
         """
         haystack = body
         try:
@@ -296,7 +300,10 @@ class ChileCr2Connector(BaseConnector):
             if isinstance(url, str):
                 haystack = url
         match = _TMP_CSV_RE.search(haystack)
-        return match.group(0) if match else None
+        if match is None:
+            return None
+        path = match.group(0)
+        return path if path.startswith("/") else f"/{path}"
 
     def _parse_csv(
         self,
