@@ -93,6 +93,9 @@ jobs:
           CONCURRENCY: "12"
           PROVIDERS: ${{ inputs.providers }}
           LOOKBACK: ${{ inputs.lookback }}
+          # Optional repo secret; norway_nve reads it as its HydAPI key
+          # (register free at https://hydapi.nve.no/).
+          NVE_API_KEY: ${{ secrets.NVE_API_KEY }}
           # CI-specific provider config: dataset auto-downloads disabled
           # (they exhaust the runner's disk), southafrica_dws mirror.
           CSFS_CONFIG: .github/csfs-ci.yaml

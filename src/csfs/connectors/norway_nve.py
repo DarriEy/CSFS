@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -89,7 +90,13 @@ class NorwayNVEConnector(BaseConnector):
 
     async def __aenter__(self) -> NorwayNVEConnector:
         await super().__aenter__()
-        api_key = self.config.get("api_key") or _read_hydapi_key()
+        # Key resolution: explicit config, then the NVE_API_KEY environment
+        # variable (how CI/Actions passes secrets), then ~/.hydapi.
+        api_key = (
+            self.config.get("api_key")
+            or os.environ.get("NVE_API_KEY", "")
+            or _read_hydapi_key()
+        )
         if api_key:
             self.client.headers["X-API-Key"] = api_key
         else:
