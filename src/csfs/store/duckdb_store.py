@@ -11,12 +11,15 @@ from typing import TYPE_CHECKING, cast
 
 import duckdb
 import pyarrow as pa
+import structlog
 
 from csfs.core.models import Station, TimeSeriesChunk
 from csfs.store.base import BaseStore
 
 if TYPE_CHECKING:
     import pandas as pd
+
+_logger = structlog.get_logger(__name__)
 
 
 def _fetch_arrow(result: duckdb.DuckDBPyConnection) -> pa.Table:
@@ -59,10 +62,12 @@ CREATE TABLE IF NOT EXISTS stations (
 CREATE TABLE IF NOT EXISTS observations (
     station_id      VARCHAR NOT NULL,
     timestamp       TIMESTAMPTZ NOT NULL,
-    discharge_m3s   DOUBLE,
+    variable        VARCHAR NOT NULL DEFAULT 'discharge',
+    resolution      VARCHAR NOT NULL DEFAULT 'unknown',
+    value           DOUBLE,
     quality         VARCHAR NOT NULL DEFAULT 'raw',
     fetched_at      TIMESTAMP DEFAULT current_timestamp,
-    PRIMARY KEY (station_id, timestamp)
+    PRIMARY KEY (station_id, variable, resolution, timestamp)
 );
 
 CREATE INDEX IF NOT EXISTS idx_stations_provider ON stations (provider);
@@ -99,7 +104,80 @@ class DuckDBStore(BaseStore):
         # read-only store (e.g. the API) serves an already-initialised database.
         if not self._read_only:
             self._conn.execute(_INIT_SQL)
+            if self._needs_multivariable_migration():
+                self._migrate_to_multivariable()
+        elif self._needs_multivariable_migration():
+            raise RuntimeError(
+                f"{self._db_path} uses the pre-multi-variable schema; open it "
+                "writable once to migrate (e.g. DuckDBStore(path) or any "
+                "'csfs fetch' run), then reopen read-only."
+            )
         return self
+
+    def _needs_multivariable_migration(self) -> bool:
+        """True when the observations table predates the multi-variable schema."""
+        row = self.conn.execute(
+            "SELECT COUNT(*) FROM information_schema.columns "
+            "WHERE table_name = 'observations' AND column_name = 'variable'"
+        ).fetchone()
+        return row is not None and row[0] == 0
+
+    def _migrate_to_multivariable(self) -> None:
+        """One-shot rebuild: (station_id, timestamp) PK -> multi-variable PK.
+
+        Backfills ``variable='discharge'`` / ``resolution='unknown'`` and
+        renames ``discharge_m3s`` to ``value``. Data fix along the way:
+        historic ``lithuania_lhmt`` / ``lithuania_meteo`` (pre-rename slug)
+        rows were water levels in cm mis-stored as discharge — they are
+        re-tagged as ``stage`` in metres.
+        Transactional and idempotent (guarded by the column check above).
+        """
+        import time
+
+        started = time.monotonic()
+        c = self.conn
+        c.execute("BEGIN")
+        try:
+            c.execute("""
+                CREATE TABLE observations_multivar (
+                    station_id VARCHAR NOT NULL,
+                    timestamp  TIMESTAMPTZ NOT NULL,
+                    variable   VARCHAR NOT NULL DEFAULT 'discharge',
+                    resolution VARCHAR NOT NULL DEFAULT 'unknown',
+                    value      DOUBLE,
+                    quality    VARCHAR NOT NULL DEFAULT 'raw',
+                    fetched_at TIMESTAMP DEFAULT current_timestamp,
+                    PRIMARY KEY (station_id, variable, resolution, timestamp)
+                )
+            """)
+            c.execute("""
+                INSERT INTO observations_multivar
+                    (station_id, timestamp, variable, resolution, value, quality, fetched_at)
+                SELECT station_id, timestamp, 'discharge', 'unknown',
+                       discharge_m3s, quality, fetched_at
+                FROM observations
+            """)
+            c.execute("""
+                UPDATE observations_multivar
+                SET variable = 'stage', value = value / 100
+                WHERE station_id LIKE 'lithuania_lhmt:%'
+                   OR station_id LIKE 'lithuania_meteo:%'
+            """)
+            c.execute("DROP TABLE observations")
+            c.execute("ALTER TABLE observations_multivar RENAME TO observations")
+            c.execute("CREATE INDEX idx_observations_fetched ON observations (fetched_at)")
+            c.execute("COMMIT")
+        except Exception:
+            c.execute("ROLLBACK")
+            raise
+        c.execute("CHECKPOINT")
+        row = c.execute("SELECT COUNT(*) FROM observations").fetchone()
+        _logger.info(
+            "store.migrated_to_multivariable",
+            db_path=self._db_path,
+            rows=row[0] if row else None,
+            duration_s=round(time.monotonic() - started, 1),
+        )
 
     async def __aexit__(self, *exc) -> None:
         if self._conn:
@@ -131,28 +209,31 @@ class DuckDBStore(BaseStore):
         if not chunk.observations:
             return 0
         rows = [
-            (obs.station_id, obs.timestamp, obs.discharge_m3s,
-             obs.quality.value, chunk.fetched_at)
+            (obs.station_id, obs.timestamp, obs.variable.value, obs.resolution.value,
+             obs.value, obs.quality.value, chunk.fetched_at)
             for obs in chunk.observations
         ]
+        # CREATE OR REPLACE drops any stale staging table (e.g. an older
+        # schema) lingering on a reused connection.
         self.conn.execute(
-            "CREATE TEMPORARY TABLE IF NOT EXISTS _obs_staging "
-            "(station_id VARCHAR, timestamp TIMESTAMPTZ, "
-            "discharge_m3s DOUBLE, quality VARCHAR, fetched_at TIMESTAMP)"
+            "CREATE OR REPLACE TEMPORARY TABLE _obs_staging "
+            "(station_id VARCHAR, timestamp TIMESTAMPTZ, variable VARCHAR, "
+            "resolution VARCHAR, value DOUBLE, quality VARCHAR, fetched_at TIMESTAMP)"
         )
-        self.conn.execute("DELETE FROM _obs_staging")
         self.conn.executemany(
-            "INSERT INTO _obs_staging VALUES (?, ?, ?, ?, ?)", rows,
+            "INSERT INTO _obs_staging VALUES (?, ?, ?, ?, ?, ?, ?)", rows,
         )
         result = self.conn.execute("""
             INSERT INTO observations
-                (station_id, timestamp, discharge_m3s, quality, fetched_at)
-            SELECT s.station_id, s.timestamp, s.discharge_m3s,
-                   s.quality, s.fetched_at
+                (station_id, timestamp, variable, resolution, value, quality, fetched_at)
+            SELECT s.station_id, s.timestamp, s.variable, s.resolution,
+                   s.value, s.quality, s.fetched_at
             FROM _obs_staging s
             WHERE NOT EXISTS (
                 SELECT 1 FROM observations o
                 WHERE o.station_id = s.station_id
+                  AND o.variable = s.variable
+                  AND o.resolution = s.resolution
                   AND o.timestamp = s.timestamp
             )
         """)
@@ -192,23 +273,31 @@ class DuckDBStore(BaseStore):
         end: datetime | None,
         limit: int | None,
         offset: int,
+        variable: str | None = "discharge",
+        resolution: str | None = None,
     ) -> tuple[str, list]:
         ids = [station_id] if isinstance(station_id, str) else list(station_id)
         if not ids:
             raise ValueError("station_id must be a station ID or a non-empty sequence of station IDs")
         placeholders = ", ".join("?" for _ in ids)
         query = (
-            "SELECT station_id, timestamp, discharge_m3s, quality "
+            "SELECT station_id, timestamp, variable, resolution, value, quality "
             f"FROM observations WHERE station_id IN ({placeholders})"
         )
         params: list = list(ids)
+        if variable is not None:
+            query += " AND variable = ?"
+            params.append(variable)
+        if resolution is not None:
+            query += " AND resolution = ?"
+            params.append(resolution)
         if start:
             query += " AND timestamp >= ?"
             params.append(start)
         if end:
             query += " AND timestamp <= ?"
             params.append(end)
-        query += " ORDER BY timestamp, station_id"
+        query += " ORDER BY timestamp, station_id, variable, resolution"
         if limit is not None:
             query += " LIMIT ? OFFSET ?"
             params.extend([limit, offset])
@@ -237,8 +326,17 @@ class DuckDBStore(BaseStore):
         end: datetime | None = None,
         limit: int | None = None,
         offset: int = 0,
+        variable: str | None = "discharge",
+        resolution: str | None = None,
     ) -> list[dict]:
-        query, params = self._observations_query(station_id, start, end, limit, offset)
+        """Rows for one station, filtered to ``variable`` (default discharge).
+
+        Pass ``variable=None`` for all variables; ``resolution`` filters
+        likewise (default: no resolution filter).
+        """
+        query, params = self._observations_query(
+            station_id, start, end, limit, offset, variable, resolution
+        )
         rows = self.conn.execute(query, params).fetchall()
         columns = [desc[0] for desc in self.conn.description]
         return [dict(zip(columns, row)) for row in rows]
@@ -262,14 +360,18 @@ class DuckDBStore(BaseStore):
         end: datetime | None = None,
         limit: int | None = None,
         offset: int = 0,
+        variable: str | None = "discharge",
+        resolution: str | None = None,
     ) -> pa.Table:
         """Like :meth:`get_observations`, but returns a zero-copy :class:`pyarrow.Table`.
 
         ``station_id`` may also be a sequence of station IDs (e.g. for
         calibration over many gauges); rows are ordered by timestamp, then
-        station ID.
+        station ID, variable, and resolution.
         """
-        query, params = self._observations_query(station_id, start, end, limit, offset)
+        query, params = self._observations_query(
+            station_id, start, end, limit, offset, variable, resolution
+        )
         return _fetch_arrow(self.conn.execute(query, params))
 
     async def get_stations_df(
@@ -296,27 +398,36 @@ class DuckDBStore(BaseStore):
         end: datetime | None = None,
         limit: int | None = None,
         offset: int = 0,
+        variable: str | None = "discharge",
+        resolution: str | None = None,
     ) -> pd.DataFrame:
         """Like :meth:`get_observations`, but returns a pandas DataFrame.
 
         The frame is indexed by ``timestamp`` (ascending, UTC) with columns
-        ``discharge_m3s`` and ``quality``; a ``station_id`` column is kept
-        only when a sequence of station IDs is queried. Requires the
-        optional ``pandas`` extra
+        ``variable``, ``resolution``, ``value``, and ``quality``; a
+        ``station_id`` column is kept only when a sequence of station IDs is
+        queried. Filtered to ``variable`` (default ``'discharge'``; pass
+        ``None`` for all variables). Requires the optional ``pandas`` extra
         (``pip install "community-streamflow-service[pandas]"``).
         """
         _require_pandas()
-        table = await self.get_observations_arrow(station_id, start, end, limit, offset)
+        table = await self.get_observations_arrow(
+            station_id, start, end, limit, offset, variable, resolution
+        )
         df = table.to_pandas().set_index("timestamp").sort_index()
         if isinstance(station_id, str):
             df = df.drop(columns=["station_id"])
         return cast("pd.DataFrame", df)
 
-    async def get_latest_timestamp(self, station_id: str) -> datetime | None:
-        result = self.conn.execute(
-            "SELECT MAX(timestamp) FROM observations WHERE station_id = ?",
-            [station_id],
-        ).fetchone()
+    async def get_latest_timestamp(
+        self, station_id: str, variable: str | None = "discharge"
+    ) -> datetime | None:
+        query = "SELECT MAX(timestamp) FROM observations WHERE station_id = ?"
+        params: list = [station_id]
+        if variable is not None:
+            query += " AND variable = ?"
+            params.append(variable)
+        result = self.conn.execute(query, params).fetchone()
         return result[0] if result and result[0] else None
 
     async def record_acquisition(

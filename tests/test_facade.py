@@ -122,8 +122,11 @@ async def test_get_observations_arrow(seeded_store, sample_station):
     table = await seeded_store.get_observations_arrow(sample_station.id)
     assert isinstance(table, pa.Table)
     assert table.num_rows == 2
-    assert set(table.column_names) == {"station_id", "timestamp", "discharge_m3s", "quality"}
-    assert table.column("discharge_m3s").to_pylist() == [150.5, 145.2]
+    assert set(table.column_names) == {
+        "station_id", "timestamp", "variable", "resolution", "value", "quality"
+    }
+    assert table.column("value").to_pylist() == [150.5, 145.2]
+    assert set(table.column("variable").to_pylist()) == {"discharge"}
 
 
 async def test_get_observations_arrow_time_filters(seeded_store, sample_station):
@@ -133,7 +136,7 @@ async def test_get_observations_arrow_time_filters(seeded_store, sample_station)
         end=datetime(2024, 6, 3),
     )
     assert table.num_rows == 1
-    assert table.column("discharge_m3s").to_pylist() == [145.2]
+    assert table.column("value").to_pylist() == [145.2]
 
 
 async def test_get_observations_arrow_station_list(seeded_store, sample_station, second_station):
@@ -172,8 +175,8 @@ async def test_get_observations_df_single_station(seeded_store, sample_station):
     assert isinstance(df, pd.DataFrame)
     assert df.index.name == "timestamp"
     assert df.index.is_monotonic_increasing
-    assert list(df.columns) == ["discharge_m3s", "quality"]  # station_id dropped
-    assert df["discharge_m3s"].tolist() == [150.5, 145.2]
+    assert list(df.columns) == ["variable", "resolution", "value", "quality"]  # station_id dropped
+    assert df["value"].tolist() == [150.5, 145.2]
 
 
 async def test_get_observations_df_multi_station(seeded_store, sample_station, second_station):

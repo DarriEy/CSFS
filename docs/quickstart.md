@@ -76,20 +76,23 @@ async def main() -> None:
         for s in stations:
             print(s.id, s.name, s.latitude, s.longitude)
 
-        # Query observations for one station
+        # Query observations for one station (discharge by default)
         obs = await store.get_observations(stations[0].id, limit=10)
         for row in obs:
-            print(row["timestamp"], row["discharge_m3s"], row["quality"])
+            print(row["timestamp"], row["value"], row["quality"])
 
 
 asyncio.run(main())
 ```
 
 `get_stations` returns typed `Station` models; `get_observations` returns
-dicts with `station_id`, `timestamp`, `discharge_m3s`, and `quality`. The
-store is a plain DuckDB file, so any DuckDB/SQL/pandas/Arrow tooling works on
-it directly too. See the [Python API](python-api.md) guide for more, including
-direct connector access without a store.
+dicts with `station_id`, `timestamp`, `variable`, `resolution`, `value`,
+and `quality`. Queries default to the `discharge` variable (m³/s) — pass
+`variable="stage"` (or `variable=None` for everything) to reach the other
+variables a provider publishes. The store is a plain DuckDB file, so any
+DuckDB/SQL/pandas/Arrow tooling works on it directly too. See the
+[Python API](python-api.md) guide for more, including direct connector
+access without a store.
 
 ## Keep it fresh
 

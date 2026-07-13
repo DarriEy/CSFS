@@ -11,7 +11,10 @@ signatures are in the [API Reference](reference.md).
 `csfs.open_store()` opens the single-file DuckDB store (read-only by
 default) as an async context manager. The `*_df` methods return pandas
 DataFrames; observations come back indexed by ascending UTC `timestamp`
-with `discharge_m3s` and `quality` columns.
+with `variable`, `resolution`, `value`, and `quality` columns. Queries
+default to the `discharge` variable (`value` in m³/s); pass
+`variable="stage"`, `variable="water_temperature"`, ... or
+`variable=None` for everything a provider publishes.
 
 ```python
 import asyncio
@@ -21,9 +24,9 @@ import csfs
 
 async def main() -> None:
     async with csfs.open_store("csfs.duckdb") as store:
-        # One gauge's series, ready for resampling/plotting/metrics
+        # One gauge's discharge series, ready for resampling/plotting/metrics
         df = await store.get_observations_df("usgs:01646500")
-        print(df["discharge_m3s"].describe())
+        print(df["value"].describe())
 
         # Many gauges at once (a station_id column is kept)
         multi = await store.get_observations_df(
@@ -126,7 +129,7 @@ async def main() -> None:
             end=datetime(2026, 6, 1, tzinfo=UTC),
         )
         for row in obs[:5]:
-            print(row["timestamp"], row["discharge_m3s"], row["quality"])
+            print(row["timestamp"], row["value"], row["quality"])
 
         # Acquisition history and per-connector health
         history = await store.get_acquisition_history(provider="usgs", limit=5)
@@ -144,9 +147,9 @@ import duckdb
 
 conn = duckdb.connect("csfs.duckdb", read_only=True)
 df = conn.execute("""
-    SELECT s.name, o.timestamp, o.discharge_m3s
+    SELECT s.name, o.timestamp, o.value
     FROM observations o JOIN stations s ON s.id = o.station_id
-    WHERE s.provider = 'usgs'
+    WHERE s.provider = 'usgs' AND o.variable = 'discharge'
     ORDER BY o.timestamp
 """).df()
 ```
@@ -213,7 +216,7 @@ async def main() -> None:
         start = end - timedelta(hours=48)
         chunk = await c.fetch_observations(stations[0].id, start, end)
         for obs in chunk.observations[:5]:
-            print(obs.timestamp, obs.discharge_m3s, obs.quality)
+            print(obs.timestamp, obs.variable, obs.value, obs.quality)
 
 
 asyncio.run(main())
@@ -223,8 +226,10 @@ Notes:
 
 - `fetch_observations` takes the **canonical** station ID
   (`"<slug>:<native_id>"`, i.e. `Station.id`) and returns a
-  `TimeSeriesChunk` of `Observation`s — discharge already normalized to
-  m³/s, timestamps to UTC.
+  `TimeSeriesChunk` of `Observation`s — values already normalized to the
+  variable's SI unit (discharge m³/s, stage m, ...), timestamps to UTC.
+  A chunk may mix variables; a connector's `supported_variables` class
+  attribute lists what it can emit.
 - `config` carries provider-specific settings (e.g. `{"api_key": ...}` for
   `norway_nve`); most providers need none.
 - HTTP retry/rate-limit handling is built into the base class; transient
@@ -237,9 +242,13 @@ All data flows through three pydantic models, re-exported at top level:
 - **`csfs.Station`** — `id`, `provider`, `native_id`, `name`, `latitude`,
   `longitude`, `country_code`, plus optional `river`,
   `catchment_area_km2`, `elevation_m`.
-- **`csfs.Observation`** — `station_id`, `timestamp` (UTC),
-  `discharge_m3s`, `quality` (`good` / `suspect` / `missing` /
-  `estimated` / `raw`).
+- **`csfs.Observation`** — `station_id`, `timestamp` (UTC), `variable`
+  (`csfs.Variable`, SI unit per `csfs.VARIABLE_UNITS`), `resolution`
+  (`csfs.Resolution`, e.g. `daily_mean` / `instantaneous` / `unknown`),
+  `value`, `quality` (`good` / `suspect` / `missing` / `estimated` /
+  `raw`). `Observation(discharge_m3s=...)` is still accepted as an alias
+  for `value=` + `variable='discharge'`, and `obs.discharge_m3s` reads
+  the value of discharge observations.
 - **`csfs.TimeSeriesChunk`** — a batch of observations from one connector
   fetch, with `fetched_at` provenance.
 
