@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from datetime import datetime
 
 from csfs.core.models import Station, TimeSeriesChunk
@@ -55,6 +56,16 @@ class BaseStore(ABC):
         self, station_id: str, variable: str | None = "discharge"
     ) -> datetime | None:
         """Return the most recent observation timestamp for incremental fetches."""
+
+    @abstractmethod
+    async def get_latest_timestamps(
+        self, station_ids: Sequence[str], variable: str | None = None
+    ) -> dict[str, datetime]:
+        """Newest stored timestamp per station (stations without data absent).
+
+        One bulk query; ``variable=None`` spans all variables (the
+        acquisition watermark).
+        """
 
     @abstractmethod
     async def record_acquisition(

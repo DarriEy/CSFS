@@ -430,6 +430,31 @@ class DuckDBStore(BaseStore):
         result = self.conn.execute(query, params).fetchone()
         return result[0] if result and result[0] else None
 
+    async def get_latest_timestamps(
+        self, station_ids: Sequence[str], variable: str | None = None
+    ) -> dict[str, datetime]:
+        """Newest observation timestamp per station, in one query.
+
+        Stations with no stored observations are absent from the result.
+        ``variable=None`` (the default) takes the max across all variables —
+        the acquisition watermark; pass a variable name to scope it.
+        """
+        ids = list(station_ids)
+        if not ids:
+            return {}
+        placeholders = ", ".join("?" for _ in ids)
+        query = (
+            "SELECT station_id, MAX(timestamp) FROM observations "
+            f"WHERE station_id IN ({placeholders})"
+        )
+        params: list = list(ids)
+        if variable is not None:
+            query += " AND variable = ?"
+            params.append(variable)
+        query += " GROUP BY station_id"
+        rows = self.conn.execute(query, params).fetchall()
+        return {sid: ts for sid, ts in rows if ts is not None}
+
     async def record_acquisition(
         self,
         provider: str,

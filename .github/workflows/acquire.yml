@@ -64,10 +64,12 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "tier=${{ inputs.tier }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 3 * * 0" ]; then
-            echo "tier=weekly" >> "$GITHUB_OUTPUT"
           else
-            echo "tier=daily" >> "$GITHUB_OUTPUT"
+            # The only cron on this workflow is the weekly one. Do NOT match
+            # on the cron string: delayed schedule events historically fell
+            # through a string comparison here and silently ran the daily
+            # tier instead.
+            echo "tier=weekly" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restore DB snapshot
