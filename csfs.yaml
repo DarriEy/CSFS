@@ -2,6 +2,15 @@
 # Paths are relative to the project root.
 
 providers:
+  # -- Live providers needing host overrides --
+  # DWS's primary host (www.dws.gov.za) geo/WAF-blocks many networks,
+  # including GitHub Actions runners (403 on every path — confirmed in the
+  # first acquisition run, 2026-07-13). The legacy mirror serves the same
+  # Hydstra backend but presents an expired TLS certificate.
+  southafrica_dws:
+    base_url: https://www.dwa.gov.za
+    verify_ssl: false
+
   # -- Auto-downloading datasets --
   # These connectors download + cache their dataset on first use, into
   # `data/datasets/<slug>/` by default. No config is required.
