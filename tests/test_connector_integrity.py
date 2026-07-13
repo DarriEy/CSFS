@@ -188,19 +188,20 @@ def test_implemented_inventory_entries_have_a_registered_connector(registered, i
     )
 
 
-def test_committed_config_references_only_registered_providers(registered):
-    """A typo in csfs.yaml's provider keys would silently no-op that config."""
-    from pathlib import Path
-
+@pytest.mark.parametrize(
+    "relpath", ["csfs.yaml", ".github/csfs-ci.yaml"]
+)
+def test_committed_config_references_only_registered_providers(registered, relpath):
+    """A typo in a committed config's provider keys would silently no-op it."""
     from csfs.core.config import load_config
 
-    config_path = Path(__file__).resolve().parent.parent / "csfs.yaml"
+    config_path = _REPO_ROOT / relpath
     if not config_path.is_file():
-        pytest.skip("no csfs.yaml at repo root")
+        pytest.skip(f"no {relpath} in repo")
 
     configured = set(load_config(config_path))
     unknown = sorted(configured - registered)
-    assert not unknown, f"csfs.yaml configures unregistered providers: {unknown}"
+    assert not unknown, f"{relpath} configures unregistered providers: {unknown}"
 
 
 def test_catalog_and_readme_numbers_are_current(registered):

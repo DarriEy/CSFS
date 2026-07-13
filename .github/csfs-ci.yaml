@@ -1,0 +1,43 @@
+# CSFS provider configuration for GitHub Actions acquisition runs.
+#
+# Differences from the repo-root csfs.yaml (local/dev defaults):
+#
+# 1. Dataset auto-downloads are DISABLED. The archive connectors
+#    (caravan ~12.5 GB, hysets, the CAMELS family at 1-15 GB each, ...)
+#    would exhaust a ~14 GB hosted runner's disk mid-run and kill the job
+#    with no logs — exactly how the first weekly-tier run died
+#    (2026-07-13). Archives are for local/researcher use; in CI these
+#    connectors sync station metadata and degrade gracefully to zero
+#    observations.
+# 2. southafrica_dws routes via the legacy dwa.gov.za mirror: the primary
+#    host geo/WAF-blocks Actions runner IPs (403 on every path). The
+#    mirror serves the same Hydstra backend but has an expired TLS cert.
+
+providers:
+  southafrica_dws:
+    base_url: https://www.dwa.gov.za
+    verify_ssl: false
+
+  camels_aus: {auto_download: false}
+  camels_br: {auto_download: false}
+  camels_ch: {auto_download: false}
+  camels_cl: {auto_download: false}
+  camels_col: {auto_download: false}
+  camels_de: {auto_download: false}
+  camels_dk: {auto_download: false}
+  camels_fi: {auto_download: false}
+  camels_fr: {auto_download: false}
+  camels_gb: {auto_download: false}
+  camels_ind: {auto_download: false}
+  camels_lux: {auto_download: false}
+  camels_nz: {auto_download: false}
+  camels_pe: {auto_download: false}
+  camels_se: {auto_download: false}
+  camels_spat: {auto_download: false}
+  camels_us: {auto_download: false}
+  caravan: {auto_download: false}
+  caravan_grdc: {auto_download: false}
+  hysets: {auto_download: false}
+  iceland_lamahice: {auto_download: false}
+  israel_caravan: {auto_download: false}
+  lamah_ce: {auto_download: false}
