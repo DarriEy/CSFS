@@ -500,3 +500,37 @@ async def test_stale_preferred_flow_measure_falls_back_to_daily_mean():
     assert obs.variable is Variable.DISCHARGE
     assert obs.resolution is Resolution.DAILY_MEAN
     assert obs.value == pytest.approx(8.775)
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_measures_resolve_for_guid_station_via_path_form():
+    """GUID stations (EA 2026-07 migration) resolve via /id/stations/<guid>/measures,
+    not the stationReference query — the connector must try both."""
+    guid = "052d0819-2a32-47df-9b99-c243c9c8235b"
+    base = "https://environment.data.gov.uk/hydrology"
+    # Path form works for GUIDs; stationReference query is empty.
+    respx.get(f"{base}/id/stations/{guid}/measures").mock(
+        return_value=httpx.Response(200, json={"items": [
+            {"notation": f"{guid}-flow-i-900-m3s-qualified", "parameterName": "Flow"},
+        ]})
+    )
+    respx.get(
+        f"{base}/id/measures", params={"station.stationReference": guid},
+    ).mock(return_value=httpx.Response(200, json={"items": []}))
+    respx.get(f"{base}/id/measures/{guid}-flow-i-900-m3s-qualified/readings").mock(
+        return_value=httpx.Response(200, json={"items": [
+            {"dateTime": "2026-05-12T20:00:00", "value": 0.505, "quality": "Good"},
+        ]})
+    )
+
+    async with UKEnvironmentAgencyConnector() as conn:
+        chunk = await conn.fetch_observations(
+            f"uk_ea:{guid}",
+            datetime(2026, 5, 1, tzinfo=UTC),
+            datetime(2026, 5, 20, tzinfo=UTC),
+        )
+
+    assert len(chunk.observations) == 1
+    assert chunk.observations[0].variable is Variable.DISCHARGE
+    assert chunk.observations[0].value == pytest.approx(0.505)
