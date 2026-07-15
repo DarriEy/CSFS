@@ -401,3 +401,29 @@ async def test_connector_health_per_provider_staleness(
         stale_after_by_provider={"usgs": 10 * 365 * 24.0}
     )
     assert tolerant[0]["data_health"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_append_dedupes_within_chunk(store: DuckDBStore, sample_station: Station):
+    """Duplicate keys inside one chunk collapse (last wins) rather than crash."""
+    await store.upsert_stations([sample_station])
+    sid = "usgs:01646500"
+    ts = datetime(2024, 6, 1, tzinfo=UTC)
+    chunk = TimeSeriesChunk(
+        station_id=sid, provider="usgs",
+        observations=[
+            Observation(station_id=sid, timestamp=ts, variable=Variable.DISCHARGE,
+                        resolution=Resolution.DAILY_MEAN, value=10.0),
+            Observation(station_id=sid, timestamp=ts, variable=Variable.DISCHARGE,
+                        resolution=Resolution.DAILY_MEAN, value=11.0),  # dup key
+            # Same timestamp, different resolution -> distinct, both kept.
+            Observation(station_id=sid, timestamp=ts, variable=Variable.DISCHARGE,
+                        resolution=Resolution.INSTANTANEOUS, value=12.0),
+        ],
+        fetched_at=ts,
+    )
+    n = await store.append_observations(chunk)
+    assert n == 2
+    rows = await store.get_observations(sid, resolution="daily_mean")
+    assert len(rows) == 1
+    assert rows[0]["value"] == 11.0  # last value won

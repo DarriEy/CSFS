@@ -77,20 +77,29 @@ class UKEnvironmentAgencyConnector(BaseConnector):
     _LEVEL_MEASURE_PREFS = ["-level-i-900-", "-level-m-86400-"]
 
     async def _station_measures(self, native_id: str) -> list[dict]:
-        """All measure items for a station.
+        """All measure items for a station, across both EA id schemes.
 
-        Queried by ``station.stationReference`` rather than the station-path
-        form: EA migrated station ids to GUIDs (2026-07), after which
-        ``/id/stations/<wiski-ref>/measures`` returns an empty item list
-        while the reference query still resolves.
+        EA migrated station ids to GUIDs (2026-07). The two lookups are
+        complementary and mutually exclusive:
+        - GUID stations resolve via the path form ``/id/stations/<guid>/measures``
+          but return nothing for ``?station.stationReference=<guid>``;
+        - legacy WISKI-reference stations (e.g. ``3400TH``) are the reverse.
+        Try the path form first (the roster is now overwhelmingly GUIDs),
+        then fall back to the stationReference query.
         """
-        try:
-            resp = await self._get(
+        for fetch in (
+            lambda: self._get(f"/id/stations/{native_id}/measures"),
+            lambda: self._get(
                 "/id/measures", params={"station.stationReference": native_id}
-            )
-            return list(resp.json().get("items", []))
-        except Exception:
-            return []
+            ),
+        ):
+            try:
+                items = list((await fetch()).json().get("items", []))
+            except Exception:
+                items = []
+            if items:
+                return items
+        return []
 
     @staticmethod
     def _ordered(measures: list[str], prefs: list[str], *, suffix: bool) -> list[str]:

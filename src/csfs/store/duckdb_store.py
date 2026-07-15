@@ -208,11 +208,21 @@ class DuckDBStore(BaseStore):
     async def append_observations(self, chunk: TimeSeriesChunk) -> int:
         if not chunk.observations:
             return 0
-        rows = [
-            (obs.station_id, obs.timestamp, obs.variable.value, obs.resolution.value,
-             obs.value, obs.quality.value, chunk.fetched_at)
-            for obs in chunk.observations
-        ]
+        # Collapse duplicate keys within the chunk (last value wins). The
+        # anti-join below only dedups against rows already in the table; two
+        # observations sharing (station_id, variable, resolution, timestamp)
+        # in the same chunk would both pass it and trip the primary key.
+        # Connectors that stitch overlapping windows (e.g. france_hubeau's
+        # realtime→elaborated fallback) or re-report a timestamp legitimately
+        # produce these, and one bad key must not sink the whole append.
+        deduped: dict[tuple[str, datetime, str, str], tuple] = {}
+        for obs in chunk.observations:
+            key = (obs.station_id, obs.timestamp, obs.variable.value, obs.resolution.value)
+            deduped[key] = (
+                obs.station_id, obs.timestamp, obs.variable.value,
+                obs.resolution.value, obs.value, obs.quality.value, chunk.fetched_at,
+            )
+        rows = list(deduped.values())
         # CREATE OR REPLACE drops any stale staging table (e.g. an older
         # schema) lingering on a reused connection.
         self.conn.execute(
