@@ -29,7 +29,7 @@
   access: open
   realtime: true
   realtime_latency: 15min
-  stations: ~10000
+  stations: 8850 verified (9507 cataloged)
   stability: stable
   license: public_domain
   status: implemented
@@ -45,7 +45,7 @@
   access: open
   realtime: true
   realtime_latency: 15min
-  stations: ~1500
+  stations: 673 verified (1102 cataloged)
   stability: stable
   license: ogl_v3
   status: implemented
@@ -62,7 +62,7 @@
   access: open
   realtime: true
   realtime_latency: 1h
-  stations: ~3000
+  stations: 2109 verified (4135 cataloged)
   stability: stable
   license: licence_ouverte_v2
   status: implemented
@@ -80,7 +80,7 @@
   access: open
   realtime: true
   realtime_latency: 1h
-  stations: ~2700
+  stations: 2194 verified (8055 cataloged)
   stability: stable
   license: open_government_ca
   status: implemented
@@ -95,7 +95,7 @@
   access: open
   realtime: true
   realtime_latency: 15min
-  stations: ~1300 (water level), ~600 (discharge)
+  stations: 94 verified
   stability: stable
   license: dl-de/by-2-0
   status: implemented
@@ -112,7 +112,7 @@
   access: open
   realtime: true
   realtime_latency: 15min
-  stations: ~3500
+  stations: 1342 verified (6641 cataloged)
   stability: stable
   license: cc_by_4
   status: implemented
@@ -127,7 +127,7 @@
   access: open
   realtime: true
   realtime_latency: 10min
-  stations: ~260
+  stations: 177 verified (178 cataloged)
   stability: stable
   license: open
   status: implemented
@@ -143,7 +143,7 @@
   access: api_key_required
   realtime: true
   realtime_latency: 1h
-  stations: ~600
+  stations: 553 verified (1637 cataloged)
   stability: stable
   license: nlod
   status: implemented
@@ -159,7 +159,7 @@
   access: open
   realtime: true
   realtime_latency: daily
-  stations: ~400
+  stations: 224 verified (719 cataloged)
   stability: stable
   license: cc0
   status: implemented
@@ -182,7 +182,7 @@
   format: [json, csv]
   access: open
   realtime: false
-  stations: ~1500
+  stations: 1207 verified (1601 cataloged)
   stability: stable
   license: ogl_v3
   status: implemented
@@ -199,7 +199,7 @@
   format: [xml]
   access: open
   realtime: false
-  stations: ~4500 (telemetric), ~30000 (historical)
+  stations: 1320 verified (17766 cataloged)
   stability: moderate
   license: open
   status: implemented
@@ -228,7 +228,7 @@
   format: [json, csv]
   access: open
   realtime: false
-  stations: ~550
+  stations: 512 verified (548 cataloged)
   stability: stable
   status: implemented
   notes: "Universidad de Chile's CR2 explorador re-serves the DGA gauge archive through a scriptable request.php endpoint (JSON metadata + generated CSV export). Daily-mean discharge, already m3/s; snapshot currently ends 2020-06-05, so this is a historical/backfill source. Live station catalog (~548 qflxDaily gauges). Server ignores requested time windows; sliced client-side."
@@ -270,7 +270,7 @@
   access: open
   realtime: true
   realtime_latency: 1h
-  stations: ~1000
+  stations: 195 verified (407 cataloged)
   stability: moderate
   status: implemented
   notes: Distributed across regional councils, each running Hilltop servers.
@@ -284,7 +284,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~800
+  stations: 205 verified (623 cataloged)
   stability: stable
   status: implemented
   notes: Official WFS service from the Federal Ministry (BMLUK).
@@ -300,7 +300,7 @@
   format: [csv_in_zip]
   access: open
   realtime: false
-  stations: unknown
+  stations: 890 verified (913 cataloged)
   stability: stable
   status: implemented
   notes: Hydrological year (Nov start). All gauges in monthly zip files.
@@ -315,7 +315,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: ~1440
+  stations: 0 verified (29 cataloged)
   stability: moderate
   status: implemented
   notes: >-
@@ -334,7 +334,7 @@
   format: [csv]
   access: registration
   realtime: false
-  stations: ~300
+  stations: 291 verified (500 cataloged)
   stability: moderate
   status: implemented
   estreams_id: FI_SYKE
@@ -353,7 +353,7 @@
   access: open
   realtime: true
   realtime_latency: 10min
-  stations: ~4000
+  stations: 135 verified
   stability: fragile
   status: implemented
 
@@ -380,7 +380,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~890
+  stations: 481 verified (892 cataloged)
   stability: moderate
   status: implemented
   notes: "INA Alerta a5 REST API (discharge 'caudal' + stage series). The raw station catalogue has ~4,664 points but only ~890 hold a populated discharge/stage series; fetch_stations filters to those (fixed 2026-07 — previously the dead points starved capped runs)."
@@ -408,6 +408,7 @@
   access: open
   realtime: true
   status: implemented
+  stations: 5 verified
   notes: "Scrapes the daily Danube hydrology bulletin (/hidrology-en) for current discharge (m3/s) at 6 gauges (Novo Selo, Lom, Oryahovo, Svishtov, Ruse, Silistra). Snapshot-only - one value per day, no historical API. Live-verified 2026-06."
 
 - slug: italy_ispra
@@ -434,7 +435,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~397
+  stations: 210 verified (390 cataloged)
   stability: stable
   status: implemented
   notes: "Real-time data via backend hisbaza.py API. NOTE: the zadnjipodaci feed serves water LEVEL (cm), not discharge — stored in the discharge field per the connector's convention; NOT a streamflow drop-in (no m³/s source)."
@@ -449,7 +450,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: unknown
+  stations: 93 verified (314 cataloged)
   stability: fragile
   status: implemented
   estreams_id: IE_EPA
@@ -463,7 +464,7 @@
   format: [html]
   access: open
   realtime: false
-  stations: ~715
+  stations: 0 verified (715 cataloged)
   stability: fragile
   status: implemented
   notes: "Daily-mean discharge (pars 1850) and stage (pars 1845) scraped from the janela_verdados.php HTML tables; bundled 715-gauge seed catalog (code -> numeric SNIRH id + coords). Server ignores tmin/tmax (full record returned; sliced client-side). SNIRH's edge IP-blocks many networks with a bare 403 — confirmed to include GitHub Actions runners (2026-07-13), so scheduled acquisition yields no data; needs an EU/residential egress or the paraCSV/dados_csv.php route investigated."
@@ -478,7 +479,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: 66
+  stations: 121 verified (195 cataloged)
   stability: moderate
   status: implemented
   estreams_id: BE_WATERINFO
@@ -492,7 +493,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: 164
+  stations: 260 verified (283 cataloged)
   stability: moderate
   status: implemented
   notes: No-redistribution license.
@@ -507,7 +508,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: unknown
+  stations: 117 verified (222 cataloged)
   stability: moderate
   status: implemented
   estreams_id: NL_RWS
@@ -521,7 +522,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: unknown
+  stations: 513 verified (544 cataloged)
   stability: moderate
   status: implemented
   estreams_id: CZ_CHMU
@@ -535,7 +536,7 @@
   format: [xml]
   access: open
   realtime: true
-  stations: ~100
+  stations: 174 verified (193 cataloged)
   stability: stable
   status: implemented
   notes: Real-time XML feed of latest observations.
@@ -550,7 +551,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: unknown
+  stations: 82 verified (111 cataloged)
   stability: stable
   status: implemented
   estreams_id: IS_LAMAHICE
@@ -564,7 +565,7 @@
   format: [csv]
   access: open
   realtime: partial
-  stations: unknown
+  stations: 5 verified (8 cataloged)
   stability: fragile
   status: implemented
   estreams_id: GR_OPENHI
@@ -597,7 +598,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: ~600
+  stations: 474 verified (610 cataloged)
   stability: stable
   status: implemented
   notes: "Discharge (m3/s) via HTML table scraping of the GKD portal; the CSV path is email/ToS-gated. ~610 stations; lat/lon not exposed by these pages (default 0.0). Live-verified 2026-06."
@@ -611,7 +612,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~3000
+  stations: 254 verified
   stability: fragile
   status: implemented
   notes: "Discharge (m3/s) parsed from the HVZ JS catalogue (hvz_peg_stmn.js). LATEST-VALUE ONLY - no historical series; ~260 discharge stations. Live-verified 2026-06."
@@ -625,7 +626,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: ~240
+  stations: 177 verified (250 cataloged)
   stability: moderate
   status: implemented
   notes: "Open discharge (Abfluss, m3/s) from the OpenGeodata.NRW CSV archive (q/index.json -> per-catchment, per-decade zips of 15-min series). Bulk/periodic (not realtime); weekly tier. No coordinates in the source files."
@@ -641,7 +642,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~100
+  stations: 7 verified
   stability: moderate
   status: implemented
   notes: "Discharge (m3/s) from the ARPAE open-data instantaneous-flow feed (dati-simc.arpae.it). Only ~7 Po-river discharge gauges are public; rolling ~10-day window. Live-verified 2026-06."
@@ -658,7 +659,7 @@
   format: [csv, waterml]
   access: registration
   realtime: false
-  stations: ~10000
+  stations: 0 verified (43 cataloged)
   stability: stable
   license: non_commercial
   status: implemented
@@ -676,7 +677,7 @@
   access: registration
   realtime: true
   realtime_latency: daily
-  stations: gridded (~0.05°)
+  stations: 15 verified
   stability: stable
   license: copernicus
   status: implemented
@@ -691,7 +692,7 @@
   format: [waterml, json]
   access: open
   realtime: varies
-  stations: ~20000 (federated)
+  stations: 331 verified (486 cataloged)
   stability: moderate
   status: implemented
   notes: "Federated WHOS / GEO DAB broker. Uses the public anonymous token; fetch_stations bounded by config['countries'] x limit. Discharge in m3/s. Live-verified 2026-06."
@@ -718,7 +719,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 671
+  stations: 667 verified (671 cataloged)
   license: ogl_v3
   status: fallback
 
@@ -730,7 +731,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 516
+  stations: 516 verified
   status: fallback
 
 - slug: camels_ind
@@ -741,7 +742,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 472
+  stations: 242 verified
   status: implemented
 
 - slug: camels_ch
@@ -763,7 +764,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 897
+  stations: 2024 verified (3679 cataloged)
   status: fallback
 
 - slug: camels_aus
@@ -774,7 +775,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 222
+  stations: 561 verified
   status: fallback
 
 - slug: camels_de
@@ -785,7 +786,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 1582
+  stations: 1581 verified (1647 cataloged)
   status: implemented
 
 - slug: camels_in
@@ -796,7 +797,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 472
+  stations: 0 verified (65 cataloged)
   status: implemented
 
 - slug: camels_co
@@ -807,7 +808,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 347
+  stations: 0 verified (65 cataloged)
   status: implemented
 
 - slug: camels_dk
@@ -818,7 +819,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 3330
+  stations: 0 verified (1 cataloged)
   status: implemented
   notes: "Offline archive (CAMELS-DK, Zenodo). Returns a small seed catalogue only; observations require local downloaded dataset files (config['data_dir']). No obs in automated acquisition without them."
 
@@ -854,7 +855,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 369
+  stations: 354 verified (369 cataloged)
   status: implemented
   notes: "Dataset artifact (CAMELS-NZ, U. Canterbury figshare doi:10.26021/canterburynz.28827644, CC-BY-4.0). Auto-downloads daily streamflow (flow, m3/s) + catchment info (WGS84 coords). figshare URLs carry no filename and redirect to signed S3; 14/369 stations are permission-gated and ship empty files."
 
@@ -866,7 +867,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 320
+  stations: 320 verified
   status: implemented
   notes: "Dataset artifact (CAMELS-FI, Zenodo doi:10.5281/zenodo.15853357, CC-BY-4.0; ESSD preprint under review). Single bundle: per-gauge timeseries (discharge_vol, m3/s, CAMELS-GB layout) + meta attributes; coords reprojected from EPSG:3067."
 
@@ -890,7 +891,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 136
+  stations: 136 verified
   status: implemented
   notes: "Dataset artifact (CAMELS-PE, Llauca et al. 2026, Zenodo doi:10.5281/zenodo.20058778, CC-BY-4.0). Single bundle: per-catchment timeseries with flow_obs (OBSERVED streamflow, mm/day -> m3/s via catchment area; flow_sim PISCO-ARNOVIC ignored) + topographic attributes (area) + stations (WGS84 coords)."
 
@@ -902,7 +903,7 @@
   format: [netcdf]
   access: open
   realtime: false
-  stations: 14425
+  stations: 14425 verified
   status: implemented
   notes: "Dataset artifact (HYSETS, OSF doi:10.17605/OSF.IO/RPC3W, CC-BY-4.0). Observed daily discharge (m3/s) is a discharge(watershed, time) variable in a ~3 GB NetCDF (not per-gauge CSVs); keyed by agency Official_ID via the watershed properties table. Requires xarray/netCDF4. OSF download URLs are filename-less (DATASETS 'filename' override)."
 
@@ -938,7 +939,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 9008
+  stations: 0 verified (2 cataloged)
   status: implemented
   notes: "Hourly CAMELSH (Zenodo, 1980-2024). Offline archive: seed catalogue only; observations require local downloaded files (config['data_dir']). No obs in automated acquisition without them."
 
@@ -950,7 +951,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 2386
+  stations: 0 verified (1 cataloged)
   status: implemented
   notes: "ROBIN near-natural reference basins (CEH/EIDC). Offline archive: seed catalogue only; observations require local downloaded files. No obs in automated acquisition without them."
 
@@ -963,7 +964,7 @@
   format: [csv, netcdf]
   access: open
   realtime: false
-  stations: ~10000
+  stations: 0 verified (65 cataloged)
   license: cc_by_4
   status: implemented
   notes: Unified format across CAMELS variants + extensions (v1.6).
@@ -977,7 +978,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 5356
+  stations: 0 verified (65 cataloged)
   license: cc_by_4
   status: implemented
   notes: 2025 extension adding GRDC data to Caravan.
@@ -990,7 +991,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: 859
+  stations: 0 verified (30 cataloged)
   license: cc_by_4
   status: implemented
   notes: Danube basin focus. Hourly resolution available.
@@ -1003,7 +1004,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: ~30000
+  stations: 0 verified (20 cataloged)
   license: cc_by_4
   status: implemented
   notes: Monthly indices from merged archives. Good for coverage gap analysis.
@@ -1033,7 +1034,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~500
+  stations: 14 verified
   status: implemented
   notes: Bilingual API (English + Chinese field names).
 
@@ -1046,7 +1047,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~500
+  stations: 777 verified
   status: implemented
 
 - slug: geoglows
@@ -1058,7 +1059,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~7000000 (reaches)
+  stations: 7 verified
   status: implemented
   notes: "GEOGLOWS ECMWF V2 global simulated streamflow (keyless REST). Reach-based model exposed as 7 curated major-river virtual stations (Amazon, Mekong, Yenisei, Lena, Ob, Mackenzie, Danube); discharge m3/s flagged ESTIMATED; retrospective lags ~2-3 weeks; extend via config virtual_stations. Live-verified 2026-06."
 
@@ -1072,6 +1073,7 @@
   access: open
   realtime: true
   status: degraded
+  stations: 60 verified (284 cataloged)
   notes: "La Plata River Basin federated access. Degraded 2026-07: ARG (INA-brokered) stations 500-error server-side, PRY/URY/BOL yield no data even over year-long windows; only its Brazil stations work, duplicating wmo_whos. Code kept — may recover when the broker fixes the INA source."
 
 - slug: wmo_whos_africa
@@ -1109,7 +1111,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~450
+  stations: 226 verified (547 cataloged)
   stability: stable
   status: implemented
   notes: Near-real-time river data via Danmarks Miljøportal (IoT).
@@ -1148,7 +1150,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: ~95
+  stations: 97 verified
   status: implemented
   notes: "Hydrology API launched Nov 2023. Serves water level (cm) and water temperature only — no discharge; the connector emits stage (m) + water_temperature. (Pre-2026-07 rows stored levels in the discharge column; re-tagged by the store's multi-variable migration.)"
 
@@ -1186,7 +1188,7 @@
   format: [csv]
   access: open
   realtime: false
-  stations: ~17130 (catalogue), ~100 (target countries)
+  stations: 0 verified (28 cataloged)
   status: implemented
   notes: Catalogue connector for countries without national APIs.
 
@@ -1199,7 +1201,7 @@
   format: [geopackage, csv]
   access: open
   realtime: false
-  stations: 295 (135 with time series)
+  stations: 0 verified (135 cataloged)
   license: cc_by_4
   status: implemented
   notes: Academic dataset covering mountainous Central Asia.
@@ -1214,6 +1216,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 1466 verified
   notes: Pan-African monthly discharge series and hydrometric statistics.
 
 - slug: bolivia_ine
@@ -1226,6 +1229,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 0 verified (5 cataloged)
   notes: NADA catalog dataset #209.
 
 - slug: bulgaria_nimh
@@ -1238,6 +1242,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 68 verified
   notes: "Daily discharge (Q, m3/s) from the NIMH river-runoff page (POST mydate=YYYY-MM-DD -> HTML table, one row/gauge). ~68 gauges; comma decimals; no coordinates. Observations iterate the window day-by-day."
 
 - slug: israel_caravan
@@ -1250,6 +1255,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 20 verified
   notes: Zenodo record 15003600.
 
 - slug: pakistan_wapda
@@ -1262,6 +1268,7 @@
   access: open
   realtime: true
   status: implemented
+  stations: 14 verified
 
 - slug: panama_stri
   name: STRI Panama Canal Watershed (ACP)
@@ -1273,6 +1280,7 @@
   access: open
   realtime: true
   status: implemented
+  stations: 0 verified (11 cataloged)
 
 - slug: russia_arcticnet
   name: R-ArcticNET v4.0 (Russian Arctic)
@@ -1284,6 +1292,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 1765 verified (2341 cataloged)
   notes: Monthly mean discharge for Russian Arctic stations.
 
 - slug: scotland_sepa
@@ -1297,6 +1306,7 @@
   realtime: true
   realtime_latency: 15min
   status: implemented
+  stations: 280 verified (320 cataloged)
   notes: Uses KISTERS KiWIS service.
 
 - slug: sierem
@@ -1309,6 +1319,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 0 verified (40 cataloged)
   notes: IRD database focused on West and Central Africa.
 
 - slug: vietnam_mekong
@@ -1321,6 +1332,7 @@
   access: open
   realtime: false
   status: implemented
+  stations: 1 verified (4 cataloged)
   notes: "Static EIDC ratings archive (4 gauges, records end 2017-09) — backfill-only, like chile_cr2; scheduled short-lookback runs always yield 0, hence weekly tier. 2-digit-year rows fixed 2026-07 (were silently dropped)."
 
 - slug: ecuador_inamhi
@@ -1333,6 +1345,7 @@
   access: open
   realtime: true
   status: implemented
+  stations: 19 verified
   notes: "INAMHI Ecuador streamflow via the GEOGLOWS ECMWF model (reach-based, m3/s). Shares the GEOGLOWS backend with the global geoglows connector but scoped to Ecuador."
 
 - slug: southafrica_dws
@@ -1344,7 +1357,7 @@
   format: [html]
   access: open
   realtime: false
-  stations: ~1294
+  stations: 49 verified (1294 cataloged)
   stability: fragile
   status: implemented
   notes: "Department of Water and Sanitation verified hydrology (HyData.aspx <pre> text): daily-mean discharge plus instantaneous discharge and stage (SAST -> UTC); bundled 1,294-gauge seed catalog. Primary host geo/WAF-blocks some networks; legacy mirror www.dwa.gov.za serves the same Hydstra backend (config base_url override + verify_ssl=false). Daily mode currently erroring server-side on the mirror; connector degrades gracefully."
@@ -1358,7 +1371,7 @@
   format: [csv, html]
   access: open
   realtime: true
-  stations: ~133
+  stations: 78 verified (133 cataloged)
   stability: stable
   status: implemented
   notes: "Berlin state surface-water portal: discharge + stage (cm -> m) + water temperature, daily means and 15-min instantaneous (station.php CSV; live-scraped catalog with proper UTM33N/GK4 -> WGS84 conversion). Europe/Berlin -> UTC."
