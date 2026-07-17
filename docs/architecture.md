@@ -89,6 +89,28 @@ table is rebuilt with the new key, existing rows are backfilled as
 becomes the generic `value` column. Read-only opens of an unmigrated file
 fail fast with instructions instead of erroring mid-query.
 
+### Operational snapshot vs. verified archive
+
+Two DuckDB artifacts are published on the `db-snapshot` GitHub release:
+
+- **`csfs.duckdb`** — the *operational* store the scheduler restores,
+  appends to, and re-uploads every acquisition run. Kept deliberately lean
+  (recent, live-refreshable observations) so each run stays a quick
+  download.
+- **`csfs-verified-archive.duckdb.zst`** — a zstd-compressed *verified
+  archive* (~440 MB compressed, ~2.4 GB open) holding the full result of
+  the roster-wide verification sweep: **~465 M observations for 59.5 k
+  stations, spanning 1900–2026**, including deep historical backfill for
+  discontinued gauges. Download and `zstd -d` to query it directly; it is
+  not touched by the acquisition workflow.
+
+A cataloged station counts as *verified* once observations have been
+retrieved for it at least once (recorded in `inventory/providers.yaml` as
+`N verified (M cataloged)`). Because most of that verified history is
+frozen (discontinued gauges), it lives in the archive rather than bloating
+the per-run operational snapshot — so the operational store legitimately
+carries fewer stations than the verified total.
+
 ## Scheduler tiers
 
 Every registered connector belongs to **exactly one** tier in
