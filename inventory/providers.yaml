@@ -80,7 +80,7 @@
   access: open
   realtime: true
   realtime_latency: 1h
-  stations: 2194 verified (8055 cataloged)
+  stations: 5205 verified (8055 cataloged)
   stability: stable
   license: open_government_ca
   status: implemented
@@ -112,7 +112,7 @@
   access: open
   realtime: true
   realtime_latency: 15min
-  stations: 1342 verified (6641 cataloged)
+  stations: 2741 verified (6641 cataloged)
   stability: stable
   license: cc_by_4
   status: implemented
@@ -143,7 +143,7 @@
   access: api_key_required
   realtime: true
   realtime_latency: 1h
-  stations: 553 verified (1637 cataloged)
+  stations: 1446 verified (1637 cataloged)
   stability: stable
   license: nlod
   status: implemented
@@ -159,7 +159,7 @@
   access: open
   realtime: true
   realtime_latency: daily
-  stations: 224 verified (719 cataloged)
+  stations: 490 verified (719 cataloged)
   stability: stable
   license: cc0
   status: implemented
@@ -182,7 +182,7 @@
   format: [json, csv]
   access: open
   realtime: false
-  stations: 1207 verified (1601 cataloged)
+  stations: 1564 verified (1601 cataloged)
   stability: stable
   license: ogl_v3
   status: implemented
@@ -199,7 +199,7 @@
   format: [xml]
   access: open
   realtime: false
-  stations: 1320 verified (17766 cataloged)
+  stations: 3949 verified (17766 cataloged)
   stability: moderate
   license: open
   status: implemented
@@ -270,7 +270,7 @@
   access: open
   realtime: true
   realtime_latency: 1h
-  stations: 195 verified (407 cataloged)
+  stations: 237 verified (407 cataloged)
   stability: moderate
   status: implemented
   notes: Distributed across regional councils, each running Hilltop servers.
@@ -334,7 +334,7 @@
   format: [csv]
   access: registration
   realtime: false
-  stations: 291 verified (500 cataloged)
+  stations: 435 verified (500 cataloged)
   stability: moderate
   status: implemented
   estreams_id: FI_SYKE
@@ -450,7 +450,7 @@
   format: [csv]
   access: open
   realtime: true
-  stations: 93 verified (314 cataloged)
+  stations: 238 verified (314 cataloged)
   stability: fragile
   status: implemented
   estreams_id: IE_EPA
@@ -1111,7 +1111,7 @@
   format: [json]
   access: open
   realtime: true
-  stations: 226 verified (547 cataloged)
+  stations: 268 verified (547 cataloged)
   stability: stable
   status: implemented
   notes: Near-real-time river data via Danmarks Miljøportal (IoT).
@@ -1292,7 +1292,7 @@
   access: open
   realtime: false
   status: implemented
-  stations: 1765 verified (2341 cataloged)
+  stations: 2326 verified (2341 cataloged)
   notes: Monthly mean discharge for Russian Arctic stations.
 
 - slug: scotland_sepa
