@@ -5,8 +5,10 @@ import pytest
 from csfs.core.health import (
     DEGRADED_DATA_HEALTH,
     DEGRADED_RUN_STATUS,
+    classify_root_cause,
     degraded_connectors,
     gather_connector_health,
+    health_status_document,
     is_degraded,
     summarize_health,
 )
@@ -60,6 +62,41 @@ def test_degraded_connectors_filters():
 
 def test_degradation_constants_are_disjoint():
     assert not set(DEGRADED_DATA_HEALTH) & set(DEGRADED_RUN_STATUS)
+
+
+def test_status_document_groups_stable_root_causes():
+    rows = [
+        {"provider": "fresh", "data_health": "ok", "last_status": "ok"},
+        {"provider": "empty", "data_health": "empty", "last_status": None},
+        {"provider": "broken", "data_health": "ok", "last_status": "error"},
+    ]
+    status = health_status_document(rows, stale_threshold_hours=24, tier="daily")
+    assert status["schema_version"] == 1
+    assert status["status"] == "degraded"
+    assert status["tier"] == "daily"
+    assert status["reasons"] == {"data:empty": ["empty"], "run:error": ["broken"]}
+    assert status["generated_at"].endswith("+00:00")
+    broken = next(row for row in status["connectors"] if row["provider"] == "broken")
+    assert broken["root_cause"] == "run:error"
+    assert "consecutive_failures" not in broken
+    assert "run_latency_hours" not in broken
+
+
+def test_status_document_respects_alert_policy():
+    rows = [{"provider": "archive", "data_health": "stale", "last_status": "ok"}]
+    status = health_status_document(
+        rows, stale_threshold_hours=24, data_health=(), run_status=("error", "degraded"),
+    )
+    assert status["status"] == "healthy"
+    assert status["degraded"] == []
+    assert status["reasons"] == {}
+
+
+def test_root_cause_classifies_actionable_outages_and_lifecycle():
+    assert classify_root_cause({"last_status": "error", "last_error": "HTTP 401"}) == "outage:authentication"
+    assert classify_root_cause({"last_status": "error", "last_error": "schema column missing"}) == "outage:schema-drift"
+    assert classify_root_cause({"last_status": "error", "last_error": "connection timed out"}) == "outage:upstream"
+    assert classify_root_cause({"lifecycle": "retired"}) == "lifecycle:retired"
 
 
 @pytest.mark.asyncio

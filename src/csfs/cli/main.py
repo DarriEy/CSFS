@@ -369,6 +369,7 @@ def health(
         DEGRADED_DATA_HEALTH,
         DEGRADED_RUN_STATUS,
         gather_connector_health,
+        health_status_document,
         is_degraded,
         summarize_health,
     )
@@ -407,12 +408,18 @@ def health(
         display = flagged if degraded_only else rows
 
         if as_json:
-            payload = {
-                "stale_threshold_hours": stale_hours,
-                "summary": summarize_health(rows),
-                "degraded": [r["provider"] for r in flagged],
-                "connectors": display,
-            }
+            payload = health_status_document(
+                rows,
+                stale_threshold_hours=stale_hours,
+                tier=tier,
+                data_health=data_buckets,
+                run_status=statuses,
+            )
+            if degraded_only:
+                degraded = set(payload["degraded"])
+                payload["connectors"] = [
+                    row for row in payload["connectors"] if row["provider"] in degraded
+                ]
             click.echo(_json.dumps(payload, indent=2, default=str))
         else:
             summary = summarize_health(rows)
