@@ -50,9 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
 
@@ -126,7 +126,8 @@ jobs:
         id: health
         run: |
           csfs health --tier "${{ steps.tier.outputs.tier }}" | tee health.txt
-          csfs health --tier "${{ steps.tier.outputs.tier }}" --json > health.json
+          csfs health --tier "${{ steps.tier.outputs.tier }}" --json \
+            --fail-on error,degraded > health.json || true
           # Alert only on acquisition runs that errored/degraded this cycle.
           if csfs health --tier "${{ steps.tier.outputs.tier }}" \
                --degraded-only --fail-on error,degraded; then
@@ -134,14 +135,34 @@ jobs:
           else
             echo "degraded=true" >> "$GITHUB_OUTPUT"
           fi
+          status=$(python -c 'import json; print(json.load(open("health.json"))["status"])')
+          degraded=$(python -c 'import json; print(len(json.load(open("health.json"))["degraded"]))')
+          {
+            echo "## CSFS ${status}: ${{ steps.tier.outputs.tier }} tier"
+            echo
+            echo "Connectors requiring attention: **${degraded}**"
+            echo
+            echo '```json'
+            python -c 'import json; d=json.load(open("health.json")); print(json.dumps({"summary": d["summary"], "reasons": d["reasons"]}, indent=2))'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload health artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: health-${{ steps.tier.outputs.tier }}
           path: |
             health.txt
             health.json
+
+      - name: Publish machine-readable status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIER: ${{ steps.tier.outputs.tier }}
+        run: |
+          asset="health-status-${TIER}.json"
+          cp health.json "$asset"
+          gh release upload "$DB_TAG" "$asset" --clobber
 
       - name: Alert on degraded connectors
         if: steps.health.outputs.degraded == 'true'
@@ -152,17 +173,52 @@ jobs:
           title="CSFS health alert: ${TIER} tier"
           body="One or more connectors in the **${TIER}** tier errored or degraded in the latest run ($(date -u +%Y-%m-%dT%H:%MZ)).
 
+          <!-- csfs-recovery:0 -->
+
           \`\`\`
           $(cat health.txt)
           \`\`\`
 
+          Root-cause groups:
+          \`\`\`json
+          $(python -c 'import json; print(json.dumps(json.load(open("health.json"))["reasons"], indent=2))')
+          \`\`\`
+
           Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number')
+          existing=$(gh issue list --state open --search "$title in:title" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -1)
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body "$body"
           else
             gh issue create --title "$title" --label "health" --body "$body" \
               || gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Record recovery and close after two healthy runs
+        if: steps.health.outputs.degraded == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TIER: ${{ steps.tier.outputs.tier }}
+        run: |
+          title="CSFS health alert: ${TIER} tier"
+          existing=$(gh issue list --state open --search "$title in:title" --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -1)
+          [ -z "$existing" ] && exit 0
+          previous=$(gh issue view "$existing" --json comments \
+            --jq '.comments[-1].body | contains("<!-- csfs-recovery:1 -->")')
+          if [ "$previous" = "true" ]; then
+            gh issue comment "$existing" --body "Health remained clean for a second consecutive run. Closing automatically.
+
+          <!-- csfs-recovery:2 -->
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh issue close "$existing" --reason completed
+          else
+            gh issue comment "$existing" --body "First consecutive healthy run observed. This alert will close if the next run is also healthy.
+
+          <!-- csfs-recovery:1 -->
+
+          Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
 
       # The job is NOT failed when connectors degrade: in a real tier some

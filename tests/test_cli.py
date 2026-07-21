@@ -238,6 +238,14 @@ def test_health_json_output(runner, test_db):
     assert "summary" in payload
     assert "connectors" in payload
     assert "degraded" in payload
+    assert all("root_cause" in row for row in payload["connectors"])
+    assert all("lifecycle" in row for row in payload["connectors"])
+    assert all("consecutive_failures" not in row for row in payload["connectors"])
+    assert all("run_latency_hours" not in row for row in payload["connectors"])
+    assert all("root_cause" in row for row in payload["connectors"])
+    assert all("lifecycle" in row for row in payload["connectors"])
+    assert all("consecutive_failures" not in row for row in payload["connectors"])
+    assert all("run_latency_hours" not in row for row in payload["connectors"])
 
 
 def test_health_fail_on_triggers_exit_code(runner, test_db):
