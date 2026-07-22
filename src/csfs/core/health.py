@@ -33,12 +33,15 @@ def classify_root_cause(row: dict) -> str | None:
     if status in DEGRADED_RUN_STATUS:
         if any(token in error for token in ("401", "403", "credential", "unauthor", "forbidden")):
             return "outage:authentication"
+        # Check transport status before generic words such as "format". URLs
+        # commonly contain ``format=json`` even when the actual failure is a
+        # 502/503 response from the provider.
+        if any(token in error for token in ("timeout", "timed out", "connection", "dns", "503", "502")):
+            return "outage:upstream"
         if any(token in error for token in ("schema", "column", "parse", "format", "decode")):
             return "outage:schema-drift"
         if any(token in error for token in ("404", "410", "retired", "deprecated", "not found")):
             return "outage:product-unavailable"
-        if any(token in error for token in ("timeout", "timed out", "connection", "dns", "503", "502")):
-            return "outage:upstream"
         return f"run:{status}"
     data_health = row.get("data_health")
     if data_health in DEGRADED_DATA_HEALTH:

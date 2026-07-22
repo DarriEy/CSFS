@@ -266,6 +266,62 @@ async def test_zero_observations_with_stations_is_degraded(store: DuckDBStore):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("config", [{"expected_empty": True}, {"auto_download": False}])
+async def test_expected_empty_provider_is_ok(store: DuckDBStore, config: dict):
+    """An explicitly metadata-only provider is healthy when all fetches are empty."""
+    from csfs.scheduler.runner import run_acquisition
+
+    stations = _make_stations(2)
+    mock_conn = AsyncMock()
+    mock_conn.fetch_stations = AsyncMock(return_value=stations)
+    mock_conn.fetch_observations = AsyncMock(side_effect=lambda station_id, start, end: TimeSeriesChunk(
+        station_id=station_id, provider="test", observations=[],
+        fetched_at=datetime(2024, 6, 1, 12, 0),
+    ))
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("csfs.scheduler.runner.discover"),
+        patch("csfs.scheduler.runner.list_providers", return_value=["test"]),
+        patch("csfs.scheduler.runner.get_connector", return_value=lambda **kw: mock_conn),
+    ):
+        results = await run_acquisition(
+            store, providers=["test"], lookback_hours=24,
+            provider_configs={"test": config},
+        )
+
+    assert results["test"]["status"] == "ok"
+    assert results["test"]["expected_empty"] is True
+
+
+@pytest.mark.asyncio
+async def test_expected_empty_does_not_hide_fetch_failures(store: DuckDBStore):
+    """Expected emptiness suppresses only clean emptiness, never request failures."""
+    from csfs.scheduler.runner import run_acquisition
+
+    stations = _make_stations(2)
+    mock_conn = AsyncMock()
+    mock_conn.fetch_stations = AsyncMock(return_value=stations)
+    mock_conn.fetch_observations = AsyncMock(side_effect=ConnectionError("upstream down"))
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch("csfs.scheduler.runner.discover"),
+        patch("csfs.scheduler.runner.list_providers", return_value=["test"]),
+        patch("csfs.scheduler.runner.get_connector", return_value=lambda **kw: mock_conn),
+    ):
+        results = await run_acquisition(
+            store, providers=["test"], lookback_hours=24,
+            provider_configs={"test": {"expected_empty": True}},
+        )
+
+    assert results["test"]["status"] == "error"
+    assert results["test"]["failed"] == 2
+
+
+@pytest.mark.asyncio
 async def test_outer_exception_records_error(store: DuckDBStore):
     """Exception in fetch_stations is caught, logged as error, and persisted."""
     from csfs.scheduler.runner import run_acquisition
