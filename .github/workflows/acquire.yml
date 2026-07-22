@@ -44,6 +44,7 @@ permissions:
 env:
   DB_TAG: db-snapshot
   DB_FILE: csfs.duckdb
+  DB_ARCHIVE: csfs.duckdb.zst
 
 jobs:
   acquire:
@@ -76,7 +77,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release download "$DB_TAG" --pattern "$DB_FILE" --clobber 2>/dev/null; then
+          if gh release download "$DB_TAG" --pattern "$DB_ARCHIVE" --clobber 2>/dev/null; then
+            zstd -T0 -d --force "$DB_ARCHIVE" -o "$DB_FILE"
+            echo "Restored compressed $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
+          elif gh release download "$DB_TAG" --pattern "$DB_FILE" --clobber 2>/dev/null; then
             echo "Restored $DB_FILE ($(du -h "$DB_FILE" | cut -f1))"
           else
             echo "No existing snapshot — starting a fresh DB."
@@ -120,7 +124,11 @@ jobs:
           gh release view "$DB_TAG" >/dev/null 2>&1 \
             || gh release create "$DB_TAG" --title "DB snapshot" \
                  --notes "Rolling canonical CSFS DuckDB store (updated by Acquire)."
-          gh release upload "$DB_TAG" "$DB_FILE" --clobber
+          # Primary-key indexes can push the operational DuckDB above GitHub's
+          # 2 GiB per-asset limit. Keep the local database uncompressed while
+          # acquiring, then publish a zstd snapshot for subsequent runs.
+          zstd -T0 -3 --force "$DB_FILE" -o "$DB_ARCHIVE"
+          gh release upload "$DB_TAG" "$DB_ARCHIVE" --clobber
 
       - name: Health report
         id: health
