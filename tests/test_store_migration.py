@@ -175,3 +175,55 @@ async def test_fetched_at_index_recreated(old_schema_db):
             ).fetchall()
         }
         assert "idx_observations_fetched" in indexes
+
+
+@pytest.mark.asyncio
+async def test_current_schema_without_constraints_is_repaired(tmp_path):
+    """A materialized snapshot regains the keys required by ON CONFLICT."""
+    db_path = tmp_path / "constraintless.duckdb"
+    conn = duckdb.connect(str(db_path))
+    conn.execute("""
+        CREATE TABLE stations AS SELECT
+            'usgs:1'::VARCHAR AS id, 'usgs'::VARCHAR AS provider,
+            '1'::VARCHAR AS native_id, 'One'::VARCHAR AS name,
+            1.0::DOUBLE AS latitude, 2.0::DOUBLE AS longitude,
+            'US'::VARCHAR AS country_code, NULL::VARCHAR AS river,
+            NULL::DOUBLE AS catchment_area_km2, NULL::DOUBLE AS elevation_m,
+            true::BOOLEAN AS is_active, current_timestamp::TIMESTAMP AS updated_at
+    """)
+    conn.execute("""
+        CREATE TABLE observations AS SELECT
+            'usgs:1'::VARCHAR AS station_id, current_timestamp::TIMESTAMPTZ AS timestamp,
+            'discharge'::VARCHAR AS variable, 'unknown'::VARCHAR AS resolution,
+            1.0::DOUBLE AS value, 'raw'::VARCHAR AS quality,
+            current_timestamp::TIMESTAMP AS fetched_at
+    """)
+    conn.execute("""
+        CREATE TABLE acquisition_log AS SELECT
+            'usgs'::VARCHAR AS provider, current_timestamp::TIMESTAMPTZ AS started_at,
+            1.0::DOUBLE AS duration_s, 'ok'::VARCHAR AS status,
+            1::INTEGER AS stations, 1::INTEGER AS observations,
+            1::INTEGER AS fetched, 0::INTEGER AS failed, 0::INTEGER AS retried,
+            0::INTEGER AS recovered, NULL::VARCHAR AS error_message
+    """)
+    conn.close()
+
+    async with DuckDBStore(db_path) as store:
+        keys = {
+            table: store._primary_key_columns(table)
+            for table in ("stations", "observations", "acquisition_log")
+        }
+        assert keys == {
+            "stations": ("id",),
+            "observations": ("station_id", "variable", "resolution", "timestamp"),
+            "acquisition_log": ("provider", "started_at"),
+        }
+        store.conn.execute("""
+            INSERT INTO observations SELECT * FROM observations
+            ON CONFLICT DO NOTHING
+        """)
+        assert store.conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0] == 1
+
+    # Repair is idempotent on subsequent writable opens.
+    async with DuckDBStore(db_path):
+        pass

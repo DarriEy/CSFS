@@ -106,6 +106,7 @@ class DuckDBStore(BaseStore):
             self._conn.execute(_INIT_SQL)
             if self._needs_multivariable_migration():
                 self._migrate_to_multivariable()
+            self._repair_missing_primary_keys()
         elif self._needs_multivariable_migration():
             raise RuntimeError(
                 f"{self._db_path} uses the pre-multi-variable schema; open it "
@@ -121,6 +122,61 @@ class DuckDBStore(BaseStore):
             "WHERE table_name = 'observations' AND column_name = 'variable'"
         ).fetchone()
         return row is not None and row[0] == 0
+
+    def _primary_key_columns(self, table: str) -> tuple[str, ...] | None:
+        """Return a table's primary-key columns, or ``None`` when absent."""
+        row = self.conn.execute(
+            "SELECT constraint_column_names FROM duckdb_constraints() "
+            "WHERE table_name = ? AND constraint_type = 'PRIMARY KEY'",
+            [table],
+        ).fetchone()
+        return tuple(row[0]) if row is not None else None
+
+    def _repair_missing_primary_keys(self) -> None:
+        """Restore constraints lost by snapshot/export tooling.
+
+        ``CREATE TABLE IF NOT EXISTS`` validates column presence but cannot add
+        constraints to an existing table. Some operational snapshots were
+        materialized with the current columns but without primary keys, making
+        every acquisition fail when DuckDB planned an ``ON CONFLICT`` insert.
+        DuckDB can add these keys in place, so repair them once on writable
+        open rather than rebuilding the (potentially multi-GB) tables.
+        """
+        expected = {
+            "stations": ("id",),
+            "observations": ("station_id", "variable", "resolution", "timestamp"),
+            "acquisition_log": ("provider", "started_at"),
+        }
+        for table, columns in expected.items():
+            actual = self._primary_key_columns(table)
+            if actual == columns:
+                continue
+            if actual is not None:
+                raise RuntimeError(
+                    f"{table} has unexpected primary key {actual!r}; expected {columns!r}"
+                )
+            quoted = ", ".join(columns)
+            indexes = self.conn.execute(
+                "SELECT index_name, sql FROM duckdb_indexes() WHERE table_name = ?",
+                [table],
+            ).fetchall()
+            self.conn.execute("BEGIN")
+            try:
+                for index_name, _ in indexes:
+                    self.conn.execute(f"DROP INDEX {index_name}")
+                self.conn.execute(f"ALTER TABLE {table} ADD PRIMARY KEY ({quoted})")
+                for _, sql in indexes:
+                    self.conn.execute(sql)
+                self.conn.execute("COMMIT")
+            except Exception:
+                self.conn.execute("ROLLBACK")
+                raise
+            _logger.info(
+                "store.primary_key_repaired",
+                db_path=self._db_path,
+                table=table,
+                columns=columns,
+            )
 
     def _migrate_to_multivariable(self) -> None:
         """One-shot rebuild: (station_id, timestamp) PK -> multi-variable PK.
