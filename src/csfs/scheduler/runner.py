@@ -18,6 +18,11 @@ logger = structlog.get_logger()
 DEFAULT_CONCURRENCY = 10
 
 
+def _expects_empty_results(config: dict) -> bool:
+    """Return whether a provider is intentionally metadata-only in this run."""
+    return config.get("auto_download") is False or config.get("expected_empty") is True
+
+
 async def run_acquisition(
     store: BaseStore,
     providers: list[str] | None = None,
@@ -38,6 +43,7 @@ async def run_acquisition(
         try:
             connector_cls = get_connector(slug)
             config = (provider_configs or {}).get(slug, {})
+            expected_empty = _expects_empty_results(config)
             async with connector_cls(config=config) as conn:
                 log.info("fetching_stations")
                 stations = await conn.fetch_stations()
@@ -155,12 +161,15 @@ async def run_acquisition(
                 if failed > 5:
                     log.warning("station_failures_summary", failed=failed, fetched=fetched)
 
-                if n_stations > 0 and total_obs == 0 and failed < fetched:
+                clean_empty = n_stations > 0 and total_obs == 0 and failed == 0
+                if clean_empty and expected_empty:
+                    log.info("expected_zero_observations", stations=n_stations, fetched=fetched)
+                elif n_stations > 0 and total_obs == 0 and failed < fetched:
                     log.warning("zero_observations", stations=n_stations, fetched=fetched)
 
                 if fetched > 0 and failed == fetched:
                     status = "error"
-                elif failed > 0 or (n_stations > 0 and total_obs == 0):
+                elif failed > 0 or (clean_empty and not expected_empty):
                     status = "degraded"
                 else:
                     status = "ok"
@@ -184,6 +193,7 @@ async def run_acquisition(
                     "failed": failed,
                     "retried": retried,
                     "recovered": recovered,
+                    "expected_empty": clean_empty and expected_empty,
                     "status": status,
                 }
 

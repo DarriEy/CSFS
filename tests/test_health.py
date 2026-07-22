@@ -96,6 +96,10 @@ def test_root_cause_classifies_actionable_outages_and_lifecycle():
     assert classify_root_cause({"last_status": "error", "last_error": "HTTP 401"}) == "outage:authentication"
     assert classify_root_cause({"last_status": "error", "last_error": "schema column missing"}) == "outage:schema-drift"
     assert classify_root_cause({"last_status": "error", "last_error": "connection timed out"}) == "outage:upstream"
+    assert classify_root_cause({
+        "last_status": "error",
+        "last_error": "HTTP 502 for /services?format=json",
+    }) == "outage:upstream"
     assert classify_root_cause({"lifecycle": "retired"}) == "lifecycle:retired"
 
 

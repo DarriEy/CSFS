@@ -7,13 +7,30 @@
 #    would exhaust a ~14 GB hosted runner's disk mid-run and kill the job
 #    with no logs — exactly how the first weekly-tier run died
 #    (2026-07-13). Archives are for local/researcher use; in CI these
-#    connectors sync station metadata and degrade gracefully to zero
-#    observations.
+#    connectors sync station metadata; clean zero-observation runs are expected
+#    and healthy. Network/parser failures remain degraded or error.
 # 2. southafrica_dws routes via the legacy dwa.gov.za mirror: the primary
 #    host geo/WAF-blocks Actions runner IPs (403 on every path). The
 #    mirror serves the same Hydstra backend but has an expired TLS cert.
 
 providers:
+  # Static and historical providers whose published coverage commonly does not
+  # overlap the hosted weekly run's rolling lookback window.
+  adhi: {expected_empty: true}
+  ca_discharge: {expected_empty: true}
+  camels_co: {expected_empty: true}
+  camels_in: {expected_empty: true}
+  chile_cr2: {expected_empty: true}
+  estreams: {expected_empty: true}
+  grdc: {expected_empty: true}
+  gsim: {expected_empty: true}
+  portugal_snirh: {expected_empty: true}
+  robin: {expected_empty: true}
+  sierem: {expected_empty: true}
+  spain_cedex: {expected_empty: true}
+  uk_nrfa: {expected_empty: true}
+  vietnam_mekong: {expected_empty: true}
+
   southafrica_dws:
     base_url: https://www.dwa.gov.za
     verify_ssl: false
